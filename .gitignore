@@ -1,0 +1,47 @@
+# TakumiDeck – ignorierte Dateien
+# Generische Grundausstattung. Projektspezifische Laufzeit-Dateien (DB, Caches, Assets)
+# nach Bedarf am Anfang der Datei ergänzen.
+
+# Projekt-Laufzeit (hier erweitern — z.B. *.db, cache/, assets/generated/)
+
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtuelle Umgebungen
+.venv/
+venv/
+env/
+
+# Node / Frontend (falls zutreffend)
+node_modules/
+dist/
+build/
+
+# Package-/Build-Artefakte
+*.egg-info/
+.tox/
+coverage/
+.coverage
+htmlcov/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs & Temp
+*.log
+tmp/
+temp/
+
+# Persönliche Claude-Overrides
+CLAUDE.local.md

@@ -1,0 +1,28 @@
+# TakumiDeck — Git-Attribute
+
+# Standard: LF im Repo, automatische Konvertierung beim Checkout je nach OS
+* text=auto eol=lf
+
+# Explizit: Diese Files immer LF (auch auf Windows)
+*.md       text eol=lf
+*.json     text eol=lf
+*.ts       text eol=lf
+*.tsx      text eol=lf
+*.js       text eol=lf
+*.jsx      text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+
+# Binärdateien — nicht konvertieren
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.pdf      binary
+*.sqlite   binary
+*.db       binary
+
+# Windows-spezifisch: .bat-Files brauchen CRLF
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
