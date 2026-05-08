@@ -300,6 +300,87 @@ Vor dem Commit-Trigger.
 
 ---
 
+## Bereich: App-Chrome (Sprint 7-8)
+
+Header-Bar und Globale UI-Komponenten.
+
+### Feature: Header-Bar
+
+Globale Header-Leiste oben in der App.
+
+- Logo + App-Name + Version (z.B. "TakumiDeck · v0.1.0-dev")
+- Aktives Projekt + Branch + Sessions-Counter
+- Status-Hinweis rechts ("Terminal · P90 192h")
+- Window-Controls (minimieren, maximieren, schließen)
+
+### Feature: Action-Bar unter Eingabezeile
+
+Pill-Style-Buttons mit Schnellaktionen.
+
+- Modell-Picker-Button (zeigt aktuelles Modell, Klick öffnet Picker)
+- Templates-Button (öffnet Template-Modal)
+- commit-Button (sendet Trigger-Phrase an aktive Session)
+- ctx-Mini-Bar (zeigt aktuellen Kontext-Verbrauch)
+- läuft/wartet-Status-Badge rechts
+
+### Feature: Tastatur-Hints
+
+Hilfreiche Shortcuts unter der Eingabezeile.
+
+- "Enter senden · Ctrl+T Templates · Ctrl+K Modell wechseln"
+- Statisch dargestellt, lädt zur Erkundung ein
+- Erweiterte Shortcut-Konfiguration in Phase 3
+
+---
+
+## Bereich: Right-Pane (Sprint 7)
+
+Permanent sichtbarer Right-Pane mit Diff, Markdown-Editor und Notizen.
+
+### Feature: Right-Pane-Layout
+
+Drei vertikale Sektionen mit Tabs.
+
+- Top-Section: Tab-Bar mit Diff + Datei-Tabs (CLAUDE.md, CHANGELOG.md, README.md)
+- Mid-Section: Datei-Browser des aktiven Projekts
+- Notizen-Section: Plain-Text-Textarea mit Auto-Save (siehe Sessions-Bereich)
+- Plannutzung-Section: Konfigurierbare Limit-Bars (siehe Token-Dashboard)
+
+### Feature: Datei-Tabs
+
+Mehrere Markdown-Dateien parallel offen.
+
+- Tab-Bar mit Datei-Icons (md-Symbol)
+- Aktiver Tab mit Highlight
+- Tab schließen via × pro Tab
+- "Diff" als spezieller Tab (immer ganz links)
+
+### Feature: Datei-Browser
+
+Liste der Files im aktiven Projekt.
+
+- Hierarchische Anzeige der Ordnerstruktur
+- Klick auf File → öffnet in neuem Datei-Tab
+- Filter: nur `.md`-Files standardmäßig (konfigurierbar)
+- Visuelle Indikatoren für editierte (M) Files
+
+---
+
+## Bereich: Stats-Section Skeleton (Sprint 5)
+
+Platz für die spätere Stats/Heatmap-Erweiterung — im MVP nur Platzhalter.
+
+### Feature: Übersicht/Modelle-Toggle (Skeleton)
+
+Toggle-Buttons unter dem Terminal-Bereich.
+
+- Buttons "Übersicht" und "Modelle" sichtbar
+- Im MVP: nur "Übersicht"-View aktiv mit minimalem Inhalt (3-4 Token-Stats: aktuelle Session-Tokens, Tokens heute, Tokens diese Woche)
+- "Modelle"-View zeigt "In Phase 2 verfügbar"-Hinweis
+- Volle Heatmap und Stats-Cards in Phase 2
+
+---
+
 ## Bereich: Polish (Sprint 8)
 
 Abschluss-Schliff vor MVP-Release.

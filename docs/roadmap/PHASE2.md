@@ -56,6 +56,62 @@ Zusätzlicher Filter zum Phase-1-Set.
 
 ---
 
+## Bereich: Stats und Heatmap
+
+Erweiterung der MVP-Übersicht mit detaillierten Nutzungs-Statistiken.
+
+### Feature: Stats-Cards
+
+Detaillierte Aggregations-Statistiken pro Projekt.
+
+- Sitzungen total
+- Nachrichten total
+- Tokens gesamt
+- Aktive Tage
+- Aktuelle Streak (Tage in Folge mit Aktivität)
+- Längste Streak
+- Spitzenstunde (welche Tageszeit am produktivsten)
+- Lieblingsmodell (meistgenutztes Modell)
+
+**Trigger:** Im MVP wird der Stats-Bereich nur als Platzhalter angezeigt. Sobald das Daily-Use-Pattern stabil ist und der Wert der Stats sichtbar wird, ausbauen.
+
+### Feature: Aktivitäts-Heatmap
+
+GitHub-Style Calendar-Heatmap der letzten 30 Wochen.
+
+- Pro Tag ein farbiges Quadrat
+- Farbintensität proportional zum Token-Verbrauch des Tages
+- 30-Wochen-Window (Standard), umschaltbar auf 52 Wochen
+- Hover zeigt Datum + Token-Anzahl
+- Filter: 7d / 30d / Alle
+
+### Feature: Modelle-View
+
+Per-Modell-Aufschlüsselung als zweiter Tab neben Übersicht.
+
+- Bar-Chart der Token-Verteilung pro Modell
+- Tabelle: Modell · Sessions · Token total · Durchschnitt pro Session
+- Zeitfilter analog zu Übersicht (7d / 30d / Alle)
+
+### Feature: Easter-Egg-Vergleiche
+
+Spielerische Token-Vergleiche basierend auf bekannten Werken.
+
+- "Du hast ~31× mehr Token als The Lord of the Rings verwendet"
+- Konfigurierbare Vergleichs-Werke in Settings
+- Default-Werke: LotR, Bibel, Harry-Potter-Reihe, etc.
+- Update bei jedem Stats-Refresh
+
+### Feature: 30d/7d-Filter
+
+Globaler Zeit-Filter für Stats-Section.
+
+- Toggle-Buttons "Alle / 30d / 7d"
+- Filter wirkt auf Stats-Cards, Heatmap, Modelle-View
+- Persistiert in Settings (zuletzt gewählter Filter)
+
+---
+
 ## Bereich: Templates
 
 ### Feature: Erweiterte Template-Variablen
@@ -127,6 +183,39 @@ CI für Releases.
 - Optional: macOS/Linux-Builds wenn Zielplattform erweitert
 
 **Trigger:** Bei Verteilung.
+
+---
+
+## Bereich: Right-Pane-Polish
+
+Verbesserungen am Right-Pane-Layout aus dem MVP.
+
+### Feature: Datei-Browser-Filter
+
+Erweiterte Filter-Funktion für den Datei-Browser.
+
+- Filter-Suchfeld oben im Datei-Browser
+- Live-Filtering nach Dateiname
+- File-Type-Toggles (`.md`, `.json`, `.ts`, etc.)
+- Persistiert in Settings
+
+### Feature: Pre-Commit-Sensitive-Warning
+
+Warnung vor versehentlichem Commit von sensiblen Files.
+
+- Pattern-Match auf typische Sensitive-Files (`.env`, `secrets.*`, `*.key`, `*.pem`)
+- Visueller Warnhinweis im Pre-Commit-Panel
+- Optional: Commit-Button disabled bis User die Files explizit bestätigt
+- Pattern-Liste in Settings konfigurierbar
+
+### Feature: Datei-Browser-Status-Indikatoren
+
+Visuelle Markierung von Files mit Änderungen.
+
+- "M"-Indikator für modifizierte Files (uncommitted)
+- "A"-Indikator für neu hinzugefügte Files
+- "D"-Indikator für gelöschte Files
+- Aktualisierung via simple-git status-Polling
 
 ---
 

@@ -90,6 +90,34 @@ Markdown-Editor und Diff-Viewer.
 | `Diff-Viewer`                   | ⛔      |           |
 | `Pre-Commit-Panel`              | ⛔      |           |
 
+## App-Chrome (Sprint 7-8)
+
+Header-Bar und globale UI-Komponenten.
+
+| Feature                         | Status | Bemerkung |
+| ------------------------------- | ------ | --------- |
+| `Header-Bar`                    | ⛔      |           |
+| `Action-Bar`                    | ⛔      |           |
+| `Tastatur-Hints`                | ⛔      |           |
+
+## Right-Pane (Sprint 7)
+
+Permanent sichtbarer Right-Pane mit Diff, Editor und Notizen.
+
+| Feature                         | Status | Bemerkung |
+| ------------------------------- | ------ | --------- |
+| `Right-Pane-Layout`             | ⛔      |           |
+| `Datei-Tabs`                    | ⛔      |           |
+| `Datei-Browser`                 | ⛔      |           |
+
+## Stats-Section (Sprint 5, Skeleton)
+
+Im MVP nur Skeleton. Volle Implementation in Phase 2.
+
+| Feature                         | Status | Bemerkung |
+| ------------------------------- | ------ | --------- |
+| `Übersicht/Modelle-Toggle (Skeleton)` | ⛔ |           |
+
 ## Polish (Sprint 8)
 
 Abschluss-Schliff vor MVP-Release.
