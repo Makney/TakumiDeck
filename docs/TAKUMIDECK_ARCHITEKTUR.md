@@ -31,19 +31,17 @@ Der Name reflektiert die Funktion: Als **Takumi** (Meisterhandwerker) sitzt der 
 
 ## 2. Technischer Stack (final)
 
-| Komponente | Wahl |
-|---|---|
-| Runtime | Electron + TypeScript |
-| UI | React |
-| State | Zustand |
-| Storage | better-sqlite3 |
-| PTY | @homebridge/node-pty-prebuilt-multiarch |
-| Terminal | @xterm/xterm + Addons (fit, search, serialize, web-links) — **Canvas-Renderer**, kein WebGL |
-| File-Watching | chokidar |
-| Git | simple-git |
-| Charts | Recharts |
-| Editor | CodeMirror 6 + lang-markdown + lang-yaml + merge + markdown-preview |
-| Build | Electron Forge |
+| Komponente | Wahl | Hinweise |
+|---|---|---|
+| Runtime | Electron + TypeScript | Strict mode aktiviert |
+| UI | React 18 + Zustand | 4 Domain-Stores: useSessionStore, useProjectStore, useUsageStore, useUiStore |
+| Storage | better-sqlite3 | Im Main-Prozess, WAL-Mode, Migrations als nummerierte SQL-Dateien |
+| Terminal | xterm.js (Canvas-Renderer) + node-pty | `@xterm/addon-canvas`, `@xterm/addon-fit` |
+| Editor | CodeMirror 6 | `@codemirror/lang-markdown`, `@codemirror/merge` für Diff, `oneDark` als Basis |
+| Git | simple-git | Im Main-Prozess, Worktree-Operationen erst Phase 5+ |
+| Charts | Recharts | Burn-Rate, Modell-Verteilung. Heatmap NICHT in Recharts (CSS-Grid mit color-mix) |
+| Build | Electron Forge + Vite | Plugin: `@electron-forge/plugin-vite` für Renderer + Main |
+| IPC | TypeScript-typed + zod (optional Runtime-Validation) | Result-Type-Pattern für Errors |
 
 **Bewusste Auslassungen:**
 - Kein Monaco (CodeMirror reicht für Markdown/Diff)
@@ -51,6 +49,8 @@ Der Name reflektiert die Funktion: Als **Takumi** (Meisterhandwerker) sitzt der 
 - Kein electron-updater im MVP
 - Kein Code-Signing
 - Kein tRPC (typed IPC reicht)
+- Kein Tailwind/Styled Components (CSS Modules + Tokens.css)
+- Worktrees erst Phase 5+
 
 ---
 
@@ -63,34 +63,109 @@ Der Name reflektiert die Funktion: Als **Takumi** (Meisterhandwerker) sitzt der 
 - **Preload:** Whitelist-API via `contextBridge.exposeInMainWorld`
 - **IPC:** Typed via shared `ipc-types.ts`, Result-Type-Pattern für Errors
 
-### IPC-Channel-Liste (~30 Channels)
+### IPC-Channel-Schema
 
-**PTY/Session-Management:**
-- `pty:create`, `pty:write`, `pty:resize`, `pty:kill`, `pty:resume`
-- `pty:data` (Main → Renderer), `pty:exit` (Main → Renderer)
+Channels sind in **shared/ipc-channels.ts** als `const Channels = { ... } as const` definiert. Payload und Return-Types in **shared/types.ts**. Empfohlene Runtime-Validation via zod (optional aber empfohlen für robustere Fehler-Diagnose).
 
-**Project-Management:**
-- `project:scan-workspace`, `project:add`, `project:get-list`, `project:read-claude-md`
+**Schema (nach Domain gruppiert):**
 
-**Session-Database:**
-- `session:create`, `session:update-status`, `session:update-notes`, `session:archive`, `session:get-history`
+```typescript
+// shared/ipc-channels.ts
+export const Channels = {
+  // Project-Management
+  ProjectList:     "project:list",
+  ProjectAdd:      "project:add",
+  ProjectScan:     "project:scan-workspace",
+  ProjectReadCfg:  "project:read-claude-md",   // YAML-Frontmatter parsen
 
-**Token-Tracking:**
-- `tokens:get-current-usage`, `tokens:get-session-context`, `tokens:on-update` (Subscription)
+  // Session-Management
+  SessionOpen:     "session:open",             // Spawnt PTY + DB-Insert
+  SessionClose:    "session:close",            // Status → archived
+  SessionResume:   "session:resume",           // claude --resume <id>
+  SessionUpdate:   "session:update",           // Status, Notes, etc.
+  SessionHistory:  "session:history",          // Verlauf-Panel-Daten
 
-**Git-Integration:**
-- `git:get-diff`, `git:get-status`
+  // PTY (interaktiv)
+  PtyData:         "pty:data",                 // Main → Renderer
+  PtyWrite:        "pty:write",                // Renderer → Main
+  PtyResize:       "pty:resize",
+  PtyExit:         "pty:exit",                 // Main → Renderer
 
-**File-System:**
-- `fs:read-file`, `fs:write-file`, `fs:list-templates`
+  // Git
+  GitStatus:       "git:status",
+  GitDiff:         "git:diff",                 // Working Tree
+  GitWorktrees:    "git:worktrees",            // Phase 5+, im MVP leer
 
-**Settings:**
-- `settings:get`, `settings:set`
+  // Token-Tracking
+  UsageWindow:     "usage:window",             // 5h, weekly_all, weekly_design, sonnet
+  UsageHeatmap:    "usage:heatmap",            // 7×30 grid (Phase 2)
+  UsageContext:    "usage:context",            // Per-Session-Kontext
 
-**Misc:**
-- `app:open-data-folder`, `app:get-version`
+  // Filesystem
+  FsRead:          "fs:read",
+  FsWrite:         "fs:write",
+  FsListTemplates: "fs:list-templates",        // .md-Files aus templates/
 
-### PTY-Output-Throttling
+  // Settings
+  SettingsGet:     "settings:get",
+  SettingsSet:     "settings:set",
+
+  // Notes
+  NotesSave:       "notes:save",               // Debounced 500ms
+
+  // App-Misc
+  AppOpenDataFolder: "app:open-data-folder",
+  AppGetVersion:     "app:get-version",
+} as const;
+```
+
+**Preload-Bridge-Shape:**
+
+```typescript
+// preload/index.ts
+contextBridge.exposeInMainWorld("api", {
+  projects: { list, add, scan, readConfig },
+  sessions: { open, close, resume, update, history },
+  pty:      { write, resize, onData, onExit },
+  git:      { status, diff, worktrees },
+  usage:    { window, heatmap, context },
+  fs:       { read, write, listTemplates },
+  settings: { get, set },
+  notes:    { save },
+  app:      { openDataFolder, getVersion },
+});
+```
+
+**Validation-Pattern (empfohlen):**
+
+```typescript
+// Beispiel mit zod
+import { z } from "zod";
+
+const SessionOpenInput = z.object({
+  projectId: z.string().uuid(),
+  type: z.enum(["feature", "bug", "review", "docs-sync"]),
+  model: z.string(),
+  cwd: z.string(),
+});
+
+ipcMain.handle(Channels.SessionOpen, async (event, input) => {
+  const validated = SessionOpenInput.parse(input);  // Throws bei Invalid
+  // ... handler logic
+});
+```
+
+**Result-Type für Errors:**
+
+```typescript
+type IpcResult<T> = 
+  | { ok: true; data: T }
+  | { ok: false; error: string; code?: string };
+```
+
+Alle IPC-Handler returnen `IpcResult<T>` statt zu throwen — saubere Fehler-Behandlung im Renderer.
+
+**PTY-Output-Throttling:**
 
 - Buffer im Main-Prozess pro Session
 - Flush-Interval: 16ms (60fps)
@@ -119,46 +194,164 @@ Zugriff via Settings-Dialog "Open Data Folder"-Button.
 
 ```sql
 CREATE TABLE projects (
-  id INTEGER PRIMARY KEY,
-  path TEXT UNIQUE NOT NULL,
+  id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  path TEXT UNIQUE NOT NULL,
   added_manually BOOLEAN DEFAULT 0,
   has_git BOOLEAN DEFAULT 0,
   next_season_number INTEGER DEFAULT 1,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at INTEGER NOT NULL
 );
 
 CREATE TABLE sessions (
   id TEXT PRIMARY KEY,                  -- UUID, matched zu Claude Codes session-uuid
-  project_id INTEGER NOT NULL,
-  name TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
   type TEXT NOT NULL,                   -- 'feature' | 'bug' | 'review' | 'docs-sync'
   season_number INTEGER,                -- NULL für non-feature types
   status TEXT NOT NULL,                 -- 'running' | 'waiting' | 'idle' | 'completed' | 'archived' | 'interrupted' | 'error'
   current_model TEXT,                   -- Aus JSONL geparst
-  worktree_path TEXT,                   -- NULL im MVP, später für Worktrees
-  notes TEXT DEFAULT '',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  ended_at TIMESTAMP,
-  FOREIGN KEY (project_id) REFERENCES projects(id)
+  worktree_branch TEXT,                 -- NULL im MVP, später für Worktrees
+  notes_md TEXT NOT NULL DEFAULT '',
+  cwd TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER
+);
+
+CREATE TABLE messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,                   -- 'user' | 'assistant' | 'tool'
+  content TEXT NOT NULL,
+  tokens_in INTEGER NOT NULL DEFAULT 0,
+  tokens_out INTEGER NOT NULL DEFAULT 0,
+  ts INTEGER NOT NULL
+);
+
+CREATE TABLE usage_buckets (
+  bucket_start INTEGER NOT NULL,        -- epoch hour
+  model TEXT NOT NULL,
+  tokens INTEGER NOT NULL,
+  PRIMARY KEY (bucket_start, model)
 );
 
 CREATE TABLE settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL                   -- JSON
 );
+
+CREATE INDEX idx_messages_session_ts ON messages(session_id, ts);
+CREATE INDEX idx_usage_bucket ON usage_buckets(bucket_start);
 ```
 
 **Bewusst NICHT in SQLite:**
 - Templates (= .md-Dateien im Filesystem)
 - Token-Daten (= JSONL-Dateien in `~/.claude/projects/`)
 
-### Settings-JSON (Beispiel)
+### Stats-Aggregation und Token-Tracking
+
+**Drei Datenquellen, jeweils mit unterschiedlichem Zweck:**
+
+1. **JSONL-Files** in `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl`
+   - Source-of-Truth für die **aktuelle Session** (Live-Tracking)
+   - chokidar-Watch mit 500ms-Debounce
+   - Wird gelesen für: Per-Session-Kontext-Bar, State-Detection (Event-Frequenz)
+
+2. **`messages`-Tabelle** in SQLite
+   - Persistente Kopie der JSONL-Daten für **historische Auswertung**
+   - Pro Session: alle Messages mit `tokens_in`, `tokens_out`
+   - Wird befüllt: nach Session-Ende durch JSONL-Parser
+   - Wird gelesen für: Verlauf-Panel mit Token-Zahlen, Per-Session-Stats
+
+3. **`usage_buckets`-Tabelle** in SQLite
+   - Pre-aggregierte Token-Summen pro **Stunde × Modell**
+   - Wird befüllt: kontinuierlich beim Schreiben in `messages`-Tabelle
+   - Wird gelesen für: Plannutzung-Bars (5h, weekly_all, etc.) und Heatmap (Phase 2)
+   - Performance-Vorteil: Direkte Aggregation ohne JSONL-Tail
+
+**Aggregation-Flow:**
+
+```
+Live-Update (während Session läuft):
+JSONL geschrieben
+→ chokidar erkennt Change
+→ Tail-Read der neuen Zeile
+→ Per-Session-Kontext-Bar updaten (sofort)
+→ State-Detection updaten (sofort)
+Persist-Flow (nach jeder Message):
+JSONL-Zeile parsen
+→ INSERT in messages-Tabelle
+→ UPDATE usage_buckets (bucket_start = floor(ts / 3600))
+→ IPC-Push an Plannutzung (debounced 500ms)
+```
+
+**Plannutzung-Bars sind konfigurierbar via Settings:**
+
+```typescript
+// Beispiel-Konfiguration
+{
+  "limit_bars": [
+    {
+      "id": "5h",
+      "label": "5-Stunden-Limit",
+      "window_hours": 5,
+      "filter": "all",                // Alle Modelle
+      "limit_method": "p90"            // P90 über letzte 192h
+    },
+    {
+      "id": "weekly_all",
+      "label": "Wöchentlich · alle Modelle",
+      "window_hours": 168,
+      "filter": "all",
+      "limit_method": "p90"
+    },
+    {
+      "id": "weekly_design",
+      "label": "Wöchentlich · Claude Design",
+      "window_hours": 168,
+      "filter": "top_tier",            // Opus 4.7, 4.6
+      "limit_method": "p90"
+    },
+    {
+      "id": "weekly_sonnet",
+      "label": "Nur Sonnet",
+      "window_hours": 168,
+      "filter": "sonnet",              // Sonnet 4.6, 4.5
+      "limit_method": "p90"
+    }
+  ]
+}
+```
+
+Filter-Logik:
+- `"all"` — alle Token aus `usage_buckets`
+- `"top_tier"` — nur `model LIKE 'opus%'`
+- `"sonnet"` — nur `model LIKE 'sonnet%'`
+- `"haiku"` — nur `model LIKE 'haiku%'`
+- Custom-Filter via `model_pattern: "claude-opus-4-7"` möglich
+
+**Heatmap (Phase 2):**
+
+```sql
+-- Stündliche Buckets der letzten 30 Wochen
+SELECT 
+  date(bucket_start, 'unixepoch') AS day,
+  SUM(tokens) AS daily_tokens
+FROM usage_buckets
+WHERE bucket_start >= strftime('%s', 'now', '-30 weeks')
+GROUP BY day
+ORDER BY day;
+```
+
+Frontend-Rendering: pures CSS-Grid (7 Zeilen × 30 Spalten) mit color-mix-Stufen — laut Claude-Design-Handoff performanter als Recharts.
+
+### Settings-JSON (komplett)
 
 ```json
 {
   "workspace_path": "C:\\Users\\Sebastian\\Projects",
   "default_model": "claude-sonnet-4-6",
+
   "model_limits": {
     "claude-opus-4-7": 1000000,
     "claude-opus-4-6": 1000000,
@@ -167,13 +360,72 @@ CREATE TABLE settings (
     "claude-haiku-4-5": 200000
   },
   "default_limit": 200000,
-  "terminal_font_family": "MesloLGS NF, Cascadia Code",
-  "terminal_font_size": 14,
+
+  "limit_bars": [
+    { "id": "5h", "label": "5-Stunden-Limit", "window_hours": 5, "filter": "all", "limit_method": "p90" },
+    { "id": "weekly_all", "label": "Wöchentlich · alle Modelle", "window_hours": 168, "filter": "all", "limit_method": "p90" },
+    { "id": "weekly_design", "label": "Wöchentlich · Claude Design", "window_hours": 168, "filter": "top_tier", "limit_method": "p90" },
+    { "id": "weekly_sonnet", "label": "Nur Sonnet", "window_hours": 168, "filter": "sonnet", "limit_method": "p90" }
+  ],
+
   "p90_window_hours": 192,
-  "token_warning_thresholds": { "yellow": 70, "orange": 85, "red": 95 },
-  "theme": "dark"
+
+  "token_warning_thresholds": {
+    "yellow": 70,
+    "orange": 85,
+    "red": 95
+  },
+
+  "terminal_font_family": "JetBrains Mono, Cascadia Code, MesloLGS NF",
+  "terminal_font_size": 13,
+
+  "theme": "dark",
+  "accent_color": "#4ade80",
+
+  "shortcuts": {
+    "new_session": "Ctrl+N",
+    "templates": "Ctrl+T",
+    "settings": "Ctrl+K",
+    "tab_next": "Ctrl+Tab",
+    "tab_prev": "Ctrl+Shift+Tab"
+  }
 }
 ```
+
+### Layout-Constants
+
+Diese Werte sind **fest im Code** verankert (keine Settings), folgen Claude-Designs Handoff-Spec:
+
+```typescript
+// renderer/styles/layout.ts
+export const LAYOUT = {
+  // Title-Bar
+  TITLEBAR_HEIGHT: 36,
+
+  // Main-Grid
+  COL_LEFT_WIDTH: 240,        // Sidebar
+  COL_MID_WIDTH: "1fr",       // Terminal + CodePane
+  COL_RIGHT_WIDTH: 232,       // Files + Notes
+
+  ROW_TOP_HEIGHT: "1fr",      // Terminal + CodePane
+  ROW_BOTTOM_HEIGHT: 300,     // Stats + PlanPane
+
+  // Innen-Layouts
+  TAB_BAR_HEIGHT: 28,
+  TERMINAL_FOOTER_HEIGHT: 24,
+  FILES_FLEX: 0.55,           // 55% des Right-Pane für Files
+  NOTES_FLEX: 0.45,           // 45% für Notes
+
+  // Spacing-Skala (px)
+  SPACING: [4, 6, 8, 10, 12, 14, 16],
+
+  // Border-Radius (sehr konservativ — fast keine Rundungen)
+  RADIUS_PILL: 2,             // Pills, Buttons, List-Items
+  RADIUS_MODAL: 4,            // Modale (einzige Ausnahme)
+  RADIUS_TOAST: 3,            // Toasts
+} as const;
+```
+
 
 ---
 
@@ -218,6 +470,139 @@ App schreibt nicht in CLAUDE.md. Editieren via Markdown-Editor der App (CodeMirr
 ---
 
 ## 6. Komponenten-Architektur
+
+### 6.0 Datei-Struktur (Frontend)
+```
+Komponenten-Tree wie im Claude-Design-Handoff vorgegeben:
+src/
+├── main/
+│   ├── index.ts              # app lifecycle, BrowserWindow
+│   ├── ipc/                  # session, pty, git, db, fs handlers
+│   │   ├── project.ts
+│   │   ├── session.ts
+│   │   ├── pty.ts
+│   │   ├── git.ts
+│   │   ├── usage.ts
+│   │   ├── fs.ts
+│   │   ├── settings.ts
+│   │   └── notes.ts
+│   ├── pty/manager.ts        # node-pty pool keyed by sessionId
+│   ├── git/worktree.ts       # simple-git wrapper
+│   ├── jsonl/watcher.ts      # chokidar + parser
+│   └── db/
+│       ├── connection.ts     # better-sqlite3 init + WAL
+│       ├── migrations/
+│       │   └── 0001_init.sql
+│       └── repos/            # projects, sessions, messages, usage
+├── preload/
+│   └── index.ts              # contextBridge → window.api
+├── shared/
+│   ├── ipc-channels.ts
+│   └── types.ts              # Project, Session, UsageWindow, etc.
+└── renderer/
+├── index.html
+├── main.tsx
+├── App.tsx               # Layout-Grid
+├── stores/
+│   ├── projects.ts       # useProjectStore (Zustand)
+│   ├── sessions.ts       # useSessionStore
+│   ├── usage.ts          # useUsageStore
+│   └── ui.ts             # useUiStore
+├── panels/
+│   ├── TitleBar.tsx
+│   ├── LeftSidebar.tsx
+│   ├── TerminalPane.tsx
+│   ├── CodePane.tsx      # Tabs + Split, CodeMirror
+│   ├── FilesPanel.tsx
+│   ├── NotesPanel.tsx
+│   ├── StatsPane.tsx     # Übersicht + Heatmap (Phase 2)
+│   └── PlanPane.tsx      # Plannutzung
+├── modals/
+│   ├── NewSessionModal.tsx
+│   ├── TemplatesModal.tsx
+│   ├── PreCommitModal.tsx
+│   └── SettingsModal.tsx
+├── components/           # Pill, StatusDot, MiniBar, ListItem, etc.
+└── styles/
+├── tokens.css        # CSS Custom Properties (aus Claude-Design-Export)
+└── app.css
+```
+
+### 6.0.1 Modal-System
+
+Vier Modale werden im MVP implementiert (Claude-Design-Handoff-Spec):
+
+| Modal | Trigger | Zweck |
+|---|---|---|
+| `NewSessionModal` | Sidebar "+ Neue Session" oder `Ctrl+N` | Neue Session erstellen (Typ, Modell, Season) |
+| `TemplatesModal` | `Ctrl+T` | Template-Picker mit Variablen-Filling |
+| `PreCommitModal` | Sensitive-Files im Staged-Diff (Phase 2) | Warnung bei `.env`, Keys, Tokens |
+| `SettingsModal` | `Ctrl+K` oder Settings-Icon | App-Konfiguration |
+
+**Modal-Pattern (einheitlich):**
+- Backdrop: `rgba(0,0,0,0.55)` mit `backdrop-filter: blur(2px)`
+- Dialog: `--td-panel`-Background, `1px --td-line-2`-Border, `border-radius: 4px`
+- Close via `Esc` oder `×`-Button
+- `max-width: 540px` (Standard) oder `820px` (large variant für Settings)
+
+### 6.0.2 Tastatur-Shortcuts
+
+Globale Shortcuts (in `renderer/main.tsx` registriert):
+
+| Shortcut | Aktion |
+|---|---|
+| `Ctrl+T` | Templates-Modal öffnen |
+| `Ctrl+K` | Settings-Modal öffnen |
+| `Ctrl+N` | Neue-Session-Modal öffnen |
+| `Esc` | Aktives Modal schließen |
+| `Ctrl+Tab` | Nächster Terminal-Tab |
+| `Ctrl+Shift+Tab` | Vorheriger Terminal-Tab |
+
+Erweiterbar via Settings (Phase 3).
+
+### 6.0.3 Hover-Pattern
+
+**Einheitliches Hover-Verhalten** für alle interaktiven Elemente (aus Claude-Design-Spec):
+
+- Border-Color → `var(--td-accent-line)`
+- Color → `var(--td-accent)`
+- **Kein** Background-Change
+- Transition: `120ms ease-out`
+
+Code-Beispiel:
+```css
+.td-action-btn {
+  transition: border-color .12s, color .12s;
+}
+.td-action-btn:hover {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+```
+
+### 6.0.4 Status-Indikatoren
+
+**Status-Dots** mit semantischen Farben:
+
+| Status | Farbe | Effekt |
+|---|---|---|
+| `running` | `--td-accent` (emerald) | Glow via `box-shadow: 0 0 8px rgba(74,222,128,0.6)` |
+| `waiting` | `--td-warn` (amber) | Statisch |
+| `idle` | `--td-text-mute` (grau) | Statisch |
+| `completed` | `--td-blue` | Statisch |
+| `interrupted` | `--td-orange` | Statisch |
+| `archived` | `--td-text-mute`, opacity 0.5 | Statisch |
+
+**Pulse-Animation** für `running` (optional, aus CSS-Spec):
+```css
+.td-status-dot.running {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+```
 
 ### 6.1 Workspace-Manager
 

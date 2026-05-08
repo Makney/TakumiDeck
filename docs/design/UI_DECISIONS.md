@@ -175,9 +175,31 @@ Folgende Werte sind in Settings konfigurierbar:
 - **Token-Dashboard als oben-Strip** — Plannutzung lebt im Right-Pane, kompakter
 - **Sidebar rechts** — links bleibt Standard
 - **Side-by-Side-Markdown-Preview** — Toggle reicht im MVP
+- **Worktree-Selector im CodePane-Footer** — Phase 5+, nicht im MVP
+- **Tailwind / Styled-Components** — pure CSS Modules + tokens.css aus Claude-Design-Export
 
-## Visuelle Referenzen
+Vollständige Stack-Entscheidungen und Begründungen: siehe [TAKUMIDECK_ARCHITEKTUR.md Kapitel 2](../TAKUMIDECK_ARCHITEKTUR.md).
+
+## Visuelle Referenzen und Code-Assets
 
 - [layout-v1.png](./layout-v1.png) — Finales Design vom 2026-05-08
+- [claude-export/](./claude-export/) — Vollständiger Claude-Design-Handoff mit:
+  - `README.md` — Detaillierte Komponenten-Spec
+  - `styles.css` — Komplette CSS-Tokens und Komponenten-Styles (1148 Zeilen)
+  - `app.jsx` — Root-Komponente mit Layout-Grid
+  - `components.jsx` — Alle Panels und Modale
+  - `data.js` — Mock-Daten-Struktur (Referenz für SQLite-Schema)
+  - `prototype.html` — Lauffähiger Prototyp für Browser-Inspection
 
-Wenn das Design weiterentwickelt wird, neue Versionen als `layout-v2.png` etc. ablegen.
+**Hinweis zur Übernahme:**
+
+- `styles.css` Token-Block (Zeile 3-32) → wird 1:1 als `src/renderer/styles/tokens.css` ins Projekt übernommen
+- Restlicher CSS → als Referenz, fließt komponentenweise in React-Komponenten ein
+- `app.jsx` und `components.jsx` → Referenz für Komponenten-Struktur, nicht 1:1-Übernahme (wegen Mock-Daten)
+- `tweaks-panel.jsx` → wird **nicht** übernommen (war Design-Tool, nicht App-Feature)
+
+### Versionierung
+
+- Neue Design-Iterationen als `layout-v2.png`, `layout-v3.png` etc.
+- Major-Iterationen: neuer Claude-Design-Export → `claude-export-v2/`
+- Kleinere Anpassungen direkt am Code, nicht im Design-Asset
