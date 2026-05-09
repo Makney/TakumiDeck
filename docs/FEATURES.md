@@ -29,10 +29,10 @@ Multi-Session-Management.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `PTY-Spawn`                     | ⛔      |           |
-| `xterm.js-Terminal`             | ⛔      |           |
+| `PTY-Spawn`                     | ✅      | 2026-05-09 — @lydell/node-pty (NAPI), 16ms-Buffer-Flush, Pre-Check für Binary + cwd |
+| `xterm.js-Terminal`             | ✅      | 2026-05-09 — Canvas-Renderer + Addons (fit, search, serialize, web-links), Single-Tab |
 | `Tab-System`                    | ⛔      |           |
-| `Session-Lifecycle`             | ⛔      |           |
+| `Session-Lifecycle`             | 🟡      | 2026-05-09 — `running → completed` automatisch bei pty:exit; interrupted/error/archived folgen Sprint 3 |
 | `Resume-Funktion`               | ⛔      |           |
 | `Modell-Auswahl`                | ⛔      |           |
 | `State-Detection (reduziert)`   | ⛔      |           |

@@ -7,6 +7,12 @@ import { SettingsStore } from './settings/store';
 import { openDatabase } from './db/connection';
 import { registerSettingsIpc } from './ipc/settings';
 import { registerAppIpc } from './ipc/app';
+import { registerPtyIpc } from './ipc/pty';
+import { registerSessionIpc } from './ipc/session';
+import { PtyManager } from './pty/manager';
+import { realPtySpawn } from './pty/spawn';
+import { SessionRepository, SqliteSessionDriver } from './db/repos/sessions';
+import { ensureDefaultProject } from './db/repos/projects';
 
 // Squirrel-Installer: bei Setup/Update-Events sofort beenden, bevor BrowserWindow erstellt wird.
 if (started) {
@@ -16,7 +22,19 @@ if (started) {
 // Pfade konfigurieren (Dev vs. Prod), bevor irgendein Modul userData liest.
 configurePaths();
 
+// Sicherheitsnetz für Async-Crashes aus Worker-Threads (z.B. node-pty's ConPTY-Worker
+// auf Windows, der "Cannot create process" wirft). Ohne diesen Handler hätte Electron
+// den Default-Error-Dialog gezeigt und den Main-Prozess beendet — wir loggen stattdessen
+// und lassen die App weiterlaufen, damit der User noch settings.json korrigieren kann.
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception im Main-Prozess', error);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled Promise-Rejection im Main-Prozess', reason);
+});
+
 let mainWindow: BrowserWindow | null = null;
+let ptyManager: PtyManager | null = null;
 
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
@@ -47,6 +65,9 @@ function createMainWindow(): void {
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     );
   }
+  // DevTools werden bewusst NICHT automatisch geöffnet — F12 / Ctrl+Shift+I reichen
+  // bei Bedarf. Auto-Open bleibt als Diagnose-Werkzeug verfügbar (einfach hier wieder
+  // einkommentieren), wenn der nächste Renderer-Crash auftaucht.
 }
 
 app.whenReady().then(() => {
@@ -54,8 +75,23 @@ app.whenReady().then(() => {
     const settings = SettingsStore.initialize(getSettingsPath());
     const db = openDatabase(getDatabasePath());
 
+    // FK-Lifeline für Sprint 2: solange der Workspace-Scanner (Sprint 4) noch fehlt,
+    // hängen alle Sessions an einem stabilen Default-Projekt.
+    ensureDefaultProject(db, settings.read().workspace_path);
+
+    const sessions = new SessionRepository(new SqliteSessionDriver(db));
+    ptyManager = new PtyManager(realPtySpawn);
+
     registerSettingsIpc(settings);
     registerAppIpc();
+    registerSessionIpc(sessions);
+    registerPtyIpc({
+      manager: ptyManager,
+      sessions,
+      settings,
+      getWebContents: () => mainWindow?.webContents ?? null,
+      log: logger,
+    });
 
     logger.info('TakumiDeck startet', {
       version: app.getVersion(),
@@ -63,8 +99,14 @@ app.whenReady().then(() => {
       packaged: app.isPackaged,
     });
 
-    // Beim App-Beenden DB sauber schließen, damit WAL-Checkpoint geschrieben wird.
+    // Beim App-Beenden: laufende PTYs hart killen, dann DB sauber schließen,
+    // damit der WAL-Checkpoint geschrieben wird.
     app.on('before-quit', () => {
+      try {
+        ptyManager?.killAll();
+      } catch (e) {
+        logger.warn('PTY-Kill-All fehlgeschlagen', e);
+      }
       try {
         db.close();
       } catch (e) {

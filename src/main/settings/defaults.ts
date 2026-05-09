@@ -1,13 +1,25 @@
 import type { AppSettings } from '@shared/types';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 // Standardwerte laut Architektur Kapitel 4.
-// `workspace_path` bleibt anpassbar pro Maschine — Default zeigt auf <home>/Projekte.
+// `workspace_path` bleibt anpassbar pro Maschine — Default zeigt auf <home>/Projekte,
+// fällt auf das Home-Verzeichnis zurück, wenn der Default-Ordner noch nicht existiert
+// (sonst kippt der Sprint-2-PTY-Spawn mit ERROR_DIRECTORY direkt beim ersten Start).
+function pickDefaultWorkspacePath(): string {
+  const preferred = path.join(os.homedir(), 'Projekte');
+  if (fs.existsSync(preferred)) return preferred;
+  return os.homedir();
+}
+
 export function buildDefaultSettings(): AppSettings {
   return {
-    workspace_path: path.join(os.homedir(), 'Projekte'),
+    workspace_path: pickDefaultWorkspacePath(),
     default_model: 'claude-sonnet-4-6',
+    // Default 'claude' nutzt PATH. User kann auf einen absoluten Pfad wechseln,
+    // wenn die Binary nicht im PATH liegt oder mehrere Installationen koexistieren.
+    claude_binary_path: 'claude',
 
     model_limits: {
       'claude-opus-4-7': 1_000_000,

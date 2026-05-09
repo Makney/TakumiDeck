@@ -73,8 +73,9 @@ Git repo: https://github.com/Makney/TakumiDeck.git
 ## Current Status
 
 Phase 1 (v0.1) actively in development.
-
+```
 → [docs/roadmap/PHASE1.md](./docs/roadmap/PHASE1.md) — Open features of the current phase
 → [docs/FEATURES.md](./docs/FEATURES.md)        — Feature status matrix (✅/🟡/⛔)
 → [docs/CHANGELOG.md](./docs/CHANGELOG.md)      — Recently built features
 → [docs/TAKUMIDECK_ARCHITEKTUR.md](./docs/TAKUMIDECK_ARCHITEKTUR.md) — Master architecture reference
+```

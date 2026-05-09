@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings, IpcResult } from '@shared/types';
+import { TerminalPane } from './panels/TerminalPane';
 
-// Sprint-1-Smoke-View: lädt Version und Settings über die window.api-Bridge,
-// damit verifizierbar ist, dass Preload + IPC + Main + Settings-Store + DB-Init zusammenspielen.
-// Wird in Sprint 2 durch das tatsächliche Layout (Sidebar / Terminal / Right-Pane) ersetzt.
+// Sprint-2-Renderer: lädt Version + Settings, dann zeigt eine TerminalPane mit
+// einer claude-PTY für settings.workspace_path im default_model an.
+// Volles Layout (Sidebar / Right-Pane / Stats) folgt ab Sprint 4.
 export function App() {
   const [version, setVersion] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -25,12 +26,39 @@ export function App() {
     };
   }, []);
 
+  if (error) {
+    return (
+      <div className="td-bootstrap">
+        <h1>TakumiDeck</h1>
+        <pre>Fehler: {error}</pre>
+      </div>
+    );
+  }
+
+  if (!settings || !version) {
+    return (
+      <div className="td-bootstrap">
+        <h1>TakumiDeck</h1>
+        <div className="td-meta">lädt…</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="td-bootstrap">
-      <h1>TakumiDeck</h1>
-      <div className="td-meta">v{version ?? '…'} · Foundation-Skelett (Sprint 1)</div>
-      {error && <pre>Fehler: {error}</pre>}
-      {settings && <pre>{JSON.stringify(settings, null, 2)}</pre>}
+    <div className="td-app">
+      <header className="td-app-header">
+        <span className="td-app-title">TakumiDeck</span>
+        <span className="td-app-meta">v{version} · Sprint 2 (Single-Tab-PTY)</span>
+      </header>
+      <main className="td-app-main">
+        <TerminalPane
+          settings={settings}
+          cwd={settings.workspace_path}
+          model={settings.default_model}
+          type="feature"
+          title={`Sprint-2-Test · ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`}
+        />
+      </main>
     </div>
   );
 

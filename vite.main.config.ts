@@ -12,7 +12,16 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['better-sqlite3', 'electron', 'electron-log', 'electron-squirrel-startup'],
+      external: [
+        'better-sqlite3',
+        'electron',
+        'electron-log',
+        'electron-squirrel-startup',
+        // @lydell/node-pty lädt seine Plattform-Binary dynamisch über require() —
+        // Vite/Rollup würde das nicht auflösen. Daher als external markieren.
+        '@lydell/node-pty',
+        /^@lydell\/node-pty-/,
+      ],
     },
   },
 });

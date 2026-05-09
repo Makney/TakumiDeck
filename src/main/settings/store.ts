@@ -24,7 +24,11 @@ export class SettingsStore {
   read(): AppSettings {
     const raw = fs.readFileSync(this.filePath, 'utf-8');
     const parsed = JSON.parse(raw);
-    return AppSettingsSchema.parse(parsed);
+    // Mit Defaults mergen, bevor wir validieren: ältere Versionen der settings.json
+    // (z.B. Sprint 1, ohne claude_binary_path) bekommen so neu hinzugekommene Felder
+    // automatisch befüllt, anstatt am Vollschema zu scheitern.
+    const merged = { ...buildDefaultSettings(), ...parsed };
+    return AppSettingsSchema.parse(merged);
   }
 
   write(settings: AppSettings): void {

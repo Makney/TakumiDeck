@@ -18,8 +18,7 @@ body,
   overflow: hidden;
 }
 
-/* Sprint-1-Skelett: nur Foundation-Smoke-Anzeige.
-   Vollständige App-Layouts (Grid, Title-Bar, Panes) folgen ab Sprint 2. */
+/* Sprint-1-Bootstrap (wird angezeigt, solange Version/Settings noch laden). */
 .td-bootstrap {
   display: flex;
   flex-direction: column;
@@ -53,4 +52,87 @@ body,
   color: var(--td-text-mute);
   font-size: 11px;
   letter-spacing: 0.04em;
+}
+
+/* Sprint-2-Layout: schmaler Header oben + TerminalPane fullscreen. */
+.td-app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.td-app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 14px;
+  background: var(--td-panel-2);
+  border-bottom: 1px solid var(--td-line);
+  flex-shrink: 0;
+}
+
+.td-app-title {
+  font-family: var(--td-display);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--td-accent);
+}
+
+.td-app-meta {
+  color: var(--td-text-mute);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.td-app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--td-bg);
+}
+
+/* TerminalPane — Sprint 2 Single-Tab-Variante. */
+.td-terminal-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--td-panel);
+}
+
+.td-terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px;
+  background: var(--td-panel-2);
+  border-bottom: 1px solid var(--td-line);
+  font-size: 11px;
+  color: var(--td-text-dim);
+  flex-shrink: 0;
+}
+
+.td-terminal-bar-label {
+  color: var(--td-accent);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.td-terminal-bar-meta {
+  color: var(--td-text-mute);
+}
+
+.td-terminal-canvas {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 10px;
+  background: var(--td-panel);
+}
+
+/* xterm rendert sein Element als child von .td-terminal-canvas — wir geben ihm 100%. */
+.td-terminal-canvas .xterm {
+  width: 100%;
+  height: 100%;
 }

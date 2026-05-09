@@ -1,6 +1,5 @@
 // Zentrale Channel-Konstanten für die IPC zwischen Main und Renderer.
-// Vollständige Liste laut Architektur — Sprint 1 implementiert nur settings:* und app:*,
-// die übrigen sind Forward-Reservierungen für spätere Sprints.
+// Sprint 1 hat settings:* und app:* belegt; Sprint 2 ergänzt pty:* und session:open / session:update.
 export const Channels = {
   // Project-Management (Sprint 4)
   ProjectList: 'project:list',
@@ -8,7 +7,7 @@ export const Channels = {
   ProjectScan: 'project:scan-workspace',
   ProjectReadCfg: 'project:read-claude-md',
 
-  // Session-Management (Sprint 2-3)
+  // Session-Management (Sprint 2: open/update; Sprint 3: close/resume/history)
   SessionOpen: 'session:open',
   SessionClose: 'session:close',
   SessionResume: 'session:resume',
@@ -16,9 +15,11 @@ export const Channels = {
   SessionHistory: 'session:history',
 
   // PTY (Sprint 2)
-  PtyData: 'pty:data',
+  PtyCreate: 'pty:create',
   PtyWrite: 'pty:write',
   PtyResize: 'pty:resize',
+  PtyKill: 'pty:kill',
+  PtyData: 'pty:data',
   PtyExit: 'pty:exit',
 
   // Git (Sprint 7)

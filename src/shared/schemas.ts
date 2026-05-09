@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
 // zod-Schemas für Runtime-Validation an IPC-Boundaries.
-// Verwendung im Main-Handler: `const input = SettingsPatchSchema.parse(payload)`.
+// Verwendung im Main-Handler: `const input = SchemaName.parse(payload)`.
 // Schemas matchen die TypeScript-Typen in types.ts; bei Drift greifen sie als Wahrheit.
+
+// --- Settings ---------------------------------------------------------
 
 export const LimitBarSchema = z.object({
   id: z.string().min(1),
@@ -17,6 +19,7 @@ export const LimitBarSchema = z.object({
 export const AppSettingsSchema = z.object({
   workspace_path: z.string(),
   default_model: z.string(),
+  claude_binary_path: z.string().min(1),
   model_limits: z.record(z.string(), z.number().positive()),
   default_limit: z.number().positive(),
   limit_bars: z.array(LimitBarSchema),
@@ -39,3 +42,58 @@ export const AppSettingsSchema = z.object({
 export const AppSettingsPatchSchema = AppSettingsSchema.partial();
 
 export type AppSettingsPatch = z.infer<typeof AppSettingsPatchSchema>;
+
+// --- Session / PTY ----------------------------------------------------
+
+export const SessionTypeSchema = z.enum(['feature', 'bug', 'review', 'docs-sync']);
+
+export const SessionStatusSchema = z.enum([
+  'running',
+  'waiting',
+  'idle',
+  'completed',
+  'archived',
+  'interrupted',
+  'error',
+]);
+
+export const PtyCreateInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  title: z.string().min(1),
+  type: SessionTypeSchema,
+  model: z.string().min(1),
+  cwd: z.string().min(1),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
+});
+
+export const PtyWriteInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  data: z.string(),
+});
+
+export const PtyResizeInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
+});
+
+export const PtyKillInputSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+// SessionUpdate-Patch: nur Felder, die in Sprint 2 vom Renderer geschrieben werden dürfen.
+export const SessionUpdatePatchSchema = z
+  .object({
+    title: z.string().min(1),
+    notes_md: z.string(),
+    status: SessionStatusSchema,
+    current_model: z.string().nullable(),
+    ended_at: z.number().int().nullable(),
+  })
+  .partial();
+
+export const SessionUpdateInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  patch: SessionUpdatePatchSchema,
+});

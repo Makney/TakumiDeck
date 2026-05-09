@@ -60,7 +60,7 @@ Read/Write JSON-Config mit Defaults.
 
 Multi-Session-Management — der Kern der App.
 
-### Feature: PTY-Spawn
+### Feature: PTY-Spawn ✅
 
 Subprocess-Lifecycle für Claude Code.
 
@@ -70,7 +70,7 @@ Subprocess-Lifecycle für Claude Code.
 - PTY-Output-Throttling (16ms Buffer-Flush)
 - IPC-Events `pty:data` und `pty:exit`
 
-### Feature: xterm.js-Terminal
+### Feature: xterm.js-Terminal ✅
 
 Terminal-Rendering im Renderer.
 
