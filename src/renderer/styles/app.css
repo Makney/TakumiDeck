@@ -1,0 +1,56 @@
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--td-bg);
+  color: var(--td-text);
+  font-family: var(--td-mono);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Sprint-1-Skelett: nur Foundation-Smoke-Anzeige.
+   Vollständige App-Layouts (Grid, Title-Bar, Panes) folgen ab Sprint 2. */
+.td-bootstrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px;
+  max-width: 720px;
+}
+
+.td-bootstrap h1 {
+  margin: 0;
+  font-family: var(--td-display);
+  font-size: 28px;
+  letter-spacing: 0.04em;
+  color: var(--td-accent);
+}
+
+.td-bootstrap pre {
+  width: 100%;
+  margin: 0;
+  padding: 12px;
+  background: var(--td-panel);
+  border: 1px solid var(--td-line);
+  color: var(--td-text-dim);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.td-bootstrap .td-meta {
+  color: var(--td-text-mute);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}

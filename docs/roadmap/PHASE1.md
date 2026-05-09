@@ -19,7 +19,7 @@ Features haben keine feste Reihenfolge.
 
 Grundgerüst der Electron-App.
 
-### Feature: Electron-Skelett
+### Feature: Electron-Skelett ✅
 
 Initiales Setup mit Electron Forge, TypeScript, React.
 
@@ -29,7 +29,7 @@ Initiales Setup mit Electron Forge, TypeScript, React.
 - Production-Build via `npm run make`
 - `.bat`-Datei für Schnellstart im Dev-Mode
 
-### Feature: IPC-Foundation
+### Feature: IPC-Foundation ✅
 
 Typed Inter-Process Communication zwischen Main und Renderer.
 
@@ -38,7 +38,7 @@ Typed Inter-Process Communication zwischen Main und Renderer.
 - Result-Type-Pattern für Errors (`{ ok: boolean, data?, error? }`)
 - `contextIsolation: true`, `nodeIntegration: false`
 
-### Feature: SQLite-Foundation
+### Feature: SQLite-Foundation ✅
 
 Persistenz via better-sqlite3.
 
@@ -46,7 +46,7 @@ Persistenz via better-sqlite3.
 - Tabellen: `projects`, `sessions`, `settings`
 - Schema-Versionierung als Stub (für später)
 
-### Feature: Settings-System
+### Feature: Settings-System ✅
 
 Read/Write JSON-Config mit Defaults.
 

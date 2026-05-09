@@ -18,10 +18,10 @@ Grundgerüst der Electron-App.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Electron-Skelett`              | ⛔      |           |
-| `IPC-Foundation`                | ⛔      |           |
-| `SQLite-Foundation`             | ⛔      |           |
-| `Settings-System`               | ⛔      |           |
+| `Electron-Skelett`              | ✅      | 2026-05-09 — Forge + Vite + React, Hardening (sandbox, FuseV1, contextIsolation) |
+| `IPC-Foundation`                | ✅      | 2026-05-09 — typed Channels, Result-Pattern, zod an allen Boundaries |
+| `SQLite-Foundation`             | ✅      | 2026-05-09 — better-sqlite3, WAL, Migration-Runner mit `PRAGMA user_version` |
+| `Settings-System`               | ✅      | 2026-05-09 — eigene JSON-Operationen mit atomic write |
 
 ## Sessions (Sprint 2-3)
 

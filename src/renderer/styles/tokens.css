@@ -1,0 +1,32 @@
+/* TakumiDeck workbench — original visual language */
+
+:root {
+  /* warm-neutral dark with a single emerald accent. tweakable via Tweaks. */
+  --td-bg:        #0d0f0e;
+  --td-bg-2:      #131614;
+  --td-bg-3:      #181b19;
+  --td-panel:     #111413;
+  --td-panel-2:   #15191b;
+  --td-line:      #232826;
+  --td-line-2:    #2c322f;
+  --td-line-3:    #3a4240;
+  --td-text:      #d8dad6;
+  --td-text-dim:  #8a8f8a;
+  --td-text-mute: #5b605b;
+  --td-accent:    #4ade80;       /* emerald */
+  --td-accent-soft: rgba(74, 222, 128, 0.14);
+  --td-accent-line: rgba(74, 222, 128, 0.35);
+  --td-warn:      #f0b400;
+  --td-orange:    #ff8a3c;
+  --td-red:       #ef5d5d;
+  --td-blue:      #5cb8ff;
+  --td-purple:    #b594ff;
+  --td-add:       rgba(74, 222, 128, 0.10);
+  --td-add-line:  #2a3d2e;
+  --td-rem:       rgba(239, 93, 93, 0.10);
+  --td-rem-line:  #4a2929;
+
+  --td-mono: "JetBrains Mono", "Cascadia Code", "MesloLGS NF", ui-monospace, Consolas, monospace;
+  --td-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --td-display: "VT323", "JetBrains Mono", monospace;
+}

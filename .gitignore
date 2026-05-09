@@ -4,6 +4,15 @@
 
 # Projekt-Laufzeit (hier erweitern — z.B. *.db, cache/, assets/generated/)
 
+# Electron Forge / Vite Build-Output
+.vite/
+out/
+forge.env.d.ts
+
+# Env (lokale Secrets niemals committen)
+.env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
