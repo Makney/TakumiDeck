@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings, IpcResult } from '@shared/types';
-import { TerminalPane } from './panels/TerminalPane';
+import { TabContainer } from './panels/TabContainer';
 
-// Sprint-2-Renderer: lädt Version + Settings, dann zeigt eine TerminalPane mit
-// einer claude-PTY für settings.workspace_path im default_model an.
-// Volles Layout (Sidebar / Right-Pane / Stats) folgt ab Sprint 4.
+// Sprint-3-Renderer: lädt Version + Settings, dann übernimmt der TabContainer das Layout.
+// Linke Sidebar bleibt bis Sprint 4 ausgeblendet, Right-Pane bis Sprint 7.
 export function App() {
   const [version, setVersion] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -48,16 +47,10 @@ export function App() {
     <div className="td-app">
       <header className="td-app-header">
         <span className="td-app-title">TakumiDeck</span>
-        <span className="td-app-meta">v{version} · Sprint 2 (Single-Tab-PTY)</span>
+        <span className="td-app-meta">v{version} · Sprint 3 (Multi-Session)</span>
       </header>
       <main className="td-app-main">
-        <TerminalPane
-          settings={settings}
-          cwd={settings.workspace_path}
-          model={settings.default_model}
-          type="feature"
-          title={`Sprint-2-Test · ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`}
-        />
+        <TabContainer settings={settings} />
       </main>
     </div>
   );

@@ -31,12 +31,12 @@ Multi-Session-Management.
 | ------------------------------- | ------ | --------- |
 | `PTY-Spawn`                     | ✅      | 2026-05-09 — @lydell/node-pty (NAPI), 16ms-Buffer-Flush, Pre-Check für Binary + cwd |
 | `xterm.js-Terminal`             | ✅      | 2026-05-09 — Canvas-Renderer + Addons (fit, search, serialize, web-links), Single-Tab |
-| `Tab-System`                    | ⛔      |           |
-| `Session-Lifecycle`             | 🟡      | 2026-05-09 — `running → completed` automatisch bei pty:exit; interrupted/error/archived folgen Sprint 3 |
-| `Resume-Funktion`               | ⛔      |           |
-| `Modell-Auswahl`                | ⛔      |           |
+| `Tab-System`                    | ✅      | 2026-05-09 — Multi-Tab mit Pillen, +-Button, Ctrl+Tab/Ctrl+Shift+Tab, alle xterm dauerhaft mounted (Variante A) |
+| `Session-Lifecycle`             | ✅      | 2026-05-09 — zentrale `SessionLifecycle`-State-Machine, alle 5 Status-Übergänge inkl. Resume |
+| `Resume-Funktion`               | ✅      | 2026-05-09 — ↻-Button auf completed/interrupted/error, `claude --resume <id>` mit gespeichertem cwd/Modell |
+| `Modell-Auswahl`                | ✅      | 2026-05-09 — NewSessionModal mit Modell-Dropdown (Opus 4.7…Haiku 4.5), Default aus settings.default_model |
 | `State-Detection (reduziert)`   | ⛔      |           |
-| `Notizen pro Session`           | ⛔      |           |
+| `Notizen pro Session`           | ✅      | 2026-05-09 — collapsible Footer, 500 ms Debounce + onBlur + onUnmount + beforeunload (Variante B) |
 
 ## Workspace (Sprint 4)
 

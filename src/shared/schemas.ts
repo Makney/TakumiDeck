@@ -97,3 +97,16 @@ export const SessionUpdateInputSchema = z.object({
   sessionId: z.string().uuid(),
   patch: SessionUpdatePatchSchema,
 });
+
+// Sprint 3: Tab-Schließen via × → Status archived (+ PTY-Kill, falls running).
+export const SessionCloseInputSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+// Sprint 3: Resume-Button auf interrupted/completed/error → claude --resume <id>.
+// cols/rows kommen aus dem Renderer (xterm-Dimensionen zum Zeitpunkt des Klicks).
+export const SessionResumeInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
+});

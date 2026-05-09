@@ -13,6 +13,7 @@ import { PtyManager } from './pty/manager';
 import { realPtySpawn } from './pty/spawn';
 import { SessionRepository, SqliteSessionDriver } from './db/repos/sessions';
 import { ensureDefaultProject } from './db/repos/projects';
+import { SessionLifecycle } from './sessions/lifecycle';
 
 // Squirrel-Installer: bei Setup/Update-Events sofort beenden, bevor BrowserWindow erstellt wird.
 if (started) {
@@ -80,14 +81,22 @@ app.whenReady().then(() => {
     ensureDefaultProject(db, settings.read().workspace_path);
 
     const sessions = new SessionRepository(new SqliteSessionDriver(db));
+    const lifecycle = new SessionLifecycle(sessions);
     ptyManager = new PtyManager(realPtySpawn);
 
     registerSettingsIpc(settings);
     registerAppIpc();
-    registerSessionIpc(sessions);
+    registerSessionIpc({
+      sessions,
+      lifecycle,
+      manager: ptyManager,
+      settings,
+      log: logger,
+    });
     registerPtyIpc({
       manager: ptyManager,
       sessions,
+      lifecycle,
       settings,
       getWebContents: () => mainWindow?.webContents ?? null,
       log: logger,
@@ -99,9 +108,25 @@ app.whenReady().then(() => {
       packaged: app.isPackaged,
     });
 
-    // Beim App-Beenden: laufende PTYs hart killen, dann DB sauber schließen,
-    // damit der WAL-Checkpoint geschrieben wird.
+    // Beim App-Beenden: zuerst Shutdown-Flag setzen + alle running-Sessions auf
+    // 'interrupted' patchen (synchron, better-sqlite3 ist synchron). Dann erst die
+    // PTYs killen — sonst würde der pty:exit-Handler die Sessions auf 'completed'
+    // setzen (Sprint-2-Bug, Variante A aus Sprint-3-Briefing).
     app.on('before-quit', () => {
+      lifecycle.markShuttingDown();
+      try {
+        const runningSessions = sessions.listByStatus('running');
+        for (const session of runningSessions) {
+          const result = lifecycle.transition(session.id, 'interrupted', 'app-quit');
+          if (!result.ok) {
+            logger.warn(
+              `[before-quit] Lifecycle-Transition fehlgeschlagen sessionId=${session.id}: ${result.error}`,
+            );
+          }
+        }
+      } catch (e) {
+        logger.warn('Session-Status-Patches beim Quit fehlgeschlagen', e);
+      }
       try {
         ptyManager?.killAll();
       } catch (e) {

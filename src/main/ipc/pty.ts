@@ -9,6 +9,7 @@ import {
 } from '@shared/schemas';
 import type { PtyManager } from '../pty/manager';
 import type { SessionRepository } from '../db/repos/sessions';
+import type { SessionLifecycle } from '../sessions/lifecycle';
 import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
 import { DEFAULT_PROJECT_ID } from '../db/repos/projects';
@@ -20,11 +21,12 @@ import { resolveExecutable } from '../pty/binary';
 export function registerPtyIpc(deps: {
   manager: PtyManager;
   sessions: SessionRepository;
+  lifecycle: SessionLifecycle;
   settings: SettingsStore;
   getWebContents: () => WebContents | null;
   log: Logger;
 }): void {
-  const { manager, sessions, settings, getWebContents, log } = deps;
+  const { manager, sessions, lifecycle, settings, getWebContents, log } = deps;
 
   // Manager-Events ans Renderer durchreichen + bei Exit Session-Status nachziehen.
   manager.setListeners({
@@ -32,15 +34,22 @@ export function registerPtyIpc(deps: {
       getWebContents()?.send(Channels.PtyData, event);
     },
     exit: (event) => {
-      // Sprint-2-Minimum: bei natürlichem Exit Session auf 'completed' setzen.
-      // Differenzierte Lifecycle-Stati (interrupted, error, archived) sind Sprint 3.
-      try {
-        sessions.update(event.sessionId, {
-          status: 'completed',
-          ended_at: Date.now(),
-        });
-      } catch (e) {
-        log.warn('Session-Status-Update bei pty:exit fehlgeschlagen', e);
+      // App-Quit: Lifecycle hat die Sessions schon auf 'interrupted' gesetzt
+      // (in main.ts before-quit, vor killAll). Hier nichts mehr tun, sonst würden
+      // wir den interrupted-Status mit completed überschreiben — der Sprint-2-Bug.
+      // Tab-Close hat Sessions bereits auf 'archived' gesetzt — Lifecycle wird die
+      // archived → completed-Transition ohnehin ablehnen, das Logging zeigt das nur an.
+      if (lifecycle.isShuttingDown()) {
+        getWebContents()?.send(Channels.PtyExit, event);
+        return;
+      }
+      const result = lifecycle.transition(event.sessionId, 'completed', 'pty-exit');
+      if (!result.ok) {
+        // Erwartet bei archived (User hat Tab vor PTY-Exit geschlossen) oder
+        // running→running (sollte nicht passieren, aber idempotent). Nur loggen.
+        log.warn(
+          `[pty:exit] Lifecycle-Transition abgelehnt sessionId=${event.sessionId} → ${result.error}`,
+        );
       }
       getWebContents()?.send(Channels.PtyExit, event);
     },
@@ -89,10 +98,9 @@ export function registerPtyIpc(deps: {
           rows: input.rows,
         });
       } catch (e) {
-        sessions.update(input.sessionId, {
-          status: 'error',
-          ended_at: Date.now(),
-        });
+        // running → error via Lifecycle (statt direktem repo.update), damit der
+        // Side-Effect-Pfad (ended_at setzen) konsolidiert bleibt.
+        lifecycle.transition(input.sessionId, 'error', 'spawn-error');
         throw e;
       }
 

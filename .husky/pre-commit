@@ -1,0 +1,3 @@
+# TakumiDeck Pre-Commit-Gate (Working Rule 6):
+# typecheck und Tests müssen grün sein, sonst wird der Commit abgebrochen.
+npm run typecheck && npm test

@@ -20,6 +20,32 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Season 3 — Multi-Session
+
+**Ziel:** Sprint-3-Multi-Session-Kern: Tab-System mit dauerhaft mounted xterm-Instanzen, vollständiger Session-Lifecycle (running/completed/archived/interrupted/error), Resume-Funktion mit gespeichertem Modell, NewSessionModal mit Type- und Modell-Picker, Notizen pro Session mit Debounce-Auto-Save, App-Quit ohne Status-Lärm. Ausdrücklich **kein** State-Detection (Sprint 5), **kein** Verlauf-Panel (Sprint 6), **kein** Settings-UI (Sprint 8).
+
+**Ergebnis:** Alle sechs Feature-Blöcke ✅. Tab-System mit Pillen + +-Button + Status-Dot + Resume-Button + ×, Ctrl+Tab/Ctrl+Shift+Tab funktional, NewSessionModal über Ctrl+N und +-Klick. Lifecycle-State-Machine zentral mit 26 Truth-Table-Tests. Notes-Footer mit pure-Logik-Util `createNotesSaver` (10 Tests, fakeTimers). App-Quit-Race behoben — Sprint-2-Default-Transition zu `completed` ist im Shutdown-Pfad abgeschaltet. Tests: 91 grün insgesamt (52 neue, 39 aus Sprint 1-2 unverändert). Pre-Commit-Hook (Husky) ruft typecheck + Vitest, Suite-Lauf ~500 ms.
+
+**Gut gelaufen:**
+
+- **Variants-Pflicht zahlt sich erneut aus.** Fünf Vorab-Variants (Tab-Persistenz, Lifecycle, Resume-Modell, Notes-Save, App-Quit-Race) plus eine Workflow-Variante (Husky-Hook-Tiefe) wurden alle mit klarer Empfehlung vor dem ersten Code geliefert. Der User hat die Empfehlungen 4× direkt übernommen, einmal mit Sprint-8-Verschiebung (Variante C App-Quit-Race) — keine Mid-Sprint-Umentscheidungen nötig.
+- **Lifecycle-State-Machine als zentrale Stelle macht Tests trivial.** Eine `ALLOWED`-Map als 2D-Konstante + ein einziger `transition()`-Pfad → 26 Truth-Table-Tests in einer Datei. Jeder erlaubte und disallowed Übergang ist explizit fixiert; Sprint 5 wird die Erweiterung um waiting/idle als bewusste Map-Änderung machen müssen, nicht versehentlich.
+- **Pure-Logik-Splits entkoppeln Tests von React + IPC.** `createNotesSaver` ist ein 60-Zeilen-Util, das mit `vi.useFakeTimers()` deterministisch testbar ist — kein React-Renderer, kein Mock-IPC, kein DOM. Identisches Muster wie Sprint-1-Migration-Driver und Sprint-2-PtyManager: Driver-Injection über Konstruktor-Argument.
+- **Husky-Pre-Commit-Hook in 10 Minuten.** typecheck + Tests grün-Pflicht ist jetzt von einer Maschine durchgesetzt, nicht mehr nur in CLAUDE.md geschrieben. Working Rule 6 hat Zähne.
+
+**Gebremst durch:**
+
+- **StrictMode-Double-Spawn-Falle erneut, dieses Mal beim pty:create.** Sprint-2-Hinweis warnte vor `crypto.randomUUID()` im Effect — der Fix dort war ein `useRef`-Guard. In Sprint 3 wurde die UUID-Generation korrekt in den Zustand-Store verlagert, aber der Side-Effect (IPC-Spawn) blieb im Effect *ohne* Guard. Folge: erster Mount spawnt PTY ✅, StrictMode-Cleanup, zweiter Mount feuert pty:create erneut → UNIQUE-Constraint auf `sessions.id`. Sichtbar erst beim Smoke-Test, behoben mit ~5 Zeilen `useRef`-Guard. Kostenpunkt: ~10 Minuten Diagnose + Fix nach erstem Smoke-Test.
+- **TypeScript-noUncheckedIndexedAccess-Effekte beim Test-Schreiben.** `tabs[0]?.notesDraft` und `tabs[(idx + 1) % tabs.length]?.sessionId` mussten in vier Stellen mit `?.` annotiert werden, weil der Compiler `undefined` an Array-Zugriffen vermutet, obwohl die Logik den Index garantiert hat. Schnell fixbar, aber leichte Reibung beim Tempo.
+
+**Für nächste Season:**
+
+- **Sprint 4 (Workspace) muss das Default-Project erkennen.** TECH_SCHULDEN-Eintrag „Default-Project als FK-Lifeline" aus Sprint 2 ist immer noch offen — Sprint 4 ist der designierte Ort, um den `__default__`-Eintrag (stable UUID `00000000-...0001`) zu identifizieren und die hängenden Sessions entweder dem zur cwd passenden gescannten Project zuzuweisen oder als Legacy-Bucket zu markieren. Lifecycle-State-Machine bleibt dabei unangetastet.
+- **Side-Effects in useEffect immer mit Ref-Guard.** Die Sprint-3-Falle ist eine Verallgemeinerung der Sprint-2-Falle: nicht nur UUID-Generation, sondern *jede* IPC-Operation mit Server-Side-Effekt (`pty:create`, später `fs:write`, `git:commit`, etc.) braucht im Renderer einen `useRef`-Guard, weil StrictMode den Effect zweimal feuert. Sprint 4 wird Workspace-Scans triggern (potentiell IPC mit Side-Effects auf der DB) — dort gleich von Anfang an mit Ref-Guard arbeiten.
+- **CLAUDE.md-Parser für Sprint 4 robust gegen fehlende `workbench`-Section.** `js-yaml` plus zod-Schema (analog `AppSettingsSchema`) — wenn die Section fehlt oder das Schema nicht passt, klare Fehlermeldung statt undefined-Cascading. Convention aus ENTSCHEIDUNGEN.md („zod-Validation an allen IPC-Boundaries ab Tag 1") gilt sinngemäß auch für File-Boundaries.
+
+---
+
 ## Season 2 — Single-Tab-PTY
 
 **Ziel:** Sprint-2-Sessions-Kern: `@homebridge/node-pty-prebuilt-multiarch` integrieren, PTY-Manager mit 16ms-Buffer-Flush, Session-DB-Repository mit Create/Update, xterm.js mit Canvas-Renderer + Standard-Addons, Single-Tab-TerminalPane im Renderer. Ausdrücklich **kein** Multi-Tab, kein Lifecycle-State-Modell, keine State-Detection — alles Sprint 3+.

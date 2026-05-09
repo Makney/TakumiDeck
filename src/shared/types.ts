@@ -120,6 +120,17 @@ export interface SessionUpdateInput {
   };
 }
 
+// Sprint-3-Payloads für session:close und session:resume.
+export interface SessionCloseInput {
+  sessionId: string;
+}
+
+export interface SessionResumeInput {
+  sessionId: string;
+  cols: number;
+  rows: number;
+}
+
 // Bridge-API-Shape, die der Renderer über window.api erhält.
 export interface RendererApi {
   settings: {
@@ -141,6 +152,8 @@ export interface RendererApi {
   };
   sessions: {
     update: (input: SessionUpdateInput) => Promise<IpcResult<SessionRow>>;
+    close: (input: SessionCloseInput) => Promise<IpcResult<SessionRow>>;
+    resume: (input: SessionResumeInput) => Promise<IpcResult<SessionRow>>;
   };
 }
 

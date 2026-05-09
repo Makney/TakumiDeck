@@ -10,6 +10,8 @@ import type {
   PtyResizeInput,
   PtyWriteInput,
   RendererApi,
+  SessionCloseInput,
+  SessionResumeInput,
   SessionRow,
   SessionUpdateInput,
 } from '@shared/types';
@@ -53,6 +55,10 @@ const api: RendererApi = {
   sessions: {
     update: (input: SessionUpdateInput) =>
       ipcRenderer.invoke(Channels.SessionUpdate, input) as Promise<IpcResult<SessionRow>>,
+    close: (input: SessionCloseInput) =>
+      ipcRenderer.invoke(Channels.SessionClose, input) as Promise<IpcResult<SessionRow>>,
+    resume: (input: SessionResumeInput) =>
+      ipcRenderer.invoke(Channels.SessionResume, input) as Promise<IpcResult<SessionRow>>,
   },
 };
 

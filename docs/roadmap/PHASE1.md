@@ -83,13 +83,13 @@ Terminal-Rendering im Renderer.
 
 > ⚠️ Diese Features bauen aufeinander auf.
 
-#### Feature 1: Tab-System
+#### Feature 1: Tab-System ✅
 
 - Mehrere Sessions parallel als Tabs
 - Tab-Wechsel ohne Session-Verlust
 - Tab-Schließen → Session-Status `archived`
 
-#### Feature 2: Session-Lifecycle
+#### Feature 2: Session-Lifecycle ✅
 
 **Voraussetzung:** Feature 1
 
@@ -97,7 +97,7 @@ Terminal-Rendering im Renderer.
 - App-Schließen → laufende Sessions → `interrupted`
 - Session-DB-Updates via IPC
 
-#### Feature 3: Resume-Funktion
+#### Feature 3: Resume-Funktion ✅
 
 **Voraussetzung:** Feature 2
 
@@ -105,7 +105,7 @@ Terminal-Rendering im Renderer.
 - Spawnt `claude --resume <session-id>` mit gleichem cwd, gleichem Modell
 - Status wechselt zurück auf `running`
 
-### Feature: Modell-Auswahl
+### Feature: Modell-Auswahl ✅
 
 Beim Session-Start.
 
@@ -121,7 +121,7 @@ Beim Session-Start.
 - Last-line-time vergleichen mit `now() - 3s`
 - Sidebar-Status-Badge: Grün bei Aktivität, grau sonst
 
-### Feature: Notizen pro Session
+### Feature: Notizen pro Session ✅
 
 Expandable Mehrzeilen-Textarea unter dem Terminal.
 

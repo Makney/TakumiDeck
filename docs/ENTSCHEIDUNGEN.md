@@ -24,6 +24,93 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Tab-Persistenz: alle xterm-Instanzen dauerhaft mounted
+
+**Entscheidung:** Pro Session lebt eine eigene Terminal-Komponente dauerhaft im DOM; Tab-Wechsel ändert nur die CSS-Sichtbarkeit (`display: none/flex`). Kein Snapshot/Replay über die SerializeAddon-API, kein gemeinsamer Multiplex.
+
+**Varianten:**
+
+- **A** Alle Terminals bleiben mounted, inaktive werden per CSS versteckt (gewählt)
+- **B** Snapshot-und-Wiederherstellen pro Tab-Wechsel (SerializeAddon ein-/auspacken, Lücke aus Main nachpuffern)
+- **C** Eine globale xterm-Instanz, Datenströme werden pro Session gemultiplext und beim Wechsel neu in das eine Terminal geschrieben
+
+**Grund:** Architektur-K2 zielt auf 2-5 Tabs realistisch; bei der Tab-Anzahl ist die Speicherersparnis von B/C marginal, aber die Komplexitätskosten sind real. Variante B muss ANSI-Escape-Sequenzen über den Snapshot-Roundtrip robust halten — Cursor-Mode, Alt-Screen, Mausreports und Bracketed-Paste-State sind genau die Stellen, an denen partielle Replays kaputtgehen. Variante C verlangt Per-Session-Cursor-State-Tracking und kollidiert mit Resize-Events. A ist die einzige Variante, die mit dem existierenden xterm-Lifecycle (`open`, `dispose`, `loadAddon`) ohne Tricks auskommt.
+
+**Konsequenz:** Pro Tab eine Canvas-Render-Pipeline + Scrollback im RAM. Bei Bedarf später (Phase 2: mehr Tabs, Heatmap-Renderer-Refactor) auf eine andere Variante umschwenken — die zentrale `TabContainer`-Komponente kapselt die Sichtbarkeitslogik, der Wechsel wäre lokal. Inaktive Tabs liefern 0×0-Boxes an den ResizeObserver — das `safeFit`-try/catch fängt die FitAddon-Throws sauber ab.
+
+---
+
+## Lifecycle-State-Machine: zentraler Reducer im Main
+
+**Entscheidung:** Eine Klasse `SessionLifecycle` im Main-Prozess kennt alle erlaubten Status-Übergänge (running→completed/interrupted/error/archived, completed/interrupted/error→running per Resume + →archived) als 2D-Map. Jede Status-Änderung — egal ob aus pty:exit, session:close, session:resume oder before-quit — geht durch `lifecycle.transition()`. Disallowed Transitions werden als `IpcResult.err` mit Code `LIFECYCLE_INVALID_TRANSITION` abgewiesen; Side-Effects (`ended_at` setzen/nullen) hängen pro Übergang an einer Stelle.
+
+**Varianten:**
+
+- **A** Zentraler Reducer mit Truth-Table und Side-Effect-Map (gewählt)
+- **B** Dezentral: jeder IPC-Handler setzt seinen Zielstatus selbst, das Repo akzeptiert weiter alles aus dem Status-Enum
+- **C** Repo-Whitelist auf erlaubte Werte ohne Vor-Bedingungs-Prüfung („running darf zu archived per Renderer-Bug springen")
+
+**Grund:** Working Rule 4 verlangt, dass die Tests der Season die *neue* Lifecycle-Logik abdecken — eine zentrale State-Machine hat genau einen Test-Pfad pro From×To-Kombination und ist damit trivial als Truth-Table abdeckbar (26 Tests in Sprint 3, davon 18 reine Daten-Assertions). Variante B würde dieselben Regeln auf 4-5 Handler verteilen, und Sprint 5 (State-Detection mit waiting/idle) müsste die Regeln dort überall erweitern. Variante C verfehlt den Punkt der State-Machine, weil sie Vor-Bedingungen ignoriert.
+
+**Konsequenz:** Sprint 5 erweitert genau eine Map-Konstante (`ALLOWED`) um die waiting/idle-Übergänge, und die JSONL-Watch-Logik schreibt durchs lifecycle-API. Driver-Injection-Pattern wie Sprint 1/2: die Klasse nimmt nur `SessionRepository` und eine `Clock`-Funktion — Tests fahren ohne better-sqlite3 (InMemorySessionDriver) und ohne System-Clock (Fixed-Clock).
+
+**Implementierungsdetail:** Idempotente Übergänge (gleicher Status nochmal) sind No-ops und liefern die aktuelle Row zurück — vermeidet Lärm in Tests und Logs, falls ein Handler aus Versehen zweimal feuert. `ended_at` wird beim Wiedereintritt in einen Endzustand *nicht* überschrieben, damit der ursprüngliche Endzeitpunkt erhalten bleibt (z.B. completed → archived behält den Completion-Zeitpunkt).
+
+---
+
+## Resume mit ursprünglichem Modell, ohne erneuten Picker
+
+**Entscheidung:** Der Resume-Button spawnt `claude --resume <session-id>` mit dem in `sessions.current_model` gespeicherten Modell-Wert; es gibt keinen Modell-Dialog vor dem Resume und kein Setting für ein anderes Verhalten.
+
+**Varianten:**
+
+- **A** Resume nimmt das gespeicherte Modell, kein Picker (gewählt)
+- **B** Resume öffnet vor dem Spawn nochmal den Modell-Picker, vorbelegt mit dem letzten Wert
+- **C** Setting `resume_with_original_model` (Default true), umschaltbar auf „immer fragen"
+
+**Grund:** Architektur 6.2 ist explizit Spec („gleichem Modell wie ursprünglich"). Das Argument für B (User will eventuell auf billigeres Modell wechseln) wird von Claude-Codes eigenem `/model`-Befehl im laufenden Prozess abgedeckt — nach dem Resume kann jederzeit umgeschaltet werden. Variante C addiert einen Setting-Eintrag, der wahrscheinlich nie umgestellt wird, und kostet Sprint-8-UI-Aufwand.
+
+**Konsequenz:** Wenn sich später herausstellt, dass B-Verhalten häufig gewünscht ist (z.B. wenn das ursprüngliche Modell deprecated wurde), ist die Erweiterung lokal: NewSessionModal kennt schon den Modell-Picker, im Resume-Pfad würde derselbe Dialog mit `defaultValue=session.current_model` aufgerufen.
+
+---
+
+## Notes-Save: Debounce + Blur + Unmount + beforeunload
+
+**Entscheidung:** Der Auto-Save für Notizen läuft als pure-Logik-Util `createNotesSaver` mit 500 ms Debounce; zusätzlich greifen Sofort-Flushes bei `onBlur` (Textarea verliert Fokus), `useEffect`-Cleanup (Tab-Wechsel oder App-Quit-vor-Render) und `window.beforeunload` (Renderer wird gleich getötet).
+
+**Varianten:**
+
+- **A** Pure 500 ms Debounce ohne weitere Trigger
+- **B** Debounce + onBlur + onUnmount + beforeunload (gewählt)
+- **C** Sofort-Save bei jedem Keystroke
+
+**Grund:** Architektur 6.2 verlangt 500 ms Debounce — Variante C scheidet damit aus. Variante A scheitert genau am Sprint-3-Test-Szenario („mehrere Inputs in 500 ms ergeben einen Save", was Debounce abdeckt — *aber* zusätzlich müssen die letzten Tipps beim Tab-Wechsel erhalten bleiben, sonst gehen sie verloren). Onblur und Unmount sind die natürlichen Flush-Punkte: der User hat Fokus weggegeben oder die Komponente verlässt das Tree. Beforeunload ist die letzte Chance vor dem Renderer-Tod — best-effort, weil der invoke-Promise oft nicht mehr aufgelöst wird, aber better-sqlite3 ist im Main synchron und kann die Patches in der Praxis noch durchführen.
+
+**Konsequenz:** Pure-Logik-Trennung: `createNotesSaver` ist driver-injected (saveFn-Callback), Tests fahren mit `vi.useFakeTimers()` ohne React und ohne IPC. Worst-Case-Verlust ist 0–500 ms Tipps bei Hard-Quit (Strom weg, OOM), kein Verlust bei normalem Tab-Wechsel oder geordnetem App-Quit. Falls sich später herausstellt, dass auch Hard-Quit-Verlust schmerzt, kann ein synchroner sendSync-Channel im Preload nachgerüstet werden — das ist eine eigenständige Erweiterung, die nicht jetzt nötig ist.
+
+**Implementierungsdetail:** Idempotenz: `createNotesSaver` cached den zuletzt gespeicherten Wert und unterdrückt erneute Saves desselben Inhalts. Damit kostet ein onBlur direkt nach einem 500-ms-Debounce-Save keinen zweiten IPC-Call.
+
+---
+
+## App-Quit-Race: synchrone Status-Patches vor killAll
+
+**Entscheidung:** `before-quit` setzt zuerst das `lifecycle.shuttingDown`-Flag, patcht dann alle running-Sessions synchron auf `interrupted` (über `lifecycle.transition`), erst danach läuft `ptyManager.killAll()` und `db.close()`. Der `pty:exit`-Handler prüft das Flag und überschreibt nicht mehr — die Sprint-2-Default-Transition zu `completed` ist in dieser Phase abgeschaltet.
+
+**Varianten:**
+
+- **A** Synchrone DB-Patches im before-quit, vor killAll (gewählt)
+- **B** `will-quit`-Event mit `event.preventDefault()`, asynchroner Patch, dann erneutes `app.quit()`
+- **C** Beim Quit nichts tun, beim *nächsten* App-Start orphane running-Sessions retroaktiv auf interrupted setzen
+- **A+C** A im Normalfall + C als Reconciliation-Pass beim Start (für Hard-Crashes)
+
+**Grund:** Variante A ist trivial und korrekt für den geordneten Quit-Fall. better-sqlite3 ist synchron und schnell — keine realistische Hänge-Gefahr im before-quit. Variante B ist das doppel-quit-Pattern, das in der Electron-Praxis als anfällig gilt (User-Eindruck „App hängt", weil das zweite quit nicht ausgelöst wird). Variante C wurde vom User explizit als Sprint-8-Aufgabe markiert und ist in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md) festgehalten — Robustheit gegen Hard-Crash kommt mit dem Polish-Sprint, nicht jetzt.
+
+**Konsequenz:** Hard-Crash (Strom weg, Task-Manager-Kill, OOM) lässt orphane running-Sessions in der DB — sichtbar wird das erst, wenn Sprint 6 das Verlauf-Panel baut. Bis Sprint 8 sieht der User das nicht, weil Sprint 3 nur Live-Tabs anzeigt.
+
+**Implementierungsdetail:** Das `shuttingDown`-Flag schützt zusätzlich gegen die Race „lifecycle hat schon transitioniert, pty:exit feuert noch einmal" — die State-Machine selbst lehnt den Übergang `interrupted → completed` ohnehin ab, das Flag ist die saubere Zwei-Linien-Verteidigung (Logging-Lärm + State-Machine-Reject statt nur State-Machine-Reject).
+
+---
+
 ## PTY-Backend: @lydell/node-pty (NAPI)
 
 **Entscheidung:** TakumiDeck verwendet `@lydell/node-pty` als PTY-Bibliothek; der ursprünglich in der Sprint-2-Briefing genannte `@homebridge/node-pty-prebuilt-multiarch`-Fork ist explizit *nicht* in Verwendung.

@@ -30,6 +30,34 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Crash-Recovery für orphane running-Sessions fehlt
+
+**Bereich:** `src/main/main.ts` (`app.whenReady()`), `src/main/sessions/lifecycle.ts`
+
+**Was:** Sprint 3 deckt nur den geordneten App-Quit ab (`before-quit` patcht running → interrupted, *dann* killAll). Bei Hard-Crash (Strom weg, Task-Manager-Kill, OOM, Electron-Renderer-Crash mit Main-Mitnahme) bleibt eine Session in der DB mit `status='running'` und `ended_at IS NULL` zurück. Beim nächsten App-Start würde Sprint 6 (Verlauf-Panel) sie fälschlich als „läuft" anzeigen, obwohl der zugehörige claude-Prozess längst tot ist.
+
+**Warum so:** Variante C aus dem Sprint-3-Briefing („Reconciliation beim nächsten App-Start") wurde vom User explizit auf Sprint 8 (Polish/Error-Handling) verschoben. In Sprint 3 zeigt die UI ohnehin nur Live-Tabs, nie historische Sessions — der Bug ist sichtbar erst ab Sprint 6.
+
+**Risiko:** Wer zwischen Sprint 3 und Sprint 8 die App durch Hard-Crash verliert, hat Karteileichen in der DB. Sprint 6 (Verlauf-Panel) würde sie als „running" zeigen — kein technischer Schaden, nur UI-Verwirrung. Wenn vor Sprint 6 jemand direkt in die DB schaut: dasselbe.
+
+**Auflösung:** In `app.whenReady()` nach `openDatabase()` einen Reconciliation-Pass: über `sessions.listByStatus('running')` iterieren, alle Rows mit `ended_at IS NULL` auf `interrupted` patchen (`ended_at = now()` als Approximation, weil der Crash-Zeitpunkt nicht bekannt ist). Das Lifecycle-API existiert seit Sprint 3 und akzeptiert `running → interrupted`. Test-Idee: Session per Repo direkt mit `status='running' / ended_at=null` einfügen, App-Start-Reconciliation laufen lassen, Status auf `interrupted` und `ended_at` gesetzt erwarten.
+
+---
+
+## Notes-Auto-Save bei Hard-Quit best-effort
+
+**Bereich:** `src/renderer/components/NotesFooter.tsx`, `window.beforeunload`-Handler
+
+**Was:** Der `beforeunload`-Flush des Notes-Savers ist fire-and-forget — `window.api.sessions.update(...)` ist ein `invoke()`-Promise, der oft nicht mehr aufgelöst wird, bevor der Renderer-Prozess stirbt. Der Main-Prozess empfängt das IPC-Paket meist noch und schreibt synchron in die DB (better-sqlite3 ist sync), aber es gibt keine Garantie. Worst-Case-Verlust: 0–500 ms Tipps bei Strom weg, Task-Manager-Kill oder OOM.
+
+**Warum so:** Synchroner IPC (`ipcRenderer.sendSync`) wäre die korrekte Lösung, ist aber nicht in der typed-bridge-API exponiert und müsste eigenständig durch die contextBridge geschleust werden. Für Sprint 3 nicht den Aufwand wert — der Verlust ist klein, der Trigger selten.
+
+**Risiko:** Bei Strom weg während aktivem Tippen verliert der User die letzten 0–500 ms Tipps. Bei normalem App-Schließen oder Tab-Wechsel passiert das nicht (onUnmount/onBlur flushen synchron via invoke, das im geordneten Shutdown durchläuft).
+
+**Auflösung:** Wenn das Schmerz wird, einen `notes:flushSync`-Channel im Preload via `ipcRenderer.sendSync` exponieren und im `beforeunload`-Handler nutzen. Sprint 8 (Settings-Dialog + Error-Handling) ist ein guter Slot, wenn die Datenpfade ohnehin angefasst werden. Bis dahin: Aufmerksamkeit beim Tippen während instabiler Stromversorgung.
+
+---
+
 ## Default-Project als FK-Lifeline für Sprint 2
 
 **Bereich:** `src/main/db/repos/projects.ts`, beim App-Start in `src/main/main.ts`

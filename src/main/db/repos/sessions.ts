@@ -35,6 +35,10 @@ export interface SessionDbDriver {
   insert(row: SessionInsert): void;
   findById(id: string): SessionRow | null;
   patch(id: string, patch: SessionPatch): SessionRow | null;
+  // Liste aller Sessions mit dem angegebenen Status.
+  // Wird in Sprint 3 vom App-Quit-Handler genutzt, um running-Sessions sauber
+  // auf interrupted zu patchen, bevor killAll() läuft.
+  listByStatus(status: SessionStatus): SessionRow[];
 }
 
 export interface CreateSessionInput {
@@ -98,6 +102,10 @@ export class SessionRepository {
     }
     return this.driver.patch(id, cleaned);
   }
+
+  listByStatus(status: SessionStatus): SessionRow[] {
+    return this.driver.listByStatus(status);
+  }
 }
 
 function rowFromInsert(row: SessionInsert): SessionRow {
@@ -109,6 +117,7 @@ function rowFromInsert(row: SessionInsert): SessionRow {
 export class SqliteSessionDriver implements SessionDbDriver {
   private readonly insertStmt: Database.Statement;
   private readonly selectStmt: Database.Statement<[string], SessionRow>;
+  private readonly listByStatusStmt: Database.Statement<[string], SessionRow>;
 
   constructor(private readonly db: Database.Database) {
     this.insertStmt = db.prepare(
@@ -123,6 +132,9 @@ export class SqliteSessionDriver implements SessionDbDriver {
     this.selectStmt = db.prepare<[string], SessionRow>(
       'SELECT * FROM sessions WHERE id = ?',
     );
+    this.listByStatusStmt = db.prepare<[string], SessionRow>(
+      'SELECT * FROM sessions WHERE status = ? ORDER BY started_at ASC',
+    );
   }
 
   insert(row: SessionInsert): void {
@@ -131,6 +143,10 @@ export class SqliteSessionDriver implements SessionDbDriver {
 
   findById(id: string): SessionRow | null {
     return this.selectStmt.get(id) ?? null;
+  }
+
+  listByStatus(status: SessionStatus): SessionRow[] {
+    return this.listByStatusStmt.all(status);
   }
 
   patch(id: string, patch: SessionPatch): SessionRow | null {
@@ -158,6 +174,16 @@ export class InMemorySessionDriver implements SessionDbDriver {
   findById(id: string): SessionRow | null {
     const row = this.rows.get(id);
     return row ? { ...row } : null;
+  }
+
+  listByStatus(status: SessionStatus): SessionRow[] {
+    const out: SessionRow[] = [];
+    for (const row of this.rows.values()) {
+      if (row.status === status) out.push({ ...row });
+    }
+    // Stabile Reihenfolge analog zum SQL-Driver (started_at aufsteigend).
+    out.sort((a, b) => a.started_at - b.started_at);
+    return out;
   }
 
   patch(id: string, patch: SessionPatch): SessionRow | null {
