@@ -7,6 +7,7 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { AppSettings, SessionStatus } from '@shared/types';
+import { createCopyPasteKeyHandler } from '../components/clipboardKeyHandler';
 
 // Sprint-3-Multi-Tab-Variante des Single-Tab-TerminalPane aus Sprint 2.
 //
@@ -72,9 +73,23 @@ export function TerminalTab({
         background: '#0d0f0e',
         foreground: '#d3d6cf',
         cursor: '#4ade80',
+        // Dezentes Highlight im dunklen Theme — niedrige Alpha, damit leere Zellen
+        // nicht als grüne Wand wirken; selectionForeground bewusst NICHT gesetzt,
+        // damit der Original-Vordergrund auf gefüllten Zeilen lesbar bleibt.
+        selectionBackground: 'rgba(74, 222, 128, 0.18)',
       },
     });
     terminalRef.current = terminal;
+
+    // Copy/Paste-Wiring: Ctrl+Shift+C kopiert Selection, Ctrl+Shift+V pastet via
+    // Bracketed-Paste-Mode. Ctrl+C bleibt SIGINT, Ctrl+V bleibt PTY-Input — die
+    // Standard-Konvention von Windows Terminal / VS Code / Alacritty.
+    terminal.attachCustomKeyEventHandler(
+      createCopyPasteKeyHandler({
+        clipboard: navigator.clipboard,
+        getTerminal: () => terminalRef.current,
+      }),
+    );
 
     const fit = new FitAddon();
     fitRef.current = fit;
@@ -179,8 +194,17 @@ export function TerminalTab({
     safeFit(fit);
   }, [settings.terminal_font_family, settings.terminal_font_size]);
 
+  // Fokus-Fang: ein Klick irgendwo im Terminal-Bereich (auch ins Padding um die
+  // xterm-Canvas) fordert den Fokus für xterms hidden textarea zurück. Sonst muss
+  // der User exakt auf die Canvas klicken, sonst bleibt der Fokus auf dem zuletzt
+  // gedrückten Button (Tab-Pille, +-Button, Modal-Submit) — und Ctrl+C/V wirken
+  // nicht, weil xterm seinen attachCustomKeyEventHandler nicht erreicht.
+  const handleHostMouseDown = () => {
+    terminalRef.current?.focus();
+  };
+
   return (
-    <div className="td-terminal-pane">
+    <div className="td-terminal-pane" onMouseDown={handleHostMouseDown}>
       <div ref={containerRef} className="td-terminal-canvas" />
       <div ref={errorRef} className="td-terminal-error" hidden />
     </div>

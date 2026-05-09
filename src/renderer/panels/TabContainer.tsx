@@ -31,6 +31,15 @@ export function TabContainer({ settings }: Props) {
   // dass ein erneuter Tab-Mount (z.B. nach React-Tree-Repaint) eine zweite PTY öffnet.
   const [spawnedIds, setSpawnedIds] = useState<Set<string>>(new Set());
 
+  // Wenn das Modal schließt, soll der Fokus zurück aufs aktive Terminal gehen.
+  // Sonst bleibt er auf dem (jetzt unmounteten) Submit-/Cancel-Button und Tastatur-
+  // events landen am body — Ctrl+C/V wirken erst nach einem Klick auf die Canvas.
+  // TerminalTab hört auf 'td-focus-active' und ruft `terminal.focus()` auf.
+  useEffect(() => {
+    if (showModal) return;
+    window.dispatchEvent(new Event('td-focus-active'));
+  }, [showModal]);
+
   // Globale Keyboard-Shortcuts: Ctrl+N neue Session, Ctrl+Tab / Ctrl+Shift+Tab Wechsel.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

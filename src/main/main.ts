@@ -66,9 +66,19 @@ function createMainWindow(): void {
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     );
   }
-  // DevTools werden bewusst NICHT automatisch geöffnet — F12 / Ctrl+Shift+I reichen
-  // bei Bedarf. Auto-Open bleibt als Diagnose-Werkzeug verfügbar (einfach hier wieder
-  // einkommentieren), wenn der nächste Renderer-Crash auftaucht.
+
+  // DevTools-Toggle explizit registrieren. Mit autoHideMenuBar + ohne benutzerdefiniertes
+  // Application-Menu kommt der Electron-Default-Accelerator F12 nicht durch — wir hängen
+  // ihn als webContents-before-input-event an, damit er auch im Dev-Mode greift.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const isF12 = input.key === 'F12';
+    const isCtrlShiftI = input.control && input.shift && input.key.toLowerCase() === 'i';
+    if (isF12 || isCtrlShiftI) {
+      mainWindow?.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
 }
 
 app.whenReady().then(() => {

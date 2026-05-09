@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Copy/Paste-Bindings: Smart Ctrl+C/V als Default + zwei Alternativen
+
+**Entscheidung:** Das Terminal akzeptiert drei parallele Copy/Paste-Bindings — Smart Ctrl+C/V (Daily-Driver-Default), Ctrl+Shift+C/V (cross-platform-Standard), Ctrl+Insert/Shift+Insert (Unix-X11-Konvention). Smart Ctrl+C kopiert, *wenn* eine Selection existiert (plus Auto-`clearSelection`), sonst läuft das Event als SIGINT durch. Ctrl+V pastet immer und überschreibt das selten genutzte `\x16` der traditionellen Terminals.
+
+**Varianten:**
+
+- **A** Smart Ctrl+C/V plus Ctrl+Shift+C/V plus Ctrl+Insert/Shift+Insert parallel (gewählt)
+- **B** Nur Ctrl+Shift+C/V — saubere Disambiguierung, kein Override von SIGINT
+- **C** Nur Smart Ctrl+C/V — minimale Reibung, aber keine Bypass-Option für Hotkey-Konflikte
+
+**Grund:** Variante B war mein erster Vorschlag, ist „theoretisch reinste" Wahl (keine Mehrdeutigkeit, kein Verlust von SIGINT bei vergessener Selection) — aber Windows Terminal, VS Code und sogar moderne Linux-Terminals (Konsole, GNOME mit Setting) sind seit Jahren auf Smart Ctrl+C/V als Default gewechselt: in der Praxis schlagen die UX-Vorteile die seltenen Selection-Verwechslungen, und der `clearSelection()`-Auto-Reset nach jedem Copy entschärft den Resteffekt. Variante C verliert den Bypass, falls Ctrl+C systemweit von einer anderen App belegt wäre — aktuell unwahrscheinlich, aber kostenlos abdeckbar. Variante A liefert alle drei Wege gleichzeitig: User wählt das, was Fingergedächtnis und installierte Tools (z.B. ShareX kapert oft Ctrl+Shift+C global) zulassen.
+
+**Konsequenz:** Pure-Logik-Util `createCopyPasteKeyHandler` mit driver-injected `ClipboardLike` + `getTerminal`-Lambda, 17 Tests ohne xterm/Browser-Clipboard. Falls Smart-Ctrl+C in der Praxis schmerzt (versehentliche Selection schluckt SIGINT), kann das Smart-Verhalten per Setting deaktiviert werden — aktuell hardcoded, Settings-UI ist Sprint 8.
+
+**Implementierungsdetail:** Bracketed-Paste-Mode (`\x1b[200~...\x1b[201~`) übernimmt xterms `terminal.paste(text)` automatisch — claude erkennt das und verarbeitet den Block als ein einziges Eingabe-Event statt zeilenweise. Bei Pastes >~100 Zeilen komprimiert claude code die Anzeige zu einem `[Pasted text #N +K lines]`-Platzhalter; das ist claudes Feature, nicht unsere Begrenzung.
+
+---
+
 ## Tab-Persistenz: alle xterm-Instanzen dauerhaft mounted
 
 **Entscheidung:** Pro Session lebt eine eigene Terminal-Komponente dauerhaft im DOM; Tab-Wechsel ändert nur die CSS-Sichtbarkeit (`display: none/flex`). Kein Snapshot/Replay über die SerializeAddon-API, kein gemeinsamer Multiplex.
