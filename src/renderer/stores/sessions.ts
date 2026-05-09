@@ -13,6 +13,10 @@ import type { SessionStatus, SessionType } from '@shared/types';
 
 export interface SessionTab {
   sessionId: string;
+  // Sprint-4-Feld: jeder Tab gehört genau einem Projekt. Wird beim addTab gesetzt
+  // (entweder aus dem aktiven Projekt der Sidebar oder explizit). Erlaubt der
+  // Tab-Bar, beim Wechsel des aktiven Projekts nur die zugehörigen Tabs anzuzeigen.
+  projectId: string;
   title: string;
   type: SessionType;
   model: string;
@@ -26,6 +30,7 @@ export interface SessionTab {
 
 export interface AddTabInput {
   sessionId?: string;
+  projectId: string;
   title: string;
   type: SessionType;
   model: string;
@@ -39,30 +44,50 @@ interface SessionStoreState {
 
   addTab: (input: AddTabInput) => SessionTab;
   closeTab: (sessionId: string) => void;
-  setActive: (sessionId: string) => void;
-  nextTab: () => void;
-  prevTab: () => void;
+  // Setzt den aktiven Tab. `null` blendet alle Terminals aus (Empty-State).
+  // Übergebene IDs werden nur akzeptiert, wenn sie existieren — schützt gegen
+  // stale Activations nach Tab-Schließen.
+  setActive: (sessionId: string | null) => void;
+  // Navigations-Methoden nehmen den Projekt-Filter als Argument — der Renderer
+  // weiß, welches Projekt gerade aktiv ist, der Store bleibt projekt-agnostisch.
+  nextTab: (projectId: string) => void;
+  prevTab: (projectId: string) => void;
   setStatus: (sessionId: string, status: SessionStatus) => void;
   setModel: (sessionId: string, model: string) => void;
   setNotesDraft: (sessionId: string, notes: string) => void;
   setNotesSaved: (sessionId: string, notes: string) => void;
 }
 
+// Sprint-4-Selector: liefert die Tabs eines Projekts in Insert-Reihenfolge.
+// Wird sowohl von der Tab-Bar als auch von Navigations-Helpern unten konsumiert.
+export function selectTabsForProject(
+  tabs: SessionTab[],
+  projectId: string,
+): SessionTab[] {
+  return tabs.filter((t) => t.projectId === projectId);
+}
+
 // Hilfsfunktion: findet den Index, der nach dem Schließen aktiv werden soll.
 // Wenn der geschlossene Tab nicht der aktive war, bleibt der aktive bestehen — sonst
-// rotiert die Auswahl auf den linken Nachbarn (oder den ersten, falls am Anfang gelöscht).
-function pickNextActive(
+// rotiert die Auswahl auf den linken Nachbarn IM SELBEN PROJEKT (oder null, wenn das
+// geschlossene Tab das letzte Tab des Projekts war — dann schaltet das Sprint-4-Layout
+// auf den Empty-State des aktiven Projekts zurück, statt sichtbar in ein anderes
+// Projekt zu springen).
+export function pickNextActive(
   tabs: SessionTab[],
   removedSessionId: string,
   previousActiveId: string | null,
 ): string | null {
-  const removedIndex = tabs.findIndex((t) => t.sessionId === removedSessionId);
-  if (removedIndex < 0) return previousActiveId;
+  const removed = tabs.find((t) => t.sessionId === removedSessionId);
+  if (!removed) return previousActiveId;
   if (previousActiveId !== removedSessionId) return previousActiveId;
-  // Aktiver Tab wird geschlossen — Nachbar wählen.
-  if (tabs.length <= 1) return null;
-  // Linker Nachbar bevorzugt; wenn der entfernte Tab links außen liegt, der rechte.
-  const neighbor = removedIndex > 0 ? tabs[removedIndex - 1] : tabs[removedIndex + 1];
+  const sameProject = selectTabsForProject(tabs, removed.projectId);
+  const removedIndexInProject = sameProject.findIndex((t) => t.sessionId === removedSessionId);
+  if (removedIndexInProject < 0 || sameProject.length <= 1) return null;
+  const neighbor =
+    removedIndexInProject > 0
+      ? sameProject[removedIndexInProject - 1]
+      : sameProject[removedIndexInProject + 1];
   return neighbor?.sessionId ?? null;
 }
 
@@ -74,6 +99,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     const sessionId = input.sessionId ?? crypto.randomUUID();
     const tab: SessionTab = {
       sessionId,
+      projectId: input.projectId,
       title: input.title,
       type: input.type,
       model: input.model,
@@ -100,25 +126,31 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   },
 
   setActive: (sessionId) => {
+    if (sessionId === null) {
+      set({ activeId: null });
+      return;
+    }
     if (!get().tabs.some((t) => t.sessionId === sessionId)) return;
     set({ activeId: sessionId });
   },
 
-  nextTab: () => {
+  nextTab: (projectId) => {
     const { tabs, activeId } = get();
-    if (tabs.length < 2 || activeId == null) return;
-    const idx = tabs.findIndex((t) => t.sessionId === activeId);
+    const inProject = selectTabsForProject(tabs, projectId);
+    if (inProject.length < 2 || activeId == null) return;
+    const idx = inProject.findIndex((t) => t.sessionId === activeId);
     if (idx < 0) return;
-    const next = tabs[(idx + 1) % tabs.length];
+    const next = inProject[(idx + 1) % inProject.length];
     if (next) set({ activeId: next.sessionId });
   },
 
-  prevTab: () => {
+  prevTab: (projectId) => {
     const { tabs, activeId } = get();
-    if (tabs.length < 2 || activeId == null) return;
-    const idx = tabs.findIndex((t) => t.sessionId === activeId);
+    const inProject = selectTabsForProject(tabs, projectId);
+    if (inProject.length < 2 || activeId == null) return;
+    const idx = inProject.findIndex((t) => t.sessionId === activeId);
     if (idx < 0) return;
-    const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
+    const prev = inProject[(idx - 1 + inProject.length) % inProject.length];
     if (prev) set({ activeId: prev.sessionId });
   },
 

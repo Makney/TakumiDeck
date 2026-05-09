@@ -2,7 +2,10 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import type {
   AppSettings,
+  ClaudeMdParseResult,
   IpcResult,
+  ProjectReadCfgInput,
+  ProjectRow,
   PtyCreateInput,
   PtyDataEvent,
   PtyExitEvent,
@@ -59,6 +62,17 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.SessionClose, input) as Promise<IpcResult<SessionRow>>,
     resume: (input: SessionResumeInput) =>
       ipcRenderer.invoke(Channels.SessionResume, input) as Promise<IpcResult<SessionRow>>,
+  },
+  projects: {
+    list: () => ipcRenderer.invoke(Channels.ProjectList) as Promise<IpcResult<ProjectRow[]>>,
+    add: () =>
+      ipcRenderer.invoke(Channels.ProjectAdd) as Promise<IpcResult<ProjectRow | null>>,
+    scanWorkspace: () =>
+      ipcRenderer.invoke(Channels.ProjectScan) as Promise<IpcResult<ProjectRow[]>>,
+    readClaudeMd: (input: ProjectReadCfgInput) =>
+      ipcRenderer.invoke(Channels.ProjectReadCfg, input) as Promise<
+        IpcResult<ClaudeMdParseResult>
+      >,
   },
 };
 

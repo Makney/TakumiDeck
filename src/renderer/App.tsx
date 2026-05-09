@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings, IpcResult } from '@shared/types';
 import { TabContainer } from './panels/TabContainer';
+import { LeftSidebar } from './panels/LeftSidebar';
 
-// Sprint-3-Renderer: lädt Version + Settings, dann übernimmt der TabContainer das Layout.
-// Linke Sidebar bleibt bis Sprint 4 ausgeblendet, Right-Pane bis Sprint 7.
+// Sprint-4-Renderer: linke Sidebar (240 px) plus TabContainer rechts daneben.
+// Right-Pane bleibt bis Sprint 7 ausgeblendet.
 export function App() {
   const [version, setVersion] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -47,9 +48,10 @@ export function App() {
     <div className="td-app">
       <header className="td-app-header">
         <span className="td-app-title">TakumiDeck</span>
-        <span className="td-app-meta">v{version} · Sprint 3 (Multi-Session)</span>
+        <span className="td-app-meta">v{version} · Sprint 4 (Workspace)</span>
       </header>
       <main className="td-app-main">
+        <LeftSidebar settings={settings} />
         <TabContainer settings={settings} />
       </main>
     </div>

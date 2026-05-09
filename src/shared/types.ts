@@ -131,6 +131,65 @@ export interface SessionResumeInput {
   rows: number;
 }
 
+// --- Workspace / Projects (Sprint 4) --------------------------------
+
+// SQLite-Project-Row laut Schema in 0001_init.sql plus abgeleiteter session_count
+// (Aggregat aus der sessions-Tabelle). Sprint 4 nutzt session_count, um den
+// Legacy-Default-Bucket nur bei tatsächlich verbleibenden Sessions in der Sidebar
+// zu zeigen — sonst verschwindet er sauber, sobald der cwd-Remap alles umgehängt hat.
+export interface ProjectRow {
+  id: string;
+  name: string;
+  path: string;
+  added_manually: number; // SQLite BOOLEAN → 0/1
+  has_git: number;
+  next_season_number: number;
+  created_at: number;
+  session_count: number;
+}
+
+// Output des Workspace-Scanners. Wird im Main aus rohem fs zusammengebaut, dann
+// per insert() in die projects-Tabelle übernommen — id und created_at vergibt das Repo.
+export interface ScannedProject {
+  name: string;
+  path: string;
+  has_git: boolean;
+}
+
+// Frontmatter-Output des CLAUDE.md-Parsers (zod-validierte Form).
+// `body` ist der reine Markdown-Text *nach* dem Frontmatter-Block.
+// `frontmatter` ist null, wenn entweder gar keine Frontmatter da ist oder die
+// workbench-Section fehlt — beides sind legitime Zustände, keine Fehler.
+export interface ClaudeMdParseResult {
+  frontmatter: ClaudeMdFrontmatter | null;
+  body: string;
+  warnings: string[];
+}
+
+export interface ClaudeMdFrontmatter {
+  workbench: {
+    project_name?: string;
+    default_model?: string;
+    current_phase_file?: string;
+    trigger_phrases: {
+      docs_update: string;
+      commit: string;
+    };
+    on_demand_files?: Array<
+      | string
+      | { path: string; trigger?: string; auto_inject?: boolean }
+    >;
+  };
+}
+
+export interface ProjectAddInput {
+  path: string;
+}
+
+export interface ProjectReadCfgInput {
+  projectId: string;
+}
+
 // Bridge-API-Shape, die der Renderer über window.api erhält.
 export interface RendererApi {
   settings: {
@@ -154,6 +213,19 @@ export interface RendererApi {
     update: (input: SessionUpdateInput) => Promise<IpcResult<SessionRow>>;
     close: (input: SessionCloseInput) => Promise<IpcResult<SessionRow>>;
     resume: (input: SessionResumeInput) => Promise<IpcResult<SessionRow>>;
+  };
+  projects: {
+    list: () => Promise<IpcResult<ProjectRow[]>>;
+    // project:add ohne Args → Main öffnet dialog.showOpenDialog selbst und liefert
+    // entweder den hinzugefügten Project-Row zurück, oder null bei Cancel, oder ein
+    // Result-Err, falls der gewählte Ordner keine CLAUDE.md enthält bzw. der Pfad
+    // bereits existiert.
+    add: () => Promise<IpcResult<ProjectRow | null>>;
+    // Re-Scan des konfigurierten workspace_path. Liefert die finale Liste — neue Projekte
+    // wurden bereits in der DB persistiert, der Renderer aktualisiert seinen Store anhand
+    // der zurückgegebenen Liste.
+    scanWorkspace: () => Promise<IpcResult<ProjectRow[]>>;
+    readClaudeMd: (input: ProjectReadCfgInput) => Promise<IpcResult<ClaudeMdParseResult>>;
   };
 }
 

@@ -24,6 +24,90 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Workspace-Scan: Async-Walk mit Konkurrenz-Limit
+
+**Entscheidung:** Der Workspace-Scanner läuft als async-rekursiver Walk auf `fs.promises.readdir`, mit einem schmalen Promise-Pool (Konkurrenz-Default 4). Stop-Marker pro Subordner: `CLAUDE.md` (= Projekt erkannt, Recurse stoppt) oder `.git/` ohne `CLAUDE.md` (Stop ohne Erkennung). Versteckte Verzeichnisse und `node_modules` werden übersprungen. Max-Depth 5.
+
+**Varianten:**
+
+- **A** Async-Walk mit Konkurrenz-Limit (gewählt)
+- **B** Sync-Walk via `fs.readdirSync`
+- **C** Lazy On-Demand: erst beim ersten Sidebar-Refresh-Klick scannen
+
+**Grund:** Bei einem persönlichen Tool mit 1–3 Projekten wäre B in der Praxis kaum unterscheidbar von A — aber sobald der Workspace mal 50 Subordner trägt, blockiert sync den Main-Prozess für die Scan-Dauer und IPC-Calls hängen währenddessen. Variante C verschiebt den UX-Hit auf den ersten Sidebar-Klick (leere Sidebar nach Cold-Start) ohne nennenswerten Gewinn. A skaliert mit, ohne den Initial-Code aufzublähen — das Driver-Pattern (`FsLikeDriver`) macht Tests gegen synthetische Fake-Trees identisch leicht wie bei B.
+
+**Konsequenz:** Phase-2 wird ohnehin auf einen `chokidar`-Live-Watcher umsteigen — der ist auch async. A passt nahtlos. Die `realFsDriver`-Implementation schluckt erwartbare fs-Errors (`EACCES`/`ENOENT`/`ENOTDIR`/`EPERM`) und liefert Best-Effort, sodass ein einziger nicht-lesbarer Subordner den ganzen Scan nicht abbricht.
+
+**Implementierungsdetail:** `versteckte Verzeichnisse` (Punkt-Präfix außer `.git`) und `node_modules` werden hart aus dem Recurse-Set rausgenommen — kein Setting, weil Architektur 6.1 die Marker-Logik fix vorgibt und die Ausschlüsse pragmatisch sind (sonst kämen `.cache`-Trees mit ihren CLAUDE.md-artigen Files als Fehl-Erkennung rein).
+
+---
+
+## CLAUDE.md-Parser: gray-matter + zod-validierte `workbench`-Section
+
+**Entscheidung:** TakumiDeck verwendet `gray-matter` für die Trennung von YAML-Frontmatter und Markdown-Body. Die `workbench:`-Section wird nachgelagert durch `ClaudeMdFrontmatterSchema` (zod) validiert — `trigger_phrases.docs_update` und `trigger_phrases.commit` sind strict-Pflicht, alle anderen Felder optional. „Datei ohne Frontmatter" und „Frontmatter ohne `workbench:`-Section" sind legitime Zustände (Result.ok mit `frontmatter: null`); kaputte YAML oder fehlende Trigger-Phrasen liefern klare Result-Errors mit Codes.
+
+**Varianten:**
+
+- **A** `gray-matter` als kombiniertes Paket (gewählt)
+- **B** `js-yaml` + handgeschriebene `---`-Splitter-Logik
+- **C** Vollständig handgeschriebener Mini-YAML-Parser (keine npm-Dependency)
+
+**Grund:** Der Markdown-Body von CLAUDE.md kann selbst `---`-Trennlinien enthalten (Architektur-Doku tut es) — ein selbst geschriebener Splitter würde dort schon stolpern. BOM-Bytes (Windows-Notepad), CRLF und alternative Trenner-Stile sind ebenfalls Edge-Cases, die `gray-matter` als de-facto-Standard im Markdown-Ökosystem längst kapselt. Bundle-Differenz ist im Electron-Kontext irrelevant. Variante C erfindet etablierte YAML-Semantik nochmal selbst und ist gegen den Aufwand-Gegenwert nicht zu rechtfertigen.
+
+**Konsequenz:** `js-yaml` kommt als transitiver Sub-Dependency mit; falls Sprint 7 (Markdown-Editor mit Inline-YAML-Validierung) eine direkte Verwendung braucht, ist es schon im Tree. Strict-Pflicht für Trigger-Phrasen schützt Working-Rule-3 und 5: ohne sie kann der Workflow nicht funktionieren, also lieber sofort einen sprechenden Fehler als später undefined-Cascading.
+
+---
+
+## Default-Project-Migration: Auto-Match per cwd-Prefix mit Legacy-Bucket
+
+**Entscheidung:** Beim ersten Sprint-4-Start wird das Sprint-2-Default-Project (UUID `…0001`) als Legacy-Bucket in der Sidebar sichtbar gemacht und ein einmaliger `cwd`-Prefix-Match-Pass läuft: für jede Session mit `project_id = DEFAULT_PROJECT_ID` wird geprüft, ob `session.cwd` innerhalb eines neu erkannten Project-Pfads liegt. Treffer → Session wird per FK-Update auf das echte Project umgehängt. Kein Treffer → Session bleibt am Default-Bucket; der Bucket wird in der Sidebar nur angezeigt, solange `session_count > 0` ist.
+
+**Varianten:**
+
+- **A** Auto-Match per cwd-Prefix beim ersten Sprint-4-Start, Rest bleibt sichtbar als Legacy (gewählt)
+- **B** Default-Project bleibt unsichtbar in der Sidebar, Sessions hängen still daran weiter
+- **C** Confirm-Dialog beim Start: „X Legacy-Sessions löschen oder behalten?"
+
+**Grund:** Variante A ist datenverlust-frei *und* räumt sichtbar auf — alle Sessions, deren `cwd` auf ein erkanntes Projekt fällt, wandern automatisch dorthin; was nicht passt, bleibt sichtbar erreichbar (sobald Sprint 6 das Verlauf-Panel hat). Variante B versteckt eine wachsende Karteileichen-Menge ohne UI-Pfad zur Bereinigung. Variante C bricht den App-Start mit einem Dialog auf, dessen einzige sinnvolle Antwort „Behalten" ist, solange kein Recovery-Pfad existiert.
+
+**Konsequenz:** Die Sprint-2-`__default__`-Schuld ist damit aufgelöst (siehe [TECH_SCHULDEN.md](./TECH_SCHULDEN.md), ✅-Eintrag). Eine neue, kleinere Folgeschuld entsteht: Sprint-2/3-Sessions, die mit `cwd = workspace_path` (Parent-Ordner) gespawnt wurden, matchen *keinen* der echten Projekt-Pfade und landen dauerhaft im Legacy-Bucket — UI-erreichbar erst mit Sprint-6-Verlauf-Panel. Im Test-Szenario aus dem Sprint-4-Smoke waren das 19 Sessions; für Neu-Sessions ab Sprint 4 ist das Problem behoben (NewSession-Modal nutzt jetzt `activeProject.path`).
+
+**Implementierungsdetail:** Die Match-Logik (`isPathInsideProject`) ist trennzeichen-sicher: `D:\Foo` matched nur Pfade, die mit `D:\Foo<sep>` beginnen oder exakt gleich sind — `D:\Foobar` als Sub-Path-Trick wird abgelehnt. Beide Pfade werden über `path.resolve` normalisiert, damit Trailing-Slashes und Mixed-Separators auf Windows kein Problem sind.
+
+---
+
+## Per-Projekt-Tab-Filter: Renderer-Filter, alle xterm-Instanzen mounted
+
+**Entscheidung:** Tabs leben weiter in einem flachen `tabs[]`-Array im `useSessionStore`; jeder Tab trägt sein `projectId`. Die Tab-Bar zeigt nur Tabs des aktiven Projekts (Renderer-Filter über `activeProjectId` aus `useUiStore`); alle xterm-Instanzen aller Projekte bleiben dauerhaft im DOM mounted (CSS `display: none/flex`), PTYs aller Projekte laufen weiter. Beim Projekt-Wechsel rotiert `activeId` automatisch auf den ersten Tab des neuen Projekts oder auf null (Empty-State).
+
+**Varianten:**
+
+- **A** Renderer-Filter über `activeProjectId`, alle xterm dauerhaft mounted (gewählt)
+- **B** Tabs als `Map<projectId, Tab[]>` strukturiert, statt flach
+- **C** Sessions beim Projekt-Wechsel komplett aus dem Renderer ausblenden + frisch laden
+
+**Grund:** Sprint 3 hatte Tab-Persistenz auf „alle xterm dauerhaft mounted" festgelegt (siehe gleichnamiger Eintrag oben) — Variante A hier zieht die Logik konsequent in die Sprint-4-Filterschicht durch: derselbe Mount-Lifecycle, derselbe Test-Aufwand, dasselbe Speicher-Profil bei 2–5 Tabs pro Projekt × 1–3 Projekten. Variante B würde Cross-Project-Operationen (z.B. „wie viele running-Sessions insgesamt?") umständlicher machen, ohne ein konkretes Problem zu lösen. Variante C widerspricht direkt der Sprint-3-Entscheidung — Re-Mount kostet xterm-Buffer, der aufwendig per Snapshot rekonstruiert werden müsste.
+
+**Konsequenz:** `nextTab` und `prevTab` sind projekt-scoped (akzeptieren `projectId` als Argument), `pickNextActive` rotiert nur innerhalb des Projekts. `selectTabsForProject` als kleiner Selector dient sowohl der Tab-Bar als auch den Navigations-Helpern. Wenn das aktive Projekt 0 Tabs hat, bleibt der Multi-Terminal-Stack komplett verborgen und der projekt-spezifische Empty-State greift („Keine Sessions in <Projekt>").
+
+---
+
+## `useUiStore` als eigener Renderer-Store ab Sprint 4
+
+**Entscheidung:** Die Auswahl des aktiven Sidebar-Projekts (`activeProjectId`) liegt in einem neuen `useUiStore` (`src/renderer/stores/ui.ts`), nicht im `useProjectStore`.
+
+**Varianten:**
+
+- **A** Neuer `useUiStore` für UI-State (gewählt)
+- **B** `activeProjectId` als Feld direkt im `useProjectStore`
+- **C** Aus URL/Hash-Routing ableiten
+
+**Grund:** Architektur-Kapitel 2 nennt `useUiStore` explizit als einen der vier vorgesehenen Domain-Stores (`useSessionStore`, `useProjectStore`, `useUsageStore`, `useUiStore`). Sprint 4 ist der natürliche Anlass, ihn aufzumachen — Sprint 5 (Token-Dashboard mit Detail-Panel) und Sprint 8 (Settings-Modal-Sichtbarkeit) werden sehr wahrscheinlich denselben Store mit-nutzen. Variante B würde Domain-Daten (Projekt-Liste) und UI-Zustand (Auswahl) vermischen — ein Pattern, das Architektur-2 bewusst anders gezeichnet hat. Variante C (Hash-Router) wäre Phase-2-Reife (Deep-Linking, Browser-Back) für eine App, die aktuell keine Routes hat.
+
+**Konsequenz:** Zwei neue Renderer-Stores in Sprint 4 (`useUiStore` + `useProjectStore`), beide minimal. Der `useUiStore` wächst in den nächsten Sprints organisch — keine Eröffnungs-Kosten in einem späteren Sprint, wenn der Store sowieso auseinander gerissen werden müsste.
+
+---
+
 ## Copy/Paste-Bindings: Smart Ctrl+C/V als Default + zwei Alternativen
 
 **Entscheidung:** Das Terminal akzeptiert drei parallele Copy/Paste-Bindings — Smart Ctrl+C/V (Daily-Driver-Default), Ctrl+Shift+C/V (cross-platform-Standard), Ctrl+Insert/Shift+Insert (Unix-X11-Konvention). Smart Ctrl+C kopiert, *wenn* eine Selection existiert (plus Auto-`clearSelection`), sonst läuft das Event als SIGINT durch. Ctrl+V pastet immer und überschreibt das selten genutzte `\x16` der traditionellen Terminals.

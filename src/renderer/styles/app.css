@@ -87,9 +87,173 @@ body,
 .td-app-main {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   min-height: 0;
   background: var(--td-bg);
+}
+
+/* Sprint-4-Sidebar (Architektur 6.0, LAYOUT.COL_LEFT_WIDTH=240). */
+.td-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--td-panel-2);
+  border-right: 1px solid var(--td-line);
+  overflow: hidden;
+}
+
+.td-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--td-line);
+  flex-shrink: 0;
+}
+
+.td-sidebar-title {
+  font-family: var(--td-display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-sidebar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.td-sidebar-icon-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--td-line);
+  background: transparent;
+  color: var(--td-text-mute);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .12s, color .12s;
+}
+
+.td-sidebar-icon-btn:hover:not(:disabled) {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-sidebar-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.td-sidebar-error {
+  margin: 8px 10px;
+  padding: 6px 8px;
+  background: rgba(239, 93, 93, 0.1);
+  border: 1px solid var(--td-red);
+  color: var(--td-red);
+  font-size: 11px;
+  border-radius: 2px;
+}
+
+.td-sidebar-empty {
+  margin: 12px 10px;
+  padding: 8px 10px;
+  background: var(--td-bg-3);
+  border: 1px dashed var(--td-line);
+  color: var(--td-text-mute);
+  font-size: 11px;
+  line-height: 1.5;
+  border-radius: 2px;
+}
+
+.td-sidebar-empty code {
+  font-family: var(--td-mono);
+  background: var(--td-bg);
+  padding: 0 4px;
+  color: var(--td-text-dim);
+  border-radius: 2px;
+}
+
+.td-sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.td-sidebar-item {
+  padding: 6px 10px;
+  border-left: 2px solid transparent;
+  color: var(--td-text-dim);
+  cursor: pointer;
+  transition: border-color .12s, color .12s, background .12s;
+}
+
+.td-sidebar-item:hover {
+  border-left-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-sidebar-item.active {
+  border-left-color: var(--td-accent);
+  color: var(--td-text);
+  background: var(--td-bg-3);
+}
+
+.td-sidebar-item.legacy {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.td-sidebar-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.td-sidebar-item-name {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-sidebar-item-path {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--td-text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  background: var(--td-bg-3);
+  border: 1px solid var(--td-line);
+  color: var(--td-text-mute);
+  font-size: 10px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.td-sidebar-badge.running {
+  background: var(--td-accent-soft);
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
 }
 
 /* TerminalTab — Sprint 3 Multi-Tab-Variante (eine Instanz pro Tab, alle dauerhaft mounted). */

@@ -45,9 +45,9 @@ Projekt-Erkennung und -Verwaltung.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Workspace-Scanner`             | ⛔      |           |
-| `CLAUDE.md-Parser`              | ⛔      |           |
-| `Project-Sidebar`               | ⛔      |           |
+| `Workspace-Scanner`             | ✅      | 2026-05-09 — Async-Walk mit Konkurrenz-Limit (Variante A), max-depth 5, Stop bei `CLAUDE.md` / `.git`, FsLikeDriver für Tests |
+| `CLAUDE.md-Parser`              | ✅      | 2026-05-09 — `gray-matter` + zod-Validierung, strict für `trigger_phrases`, locker für `on_demand_files` |
+| `Project-Sidebar`               | ✅      | 2026-05-09 — 240 px Sidebar mit Active-Highlight + Running-Badge, `+`/`↻`-Buttons, Per-Projekt-Tab-Filter, Sprint-2/3-Legacy-Bucket sichtbar bei `session_count > 0` |
 
 ## Token-Dashboard (Sprint 5)
 

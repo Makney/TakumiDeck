@@ -1,14 +1,15 @@
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import type Database from 'better-sqlite3';
+import type { ProjectRow, ScannedProject } from '@shared/types';
+import type { IpcResult } from '@shared/types';
+import { ok, err } from '@shared/result';
+import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from '@shared/constants';
 
-// Default-Project-Lifeline für Sprint 2.
-//
-// Sessions referenzieren in der DB einen project_id (NOT NULL FK). Sprint 4 wird die
-// Projects-Tabelle aus dem Workspace-Scanner befüllen — bis dahin reicht ein einziger
-// Default-Eintrag, an dem Sessions hängen, damit der FK-Constraint erfüllt ist.
-//
-// Stable UUID, damit Sprint 4 explizit erkennen kann, dass es sich um den Sprint-2-Default
-// handelt (und ihn z.B. ausblenden oder migrieren kann).
-export const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000001';
+// Default-Project-Lifeline aus Sprint 2 (siehe @shared/constants).
+// Sprint 4 erkennt den Bucket per UUID und versucht, dessen Sessions per
+// cwd-Prefix-Match auf echte Projects umzuhängen (Variante A aus Sprint-4-Briefing).
+export { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME };
 
 export function ensureDefaultProject(
   db: Database.Database,
@@ -22,6 +23,287 @@ export function ensureDefaultProject(
   db.prepare(
     `INSERT INTO projects (id, name, path, added_manually, has_git, next_season_number, created_at)
      VALUES (?, ?, ?, 0, 0, 1, ?)`,
-  ).run(DEFAULT_PROJECT_ID, '__default__', workspacePath, Date.now());
+  ).run(DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME, workspacePath, Date.now());
   return DEFAULT_PROJECT_ID;
+}
+
+// --- Repository -----------------------------------------------------
+
+export interface ProjectInsert {
+  id: string;
+  name: string;
+  path: string;
+  added_manually: number;
+  has_git: number;
+  next_season_number: number;
+  created_at: number;
+}
+
+export interface ProjectDbDriver {
+  insert(row: ProjectInsert): void;
+  findById(id: string): ProjectRow | null;
+  findByPath(path: string): ProjectRow | null;
+  listAll(): ProjectRow[];
+  // Wird vom Sprint-4-Migrationspass genutzt: hängt eine Session von einem Project
+  // an ein anderes um. Returnt die Anzahl der tatsächlich umgehängten Rows.
+  reassignSession(sessionId: string, newProjectId: string): number;
+  // Wird beim Remap-Pass gebraucht: liefert die Sessions, die noch am Default-Project hängen.
+  // Nur die Felder, die der Remap-Algorithmus liest (id + cwd) — kein Volltext-Join.
+  listSessionsForProject(projectId: string): Array<{ id: string; cwd: string }>;
+}
+
+// Path-Match-Helper: prüft, ob `cwd` ein Pfad innerhalb von `projectPath` ist.
+// Akzeptiert exakten Match und Sub-Path-Match, aber NICHT Präfix-Tricks wie
+// "C:\\Foo" ↔ "C:\\Foobar". Beide Pfade werden mit path.resolve normalisiert
+// (Trailing-Slashes, Mixed-Separators auf Windows).
+export function isPathInsideProject(cwd: string, projectPath: string): boolean {
+  const normCwd = path.resolve(cwd);
+  const normProject = path.resolve(projectPath);
+  if (normCwd === normProject) return true;
+  // Trennzeichen-sicheren Präfix-Test: nur Match, wenn nach dem Project-Pfad ein
+  // Pfad-Separator folgt (oder das Ende erreicht wurde).
+  const sep = path.sep;
+  const projectWithSep = normProject.endsWith(sep) ? normProject : normProject + sep;
+  return normCwd.startsWith(projectWithSep);
+}
+
+export class ProjectRepository {
+  constructor(private readonly driver: ProjectDbDriver) {}
+
+  listAll(): ProjectRow[] {
+    return this.driver.listAll();
+  }
+
+  getById(id: string): ProjectRow | null {
+    return this.driver.findById(id);
+  }
+
+  getByPath(projectPath: string): ProjectRow | null {
+    return this.driver.findByPath(projectPath);
+  }
+
+  // Insert eines neuen Projects. Rückgabe ist Result, weil Pfad-Uniqueness der
+  // erwartbare Fehlerfall ist (UNIQUE-Constraint in 0001_init.sql).
+  insert(input: {
+    name: string;
+    path: string;
+    has_git: boolean;
+    added_manually: boolean;
+  }): IpcResult<ProjectRow> {
+    const existing = this.driver.findByPath(input.path);
+    if (existing) {
+      return err<ProjectRow>(
+        `Projekt mit Pfad ${input.path} existiert bereits`,
+        'PROJECT_PATH_DUPLICATE',
+      );
+    }
+    const row: ProjectInsert = {
+      id: randomUUID(),
+      name: input.name,
+      path: input.path,
+      added_manually: input.added_manually ? 1 : 0,
+      has_git: input.has_git ? 1 : 0,
+      next_season_number: 1,
+      created_at: Date.now(),
+    };
+    this.driver.insert(row);
+    const inserted = this.driver.findById(row.id);
+    if (!inserted) {
+      return err<ProjectRow>(
+        `Insert von ${input.path} hinterließ keine Row`,
+        'PROJECT_INSERT_FAILED',
+      );
+    }
+    return ok(inserted);
+  }
+
+  // Sprint-4-Remap-Pass:
+  //
+  // Wird einmalig nach dem Initial-Scan aufgerufen. Geht alle Sessions durch, die
+  // noch am `fromProjectId` (= Default-Project) hängen, und versucht für jede ein
+  // Match per cwd-Prefix gegen die Liste aller anderen Projects. Treffer → Session
+  // wird umgehängt. Kein Treffer → Session bleibt am Default (Legacy-Bucket).
+  //
+  // Rückgabe: Anzahl der tatsächlich umgehängten Sessions (für Logging).
+  remapSessionsByCwdPrefix(fromProjectId: string, candidates: ProjectRow[]): number {
+    const sessions = this.driver.listSessionsForProject(fromProjectId);
+    const filteredCandidates = candidates.filter((p) => p.id !== fromProjectId);
+    let moved = 0;
+    for (const session of sessions) {
+      const match = filteredCandidates.find((p) => isPathInsideProject(session.cwd, p.path));
+      if (!match) continue;
+      const updated = this.driver.reassignSession(session.id, match.id);
+      if (updated > 0) moved += 1;
+    }
+    return moved;
+  }
+}
+
+// --- SQLite-Driver --------------------------------------------------
+
+export class SqliteProjectDriver implements ProjectDbDriver {
+  private readonly insertStmt: Database.Statement;
+  private readonly findByIdStmt: Database.Statement<[string], ProjectRow>;
+  private readonly findByPathStmt: Database.Statement<[string], ProjectRow>;
+  private readonly listAllStmt: Database.Statement<[], ProjectRow>;
+  private readonly reassignStmt: Database.Statement;
+  private readonly listSessionsStmt: Database.Statement<
+    [string],
+    { id: string; cwd: string }
+  >;
+
+  constructor(private readonly db: Database.Database) {
+    this.insertStmt = db.prepare(
+      `INSERT INTO projects (
+        id, name, path, added_manually, has_git, next_season_number, created_at
+      ) VALUES (
+        @id, @name, @path, @added_manually, @has_git, @next_season_number, @created_at
+      )`,
+    );
+    // Findet ein Projekt + Session-Count über LEFT JOIN. Die COALESCE-Wrapper sind
+    // für den Fall, dass keine Sessions vorhanden sind (NULL → 0).
+    const PROJECT_SELECT_WITH_COUNT = `
+      SELECT p.*, COALESCE(s.cnt, 0) AS session_count
+      FROM projects p
+      LEFT JOIN (
+        SELECT project_id, COUNT(*) AS cnt FROM sessions GROUP BY project_id
+      ) s ON s.project_id = p.id
+    `;
+    this.findByIdStmt = db.prepare<[string], ProjectRow>(
+      `${PROJECT_SELECT_WITH_COUNT} WHERE p.id = ?`,
+    );
+    this.findByPathStmt = db.prepare<[string], ProjectRow>(
+      `${PROJECT_SELECT_WITH_COUNT} WHERE p.path = ?`,
+    );
+    // Default-Project (UUID …0001) ans Ende, damit es in der Sidebar als Legacy-Bucket
+    // unter den echten Projekten landet, ohne dass die UI selbst sortieren muss.
+    this.listAllStmt = db.prepare<[], ProjectRow>(
+      `${PROJECT_SELECT_WITH_COUNT}
+       ORDER BY (p.id = '${DEFAULT_PROJECT_ID}') ASC, p.name COLLATE NOCASE ASC`,
+    );
+    this.reassignStmt = db.prepare(
+      'UPDATE sessions SET project_id = @newProjectId WHERE id = @sessionId',
+    );
+    this.listSessionsStmt = db.prepare<[string], { id: string; cwd: string }>(
+      'SELECT id, cwd FROM sessions WHERE project_id = ?',
+    );
+  }
+
+  insert(row: ProjectInsert): void {
+    this.insertStmt.run(row);
+  }
+
+  findById(id: string): ProjectRow | null {
+    return this.findByIdStmt.get(id) ?? null;
+  }
+
+  findByPath(projectPath: string): ProjectRow | null {
+    return this.findByPathStmt.get(projectPath) ?? null;
+  }
+
+  listAll(): ProjectRow[] {
+    return this.listAllStmt.all();
+  }
+
+  reassignSession(sessionId: string, newProjectId: string): number {
+    const result = this.reassignStmt.run({ sessionId, newProjectId });
+    return Number(result.changes);
+  }
+
+  listSessionsForProject(projectId: string): Array<{ id: string; cwd: string }> {
+    return this.listSessionsStmt.all(projectId);
+  }
+}
+
+// --- In-Memory-Driver für Tests ------------------------------------
+
+export class InMemoryProjectDriver implements ProjectDbDriver {
+  // Speichert ProjectInsert intern (ohne session_count); listAll/findById/findByPath
+  // setzen den Count zur Lesezeit aus this.sessions zusammen, analog zur SQL-Variante,
+  // die den LEFT-JOIN-Aggregat zur Lesezeit berechnet.
+  private readonly projects = new Map<string, ProjectInsert>();
+  // Wird in Tests vom Driver-Konsumenten gefüttert, damit listSessionsForProject etwas
+  // zurückliefert. Sprint 4 fasst Sessions im echten Repo an — der In-Memory-Pfad
+  // braucht eine ähnliche Brücke, ohne SessionRepository zu importieren.
+  public readonly sessions = new Map<string, { id: string; cwd: string; project_id: string }>();
+
+  private toRow(insert: ProjectInsert): ProjectRow {
+    return { ...insert, session_count: this.countSessionsForProject(insert.id) };
+  }
+
+  private countSessionsForProject(projectId: string): number {
+    let count = 0;
+    for (const s of this.sessions.values()) {
+      if (s.project_id === projectId) count += 1;
+    }
+    return count;
+  }
+
+  insert(row: ProjectInsert): void {
+    if (this.projects.has(row.id)) {
+      throw new Error(`Project ${row.id} existiert bereits`);
+    }
+    for (const existing of this.projects.values()) {
+      if (existing.path === row.path) {
+        // Simuliert die UNIQUE(path)-Constraint von SQLite.
+        const e = new Error(`UNIQUE constraint failed: projects.path`) as Error & {
+          code?: string;
+        };
+        e.code = 'SQLITE_CONSTRAINT_UNIQUE';
+        throw e;
+      }
+    }
+    this.projects.set(row.id, { ...row });
+  }
+
+  findById(id: string): ProjectRow | null {
+    const insert = this.projects.get(id);
+    return insert ? this.toRow(insert) : null;
+  }
+
+  findByPath(projectPath: string): ProjectRow | null {
+    for (const insert of this.projects.values()) {
+      if (insert.path === projectPath) return this.toRow(insert);
+    }
+    return null;
+  }
+
+  listAll(): ProjectRow[] {
+    return Array.from(this.projects.values())
+      .map((insert) => this.toRow(insert))
+      .sort((a, b) => {
+        // Default-Project ans Ende.
+        const aDefault = a.id === DEFAULT_PROJECT_ID ? 1 : 0;
+        const bDefault = b.id === DEFAULT_PROJECT_ID ? 1 : 0;
+        if (aDefault !== bDefault) return aDefault - bDefault;
+        return a.name.localeCompare(b.name, 'en', { sensitivity: 'base' });
+      });
+  }
+
+  reassignSession(sessionId: string, newProjectId: string): number {
+    const session = this.sessions.get(sessionId);
+    if (!session) return 0;
+    session.project_id = newProjectId;
+    return 1;
+  }
+
+  listSessionsForProject(projectId: string): Array<{ id: string; cwd: string }> {
+    const out: Array<{ id: string; cwd: string }> = [];
+    for (const s of this.sessions.values()) {
+      if (s.project_id === projectId) out.push({ id: s.id, cwd: s.cwd });
+    }
+    return out;
+  }
+
+  // Test-Hilfe: Session zur Map hinzufügen, ohne über Sessions-Repo zu gehen.
+  seedSession(session: { id: string; cwd: string; project_id: string }): void {
+    this.sessions.set(session.id, { ...session });
+  }
+}
+
+// Helper: ScannedProject + DEFAULT_PROJECT_NAME → finaler Anzeigename.
+// Wenn der Ordner-Basename leer ist (Edge-Case bei Root-Pfaden), fällt der ganze Pfad rein.
+export function scannedProjectName(p: ScannedProject): string {
+  const base = path.basename(p.path);
+  return base.length > 0 ? base : p.path;
 }

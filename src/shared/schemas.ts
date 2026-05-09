@@ -110,3 +110,52 @@ export const SessionResumeInputSchema = z.object({
   cols: z.number().int().positive(),
   rows: z.number().int().positive(),
 });
+
+// --- Workspace / Projects (Sprint 4) ---------------------------------
+
+// CLAUDE.md-YAML-Frontmatter laut Architektur Kapitel 5.
+//
+// Konvention: trigger_phrases sind strict-Pflicht (in Working-Rules referenziert),
+// alle anderen Felder sind optional, damit ein Projekt mit minimalem Frontmatter
+// (z.B. nur ein workbench-Block ohne default_model) parsebar bleibt.
+//
+// on_demand_files akzeptiert sowohl die ausführliche Objekt-Form (path/trigger/auto_inject)
+// als auch ein einfaches Pfad-Array — die Validation bleibt locker, weil Sprint 4 die
+// Liste noch nicht konsumiert (Markdown-Editor in Sprint 7 nutzt sie zuerst).
+export const ClaudeMdOnDemandFileSchema = z.union([
+  z.string().min(1),
+  z.object({
+    path: z.string().min(1),
+    trigger: z.string().optional(),
+    auto_inject: z.boolean().optional(),
+  }),
+]);
+
+export const ClaudeMdFrontmatterSchema = z.object({
+  workbench: z.object({
+    project_name: z.string().min(1).optional(),
+    default_model: z.string().optional(),
+    current_phase_file: z.string().optional(),
+    trigger_phrases: z.object({
+      docs_update: z.string().min(1),
+      commit: z.string().min(1),
+    }),
+    on_demand_files: z.array(ClaudeMdOnDemandFileSchema).optional(),
+  }),
+});
+
+// Output des Parsers (kein wrapper um z.any/passthrough — wir wollen, dass die
+// Renderer-Seite mit einem flachen Frontmatter arbeitet, das exakt geprüft ist).
+export type ClaudeMdFrontmatter = z.infer<typeof ClaudeMdFrontmatterSchema>;
+
+// project:add nimmt einen Pfad und prüft im Main, dass eine CLAUDE.md drinliegt.
+// Path ist absolute (dialog.showOpenDialog liefert ohnehin nur absolute Pfade).
+export const ProjectAddInputSchema = z.object({
+  path: z.string().min(1),
+});
+
+// project:read-claude-md liest die CLAUDE.md eines bekannten Projekts und parst sie.
+// projectId ist eine UUID (DB-Primary-Key); kein Renderer schickt freie Pfade rein.
+export const ProjectReadCfgInputSchema = z.object({
+  projectId: z.string().min(1),
+});

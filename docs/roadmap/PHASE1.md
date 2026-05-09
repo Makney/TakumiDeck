@@ -135,7 +135,7 @@ Expandable Mehrzeilen-Textarea unter dem Terminal.
 
 Projekt-Erkennung und -Verwaltung.
 
-### Feature: Workspace-Scanner
+### Feature: Workspace-Scanner ✅
 
 Erkennt Projekte im konfigurierten Workspace-Ordner.
 
@@ -143,7 +143,7 @@ Erkennt Projekte im konfigurierten Workspace-Ordner.
 - Marker: `CLAUDE.md` = Pflicht, `.git` = optional
 - Initial-Scan beim App-Start + manueller Refresh-Button
 
-### Feature: CLAUDE.md-Parser
+### Feature: CLAUDE.md-Parser ✅
 
 Liest YAML-Frontmatter und Markdown-Body.
 
@@ -152,7 +152,7 @@ Liest YAML-Frontmatter und Markdown-Body.
 - Cache in SQLite, Re-Parse bei Refresh
 - Read-Only durch die App (User editiert via Markdown-Editor)
 
-### Feature: Project-Sidebar
+### Feature: Project-Sidebar ✅
 
 Übersicht aller bekannten Projekte.
 

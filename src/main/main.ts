@@ -9,11 +9,18 @@ import { registerSettingsIpc } from './ipc/settings';
 import { registerAppIpc } from './ipc/app';
 import { registerPtyIpc } from './ipc/pty';
 import { registerSessionIpc } from './ipc/session';
+import { registerProjectIpc, syncScannedToDb } from './ipc/project';
 import { PtyManager } from './pty/manager';
 import { realPtySpawn } from './pty/spawn';
 import { SessionRepository, SqliteSessionDriver } from './db/repos/sessions';
-import { ensureDefaultProject } from './db/repos/projects';
+import {
+  ensureDefaultProject,
+  ProjectRepository,
+  SqliteProjectDriver,
+  DEFAULT_PROJECT_ID,
+} from './db/repos/projects';
 import { SessionLifecycle } from './sessions/lifecycle';
+import { scanWorkspace, realFsDriver } from './workspace/scanner';
 
 // Squirrel-Installer: bei Setup/Update-Events sofort beenden, bevor BrowserWindow erstellt wird.
 if (started) {
@@ -81,18 +88,38 @@ function createMainWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     const settings = SettingsStore.initialize(getSettingsPath());
     const db = openDatabase(getDatabasePath());
 
-    // FK-Lifeline für Sprint 2: solange der Workspace-Scanner (Sprint 4) noch fehlt,
-    // hängen alle Sessions an einem stabilen Default-Projekt.
+    // Default-Project wird beibehalten — Sprint 4 erkennt es als Legacy-Bucket
+    // und versucht, dessen Sessions per cwd-Prefix-Match auf echte Projects umzuhängen
+    // (siehe ENTSCHEIDUNGEN.md "Default-Project-Migration").
     ensureDefaultProject(db, settings.read().workspace_path);
 
+    const projectRepo = new ProjectRepository(new SqliteProjectDriver(db));
     const sessions = new SessionRepository(new SqliteSessionDriver(db));
     const lifecycle = new SessionLifecycle(sessions);
     ptyManager = new PtyManager(realPtySpawn);
+
+    // Sprint-4-Initial-Pass: workspace_path scannen, neue Projekte einfügen,
+    // dann die Sprint-2/3-Default-Sessions per cwd-Prefix umhängen. Ein Hard-Crash
+    // im Scanner darf den App-Start nicht blocken — daher try/catch um den ganzen Pass.
+    try {
+      const workspacePath = settings.read().workspace_path;
+      const scanned = await scanWorkspace(workspacePath, realFsDriver);
+      const insertedCount = syncScannedToDb(projectRepo, scanned, logger);
+      const moved = projectRepo.remapSessionsByCwdPrefix(
+        DEFAULT_PROJECT_ID,
+        projectRepo.listAll(),
+      );
+      logger.info(
+        `[startup] workspace gescannt path=${workspacePath} gefunden=${scanned.length} neu=${insertedCount} sessions_umgehängt=${moved}`,
+      );
+    } catch (e) {
+      logger.warn('[startup] Initial-Workspace-Scan fehlgeschlagen', e);
+    }
 
     registerSettingsIpc(settings);
     registerAppIpc();
@@ -110,6 +137,12 @@ app.whenReady().then(() => {
       settings,
       getWebContents: () => mainWindow?.webContents ?? null,
       log: logger,
+    });
+    registerProjectIpc({
+      projects: projectRepo,
+      settings,
+      log: logger,
+      getMainWindow: () => mainWindow,
     });
 
     logger.info('TakumiDeck startet', {

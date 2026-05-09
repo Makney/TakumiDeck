@@ -20,6 +20,35 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Season 4 — Workspace
+
+**Ziel:** Sprint-4-Workspace-Kern: Workspace-Scanner (rekursiv, max-depth 5, Stop bei `CLAUDE.md` / `.git`), CLAUDE.md-Parser mit zod-validiertem `workbench`-Frontmatter, Project-Sidebar (240 px) mit Active-Highlight + Add/Refresh-Buttons, Per-Projekt-Tab-Filter, einmalige `cwd`-Prefix-Migration der Sprint-2/3-Default-Sessions auf echte Projekte. Ausdrücklich **kein** Live-Watcher (Phase 2), **kein** Per-Projekt-Modell-Hook (Sprint 5), **kein** Verlauf-Panel (Sprint 6), **keine** neue Schema-Migration `0002`.
+
+**Ergebnis:** Alle drei Feature-Blöcke ✅. Workspace-Scanner mit Driver-Injection (FsLikeDriver), CLAUDE.md-Parser über `gray-matter` + `ClaudeMdFrontmatterSchema`, LeftSidebar mit Legacy-Bucket-Logik, TabContainer mit projekt-scoped Filter und projekt-scopierter Tab-Navigation. Mid-Sprint-Erweiterung: `session_count` als LEFT-JOIN-Aggregat im `projects`-Listing (war nötig für die Legacy-Bucket-Sichtbarkeit, die initial nur an Live-Tabs hing). Tests: 147 grün insgesamt (56 neue, davon 8 Scanner, 9 Parser, 13 Repo + 2 für `session_count`, 3 UI-Store, 22 Sessions-Store mit erweitertem Projekt-Filter; 91 aus Sprint 1–3 unverändert). Suite-Lauf ~630 ms — komfortabel unter der Schmerzgrenze.
+
+**Gut gelaufen:**
+
+- **Variants-Pflicht 6× erfüllt vor dem ersten Code.** Fünf Architektur-Variants (Scan-Strategie, Parser-Library, Default-Migration, Tab-Filter, Sidebar-State-Lokation) plus eine Scope-Variant (Per-Projekt-Modell jetzt vs. Sprint 5) wurden mit Effort-Tabellen + Empfehlung vor dem ersten File-Edit geliefert. Der User hat alle sechs Empfehlungen direkt übernommen — keine Mid-Sprint-Umentscheidungen. Die Memory-Convention „Daily-Driver-Variante als Empfehlung" passt für UX-Entscheidungen, war hier aber technisch (Async/Sync, Library-Wahl etc.) — die Empfehlung „A" deckt sich trotzdem fast immer mit dem konvenienteren Pfad.
+- **Driver-Injection-Pattern aus Sprint 1/2/3 trägt weiter.** `FsLikeDriver` für den Scanner und `ProjectDbDriver` mit `InMemoryProjectDriver` für Repo-Tests sind 1:1 vom Migration-Runner, PtyManager und SessionRepository abgekupfert. Tests fahren ohne echtes Filesystem und ohne SQLite-Verbindung — die better-sqlite3-ABI-Schuld aus Sprint 1 trifft die Sprint-4-Tests gar nicht erst.
+- **`gray-matter` sparte Edge-Case-Eigenbau.** Die CLAUDE.md des TakumiDeck-Projekts selbst enthält im Markdown-Body mehrere `---`-Trennlinien; ein selbst geschriebener YAML+Body-Splitter wäre genau dort gestolpert. Library-Pick zahlte sich sofort aus, ohne dass die Bundle-Größe relevant gewachsen wäre.
+- **Sidebar-Setup nach `td-*`-Tokens trivial.** Die CSS-Variablen aus `tokens.css` (Claude-Design-Export, Sprint 1) decken Sidebar-Items, Badges, Empty-States und Hover-Verhalten vollständig ab — der Sidebar-CSS-Block ist ~100 Zeilen ohne neue Tokens.
+- **Tabs-Filter konsistent zu Sprint-3-Tab-Persistenz.** Variante A (alle xterm dauerhaft mounted, CSS-Toggle) hat sich in Sprint 4 als natürlicher Filter-Layer fortgesetzt — keine widersprüchlichen Mount/Unmount-Pfade, kein Snapshot-Replay-Problem.
+
+**Gebremst durch:**
+
+- **`session_count`-Bedarf erst beim ersten Smoke-Test gesehen.** Die initiale Implementation hatte die Legacy-Bucket-Sichtbarkeit am Renderer-Tab-Count festgemacht — was logisch falsch ist, weil Sprint 4 keine historischen Sessions als Tabs lädt. Folge: Bucket wäre nie aufgetaucht, der ganze Migrations-Pfad „Auto-Match + Legacy-Bucket" wäre unsichtbar geblieben. Fix: LEFT-JOIN-Aggregat im SQL- und InMemory-Driver, neuer `session_count`-Field auf `ProjectRow`. ~20 Zeilen Code, 2 zusätzliche Tests, ~5 Min Diagnose nach User-Screenshot.
+- **`cwd`-Mismatch beim Sprint-2/3-Remap.** Sprint 2/3 hat den `cwd` aus `settings.workspace_path` (= Parent-Ordner aller Projekte, z.B. `D:\Projekte`) gespawnt — der `cwd`-Prefix-Match findet keinen Match auf einen echten Project-Pfad, weil der Workspace *oberhalb* der Projekte liegt. Folge: alle 19 Sprint-2/3-Sessions blieben im Legacy-Bucket. Architektur-Variante A („Auto-Match + Legacy-Bucket") deckt das datenverlust-frei ab, aber das Briefing hatte den cwd-Mismatch nicht antizipiert — wäre Sprint 4 strikt zur Sprint-2/3-Logik kompatibel gewesen, wären die Sessions remapbar gewesen. Lehre: für Neusessions ab Sprint 4 ist `cwd = activeProject.path` (gefixt im NewSession-Modal-Pfad), für Altlasten greift Sprint 6 (Verlauf-Panel). Beides in TECH_SCHULDEN.md festgehalten.
+- **Empty-State-Cosmetic mit DB-Rohnamen.** Beim Klick auf den Legacy-Bucket zeigt der TabContainer-Empty-State *„Keine Sessions in `__default__`."* — die Sidebar daneben rendert denselben Eintrag korrekt als „Sprint-2/3-Legacy". Zwei separate Code-Pfade, der Sidebar hat eine Sonderbehandlung, der TabContainer nicht. Fix wäre ein Helper, ist aber rein kosmetisch. Habe ich ohne den Fix in TECH_SCHULDEN.md verschoben, weil der User die Trigger-Phrase direkt nach „Option A wählen" gefolgt hat — kein Cosmetic-Slot dazwischen.
+
+**Für nächste Season:**
+
+- **Sprint 5 nimmt Per-Projekt-Modell aus CLAUDE.md mit.** Frage 6 (B = verschieben) hat den Hook absichtlich auf Sprint 5 gelegt — Sprint 5 fasst ohnehin die Modell-Logik fürs Token-Dashboard an und kann dort den `default_model` aus `activeProject.frontmatter.workbench.default_model` mit Fallback auf `settings.default_model` einbauen. Die Parser-Infrastruktur ist da, der IPC-Channel `project:read-claude-md` liefert das Datum.
+- **Cwd-Prefix-Match war pragmatisch, nicht strict.** Wenn der User in Phase 2 anfängt, Sub-Ordner als eigene Projects zu adden (z.B. `Monorepo/packages/foo` als eigenes Projekt neben `Monorepo`), würde der jetzige Prefix-Match das innere Projekt bevorzugen, falls es alphabetisch zuerst kommt — nicht das tieferes-Projekt-gewinnt-Pattern. Tests dokumentieren das Verhalten explizit. Falls es jemals zum Problem wird: in der Match-Logik nach `path.length` desc sortieren (längster Match gewinnt). Für MVP nicht nötig.
+- **`displayProjectName(p)`-Helper bei nächstem Renderer-Touch mitnehmen.** Empty-State-Cosmetic in TECH_SCHULDEN.md — ~5-Zeilen-Fix, der bei jedem Sprint-5-Modal/Panel-Touch nebenher mitgehen kann, ohne eigenen Slot zu brauchen.
+- **Initial-Active-Project-Auswahl ist heuristisch.** LeftSidebar wählt beim Mount das erste *nicht-Legacy*-Projekt als aktiv — ohne Persistenz der letzten Auswahl. Sprint 5+ könnte das in `useUiStore` über `localStorage` oder `settings.json` persistieren, damit der User nach App-Restart wieder beim letzten Projekt landet. Kleiner Komfort, kein Blocker.
+
+---
+
 ## Season 3 — Multi-Session
 
 **Ziel:** Sprint-3-Multi-Session-Kern: Tab-System mit dauerhaft mounted xterm-Instanzen, vollständiger Session-Lifecycle (running/completed/archived/interrupted/error), Resume-Funktion mit gespeichertem Modell, NewSessionModal mit Type- und Modell-Picker, Notizen pro Session mit Debounce-Auto-Save, App-Quit ohne Status-Lärm. Ausdrücklich **kein** State-Detection (Sprint 5), **kein** Verlauf-Panel (Sprint 6), **kein** Settings-UI (Sprint 8).

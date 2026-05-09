@@ -1,16 +1,17 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { AppSettings, SessionStatus } from '@shared/types';
-import { useSessionStore } from '../stores/sessions';
+import { useSessionStore, selectTabsForProject } from '../stores/sessions';
+import { useUiStore } from '../stores/ui';
+import { useProjectStore } from '../stores/projects';
 import { TerminalTab } from './TerminalTab';
 import { NewSessionModal } from '../modals/NewSessionModal';
 import { NotesFooter } from '../components/NotesFooter';
 
-// Sprint-3-Tab-Container. Hält die Tab-Bar (.td-tab Pills + +-Button), den
-// Multi-Terminal-Stack (alle Tabs dauerhaft mounted, aktiver per CSS sichtbar →
-// Variante A) und den Notes-Footer.
-//
-// Frische Sessions werden über die NewSessionModal gestartet, geschlossene Tabs
-// können über den Resume-Button auf der Tab-Pille reanimiert werden.
+// Sprint-3-Tab-Container, in Sprint 4 erweitert um Per-Projekt-Filter:
+// - Tab-Bar zeigt nur Tabs des aktiven Projekts (Variante A: Renderer-Filter).
+// - Multi-Terminal-Stack rendert weiterhin alle xterm-Instanzen dauerhaft mounted
+//   (Sprint-3-Variante A); CSS verbirgt Tabs anderer Projekte.
+// - NewSessionModal nutzt den Pfad des aktiven Projekts als cwd.
 
 interface Props {
   settings: AppSettings;
@@ -25,6 +26,37 @@ export function TabContainer({ settings }: Props) {
   const nextTab = useSessionStore((s) => s.nextTab);
   const prevTab = useSessionStore((s) => s.prevTab);
   const setStatus = useSessionStore((s) => s.setStatus);
+
+  const activeProjectId = useUiStore((s) => s.activeProjectId);
+  const projects = useProjectStore((s) => s.projects);
+
+  const activeProject = useMemo(
+    () => (activeProjectId ? projects.find((p) => p.id === activeProjectId) ?? null : null),
+    [projects, activeProjectId],
+  );
+
+  // Per-Projekt-Filter (Sprint-4-Variante A): die Tab-Bar zeigt nur Tabs, die zum
+  // aktiven Projekt gehören. Der Multi-Terminal-Stack rendert weiterhin alle Tabs
+  // (CSS-`display:none` verbirgt sie), damit xterm-Buffer und PTYs der inaktiven
+  // Projekte beim Wechsel intakt bleiben.
+  const tabsInActiveProject = useMemo(
+    () => (activeProjectId ? selectTabsForProject(tabs, activeProjectId) : []),
+    [tabs, activeProjectId],
+  );
+
+  // Wenn das aktive Projekt wechselt: aktive Tab-ID auf den ersten Tab des neuen
+  // Projekts setzen (oder null, wenn das neue Projekt keine Tabs hat). Sonst
+  // sähe der User die Tab-Bar des einen Projekts, aber das Terminal des anderen.
+  useEffect(() => {
+    if (!activeProjectId) {
+      if (activeId !== null) setActive(null);
+      return;
+    }
+    const stillValid = tabsInActiveProject.some((t) => t.sessionId === activeId);
+    if (stillValid) return;
+    const first = tabsInActiveProject[0];
+    setActive(first ? first.sessionId : null);
+  }, [activeProjectId, tabsInActiveProject, activeId, setActive]);
 
   const [showModal, setShowModal] = useState(false);
   // Tabs, die in dieser Session-Lebensdauer schon gespawnt wurden — verhindert,
@@ -41,21 +73,24 @@ export function TabContainer({ settings }: Props) {
   }, [showModal]);
 
   // Globale Keyboard-Shortcuts: Ctrl+N neue Session, Ctrl+Tab / Ctrl+Shift+Tab Wechsel.
+  // Tab-Navigation ist auf das aktive Projekt beschränkt (siehe Sprint-4-Filter).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!e.ctrlKey) return;
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
+        if (!activeProjectId) return; // ohne Projekt-Auswahl kein +-Modal sinnvoll
         setShowModal(true);
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        if (e.shiftKey) prevTab();
-        else nextTab();
+        if (!activeProjectId) return;
+        if (e.shiftKey) prevTab(activeProjectId);
+        else nextTab(activeProjectId);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [nextTab, prevTab]);
+  }, [nextTab, prevTab, activeProjectId]);
 
   const handleClose = useCallback(
     async (sessionId: string) => {
@@ -97,11 +132,16 @@ export function TabContainer({ settings }: Props) {
 
   const handleNewSession = useCallback(
     (input: { title: string; type: 'feature' | 'bug' | 'review' | 'docs-sync'; model: string }) => {
+      if (!activeProjectId || !activeProject) return;
+      // Sprint-4-Default für cwd: der Pfad des aktiven Projekts. settings.workspace_path
+      // war Sprint-3-Lifeline, weil es nur das Default-Projekt gab — jetzt sind Sessions
+      // immer im Kontext eines konkreten Projekts.
       const tab = addTab({
+        projectId: activeProjectId,
         title: input.title,
         type: input.type,
         model: input.model,
-        cwd: settings.workspace_path,
+        cwd: activeProject.path,
       });
       // Diesen Tab als spawn-pflichtig markieren — TerminalTab feuert dann pty:create.
       setSpawnedIds((prev) => {
@@ -111,18 +151,21 @@ export function TabContainer({ settings }: Props) {
       });
       setShowModal(false);
     },
-    [addTab, settings.workspace_path],
+    [addTab, activeProjectId, activeProject],
   );
+
+  const canAddSession = activeProjectId !== null && activeProject !== null;
 
   return (
     <div className="td-tab-container">
       <TabBar
-        tabs={tabs.map((t) => ({
+        tabs={tabsInActiveProject.map((t) => ({
           sessionId: t.sessionId,
           title: t.title,
           status: t.status,
           isActive: t.sessionId === activeId,
         }))}
+        canAdd={canAddSession}
         onSelect={setActive}
         onClose={handleClose}
         onResume={handleResume}
@@ -130,18 +173,24 @@ export function TabContainer({ settings }: Props) {
       />
 
       <div className="td-tab-host">
-        {tabs.length === 0 && (
+        {tabsInActiveProject.length === 0 && (
           <div className="td-tab-empty">
-            <p>Keine Sessions geöffnet.</p>
-            <p>
-              <button
-                type="button"
-                className="td-tab-empty-cta"
-                onClick={() => setShowModal(true)}
-              >
-                + Neue Session (Ctrl+N)
-              </button>
-            </p>
+            {activeProject ? (
+              <>
+                <p>Keine Sessions in „{activeProject.name}".</p>
+                <p>
+                  <button
+                    type="button"
+                    className="td-tab-empty-cta"
+                    onClick={() => setShowModal(true)}
+                  >
+                    + Neue Session (Ctrl+N)
+                  </button>
+                </p>
+              </>
+            ) : (
+              <p>Wähle links ein Projekt aus, um Sessions zu starten.</p>
+            )}
           </div>
         )}
         {tabs.map((tab) => (
@@ -167,7 +216,7 @@ export function TabContainer({ settings }: Props) {
 
       {activeId && <NotesFooter sessionId={activeId} />}
 
-      {showModal && (
+      {showModal && canAddSession && (
         <NewSessionModal
           defaultModel={settings.default_model}
           onCancel={() => setShowModal(false)}
@@ -180,13 +229,14 @@ export function TabContainer({ settings }: Props) {
 
 interface TabBarProps {
   tabs: Array<{ sessionId: string; title: string; status: SessionStatus; isActive: boolean }>;
+  canAdd: boolean;
   onSelect: (sessionId: string) => void;
   onClose: (sessionId: string) => void;
   onResume: (sessionId: string) => void;
   onAdd: () => void;
 }
 
-function TabBar({ tabs, onSelect, onClose, onResume, onAdd }: TabBarProps) {
+function TabBar({ tabs, canAdd, onSelect, onClose, onResume, onAdd }: TabBarProps) {
   return (
     <div className="td-tabs">
       {tabs.map((tab) => (
@@ -225,7 +275,13 @@ function TabBar({ tabs, onSelect, onClose, onResume, onAdd }: TabBarProps) {
           </button>
         </div>
       ))}
-      <button type="button" className="td-tab-add" title="Neue Session (Ctrl+N)" onClick={onAdd}>
+      <button
+        type="button"
+        className="td-tab-add"
+        title={canAdd ? 'Neue Session (Ctrl+N)' : 'Erst ein Projekt links auswählen'}
+        onClick={onAdd}
+        disabled={!canAdd}
+      >
         +
       </button>
     </div>

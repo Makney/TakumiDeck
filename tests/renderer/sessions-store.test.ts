@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useSessionStore } from '../../src/renderer/stores/sessions';
+import {
+  useSessionStore,
+  selectTabsForProject,
+} from '../../src/renderer/stores/sessions';
 
 // Vor jedem Test den Store auf den Default-State zurücksetzen — Zustand persistiert
 // sonst zwischen Tests innerhalb derselben Datei (Modul-State).
@@ -7,7 +10,10 @@ beforeEach(() => {
   useSessionStore.setState({ tabs: [], activeId: null });
 });
 
+const PROJ = 'proj-test';
+
 const baseInput = {
+  projectId: PROJ,
   title: 'Tab',
   type: 'feature' as const,
   model: 'claude-sonnet-4-6',
@@ -36,6 +42,11 @@ describe('useSessionStore.addTab', () => {
     expect(tab.notesDraft).toBe('');
     expect(tab.notesSaved).toBe('');
   });
+
+  it('persistiert die projectId am Tab', () => {
+    const tab = useSessionStore.getState().addTab(baseInput);
+    expect(tab.projectId).toBe(PROJ);
+  });
 });
 
 describe('useSessionStore.closeTab', () => {
@@ -51,11 +62,9 @@ describe('useSessionStore.closeTab', () => {
     const a = useSessionStore.getState().addTab(baseInput);
     const b = useSessionStore.getState().addTab(baseInput);
     const c = useSessionStore.getState().addTab(baseInput);
-    // c ist gerade aktiv. Schließen → b sollte aktiv werden.
     expect(useSessionStore.getState().activeId).toBe(c.sessionId);
     useSessionStore.getState().closeTab(c.sessionId);
     expect(useSessionStore.getState().activeId).toBe(b.sessionId);
-    // Jetzt b schließen → a wird aktiv.
     useSessionStore.getState().closeTab(b.sessionId);
     expect(useSessionStore.getState().activeId).toBe(a.sessionId);
   });
@@ -71,7 +80,6 @@ describe('useSessionStore.closeTab', () => {
   it('lässt activeId unangetastet, wenn ein nicht-aktiver Tab geschlossen wird', () => {
     const a = useSessionStore.getState().addTab(baseInput);
     const b = useSessionStore.getState().addTab(baseInput);
-    // b ist aktiv. a (nicht-aktiv) schließen → b bleibt aktiv.
     useSessionStore.getState().closeTab(a.sessionId);
     expect(useSessionStore.getState().activeId).toBe(b.sessionId);
   });
@@ -82,6 +90,17 @@ describe('useSessionStore.closeTab', () => {
     expect(useSessionStore.getState().tabs).toHaveLength(0);
     expect(useSessionStore.getState().activeId).toBeNull();
   });
+
+  it('rotiert beim Close nur innerhalb des Projekts (kein Sprung in fremdes Projekt)', () => {
+    // Sprint-4-Verhalten: Tab in Projekt A schließen darf nicht versehentlich
+    // einen Tab in Projekt B aktivieren.
+    const a1 = useSessionStore.getState().addTab({ ...baseInput, projectId: 'A' });
+    useSessionStore.getState().addTab({ ...baseInput, projectId: 'B' });
+    useSessionStore.getState().setActive(a1.sessionId);
+    useSessionStore.getState().closeTab(a1.sessionId);
+    // Projekt A hat keinen Nachbarn → activeId muss null sein, nicht der B-Tab.
+    expect(useSessionStore.getState().activeId).toBeNull();
+  });
 });
 
 describe('useSessionStore Tab-Navigation', () => {
@@ -90,28 +109,38 @@ describe('useSessionStore Tab-Navigation', () => {
     const b = useSessionStore.getState().addTab(baseInput);
     const c = useSessionStore.getState().addTab(baseInput);
     useSessionStore.getState().setActive(a.sessionId);
-    useSessionStore.getState().nextTab();
+    useSessionStore.getState().nextTab(PROJ);
     expect(useSessionStore.getState().activeId).toBe(b.sessionId);
-    useSessionStore.getState().nextTab();
+    useSessionStore.getState().nextTab(PROJ);
     expect(useSessionStore.getState().activeId).toBe(c.sessionId);
-    useSessionStore.getState().nextTab();
+    useSessionStore.getState().nextTab(PROJ);
     expect(useSessionStore.getState().activeId).toBe(a.sessionId);
   });
 
   it('prevTab rotiert ans Listenanfang und zurück', () => {
     const a = useSessionStore.getState().addTab(baseInput);
-    const b = useSessionStore.getState().addTab(baseInput);
+    useSessionStore.getState().addTab(baseInput);
     const c = useSessionStore.getState().addTab(baseInput);
     useSessionStore.getState().setActive(a.sessionId);
-    useSessionStore.getState().prevTab();
+    useSessionStore.getState().prevTab(PROJ);
     expect(useSessionStore.getState().activeId).toBe(c.sessionId);
   });
 
   it('Navigation ist No-op bei einem oder null Tabs', () => {
-    expect(() => useSessionStore.getState().nextTab()).not.toThrow();
+    expect(() => useSessionStore.getState().nextTab(PROJ)).not.toThrow();
     const a = useSessionStore.getState().addTab(baseInput);
-    useSessionStore.getState().nextTab();
+    useSessionStore.getState().nextTab(PROJ);
     expect(useSessionStore.getState().activeId).toBe(a.sessionId);
+  });
+
+  it('nextTab navigiert nur innerhalb des angegebenen Projekts', () => {
+    const a1 = useSessionStore.getState().addTab({ ...baseInput, projectId: 'A' });
+    useSessionStore.getState().addTab({ ...baseInput, projectId: 'B' });
+    const a2 = useSessionStore.getState().addTab({ ...baseInput, projectId: 'A' });
+    useSessionStore.getState().setActive(a1.sessionId);
+    useSessionStore.getState().nextTab('A');
+    // Erwartet: a1 → a2 (B-Tab wird übersprungen).
+    expect(useSessionStore.getState().activeId).toBe(a2.sessionId);
   });
 });
 
@@ -141,11 +170,31 @@ describe('useSessionStore.setActive', () => {
     useSessionStore.getState().setActive('ghost-id');
     expect(useSessionStore.getState().activeId).toBe(a.sessionId);
   });
+
+  it('akzeptiert null und räumt activeId auf', () => {
+    useSessionStore.getState().addTab(baseInput);
+    useSessionStore.getState().setActive(null);
+    expect(useSessionStore.getState().activeId).toBeNull();
+  });
 });
 
-// Smoke-Test: crypto.randomUUID muss in der Test-Umgebung verfügbar sein
-// (Node 24 liefert es global). Vermeidet einen still-failing Test, falls die Runtime
-// das Global mal nicht hätte.
+describe('selectTabsForProject', () => {
+  it('liefert nur Tabs des angegebenen Projekts', () => {
+    useSessionStore.getState().addTab({ ...baseInput, projectId: 'A', title: 'a1' });
+    useSessionStore.getState().addTab({ ...baseInput, projectId: 'B', title: 'b1' });
+    useSessionStore.getState().addTab({ ...baseInput, projectId: 'A', title: 'a2' });
+    const tabs = useSessionStore.getState().tabs;
+    const aTabs = selectTabsForProject(tabs, 'A');
+    expect(aTabs.map((t) => t.title)).toEqual(['a1', 'a2']);
+  });
+
+  it('liefert leere Liste, wenn das Projekt keine Tabs hat', () => {
+    useSessionStore.getState().addTab({ ...baseInput, projectId: 'A' });
+    const tabs = useSessionStore.getState().tabs;
+    expect(selectTabsForProject(tabs, 'B')).toEqual([]);
+  });
+});
+
 it('crypto.randomUUID ist im Test-Environment verfügbar', () => {
   expect(typeof crypto.randomUUID).toBe('function');
   vi.useRealTimers();
