@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppSettings, IpcResult } from '@shared/types';
 import { TabContainer } from './panels/TabContainer';
 import { HistoryPane } from './panels/HistoryPane';
@@ -7,10 +7,13 @@ import { EditorPane } from './panels/EditorPane';
 import { RightStack } from './panels/RightStack';
 import { PlanPane } from './panels/PlanPane';
 import { StatsPane } from './panels/StatsPane';
+import { TitleBar } from './panels/TitleBar';
 import { UsageDetailModal } from './modals/UsageDetailModal';
+import { SettingsModal } from './modals/SettingsModal';
 import { useUsageStore } from './stores/usage';
 import { useProjectStore } from './stores/projects';
 import { useUiStore } from './stores/ui';
+import { useFileTabsStore } from './stores/fileTabs';
 
 // Renderer-Layout — 4-Spalten-Grid nach docs/design/claude-export/styles.css
 // (.td-main, Zeilen 122-195). Die ursprüngliche Sprint-7-Variante mit Editor
@@ -37,6 +40,10 @@ export function App() {
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const usageBars = useUsageStore((s) => s.bars);
   const projects = useProjectStore((s) => s.projects);
+  const hydrateFileTabs = useFileTabsStore((s) => s.hydrateFromStorage);
+  const fileTabsHydrateRef = useRef(false);
+  const showSettingsModal = useUiStore((s) => s.showSettingsModal);
+  const setShowSettingsModal = useUiStore((s) => s.setShowSettingsModal);
   const activeProject = useMemo(
     () =>
       activeProjectId ? projects.find((p) => p.id === activeProjectId) ?? null : null,
@@ -58,6 +65,30 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  // Sprint-8-Hydrate: Datei-Tab-Stack aus localStorage rekonstruieren. Idempotent
+  // via useRef-Guard (StrictMode-Pattern), damit der zweite Mount im Dev-Mode den
+  // Hydrate nicht doppelt triggert (Hydrate selbst ist auch idempotent, aber der
+  // Ref macht's billig sichtbar).
+  useEffect(() => {
+    if (fileTabsHydrateRef.current) return;
+    fileTabsHydrateRef.current = true;
+    hydrateFileTabs();
+  }, [hydrateFileTabs]);
+
+  // Sprint 8 — globale Ctrl+K-Bindung für den Settings-Dialog (Architektur 6.0.2).
+  // Browser-Default für Ctrl+K (URL-Bar fokussieren) gibt's in Electron nicht,
+  // wir können den Shortcut frei greifen.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+      if (e.key !== 'k' && e.key !== 'K') return;
+      e.preventDefault();
+      setShowSettingsModal(true);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [setShowSettingsModal]);
 
   const detailBar = useMemo(() => {
     if (!settings || !dashboardDetailBarId) return null;
@@ -84,10 +115,7 @@ export function App() {
 
   return (
     <div className="td-app">
-      <header className="td-app-header">
-        <span className="td-app-title">TakumiDeck</span>
-        <span className="td-app-meta">v{version} · Sprint 5 (Token-Dashboard)</span>
-      </header>
+      <TitleBar version={version} />
       <main className="td-app-main">
         {/* Spalte 1: LeftSidebar, full-height */}
         <div className="td-col-left">
@@ -136,6 +164,14 @@ export function App() {
           bar={detailBar}
           result={usageBars[detailBar.id] ?? null}
           onClose={() => setDashboardDetailBar(null)}
+        />
+      )}
+      {showSettingsModal && (
+        <SettingsModal
+          initialSettings={settings}
+          appVersion={version}
+          onSettingsUpdated={(next) => setSettings(next)}
+          onClose={() => setShowSettingsModal(false)}
         />
       )}
     </div>

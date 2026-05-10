@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  AppSettings,
   ClaudeMdFrontmatter,
   GitFileChange,
   GitStatusResult,
@@ -31,6 +32,9 @@ interface Props {
   project: ProjectRow;
   frontmatter: ClaudeMdFrontmatter | null;
   hasActiveTerminal: boolean;
+  // Sprint-8: User-konfigurierbare Sensitive-Patterns aus den Settings.
+  // Werden additiv zu den hartcoded Defaults ausgewertet.
+  sensitivePatterns: AppSettings['sensitive_file_patterns'];
   onClose: () => void;
 }
 
@@ -45,6 +49,7 @@ export function PreCommitModal({
   project,
   frontmatter,
   hasActiveTerminal,
+  sensitivePatterns,
   onClose,
 }: Props) {
   const [state, setState] = useState<LoadState>({
@@ -96,8 +101,8 @@ export function PreCommitModal({
   const triggerPhrase = frontmatter?.workbench.trigger_phrases.commit ?? 'commit';
   const changedFiles = state.status?.files ?? [];
   const sensitive = useMemo(
-    () => findSensitiveFiles(changedFiles.map((f) => f.path)),
-    [changedFiles],
+    () => findSensitiveFiles(changedFiles.map((f) => f.path), sensitivePatterns),
+    [changedFiles, sensitivePatterns],
   );
 
   const canSend =
@@ -118,6 +123,11 @@ export function PreCommitModal({
       }),
     );
     setSent(true);
+    // Sprint 8 (V3-B): Header-Bar weiß nach erfolgreichem commit-Trigger nicht
+    // automatisch, dass sich Branch-State ändern könnte (z.B. Detached-HEAD bei
+    // Rebase, oder Working-Tree-Clean nach Commit). td-git-refresh-Event lädt
+    // den Cache nach — billig, weil git:status read-only ist.
+    window.dispatchEvent(new CustomEvent('td-git-refresh'));
     // Nach kurzer Bestätigungs-Anzeige automatisch schließen.
     setTimeout(() => onClose(), 800);
   };

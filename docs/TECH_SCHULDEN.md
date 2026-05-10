@@ -30,45 +30,45 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## Datei-Tabs gehen beim App-Restart verloren
+## ✅ Datei-Tabs gehen beim App-Restart verloren — aufgelöst 2026-05-10 (Sprint 8)
 
-**Bereich:** `src/renderer/stores/fileTabs.ts` (`useFileTabsStore` ohne Persistenz)
+**Bereich:** `src/renderer/stores/fileTabs.ts` (`useFileTabsStore.hydrateFromStorage`)
 
-**Was:** Der Sprint-7-Datei-Tab-Stack lebt rein in-memory. Beim App-Restart sind alle offenen Editor-Tabs (inkl. Diff-Tab) weg; der User muss sie über den Schnellzugriff oder den Datei-Browser wieder einzeln aufmachen. `savedContent` wird beim erneuten Öffnen via `fs:read` neu geladen, also kein Datenverlust — aber der User-Workflow „App schließen, am Folgetag dort weiter machen, wo ich aufgehört habe" funktioniert nicht.
+**Was:** Der Sprint-7-Datei-Tab-Stack lebt rein in-memory. Beim App-Restart sind alle offenen Editor-Tabs (inkl. Diff-Tab) weg; der User muss sie über den Schnellzugriff oder den Datei-Browser wieder einzeln aufmachen.
 
-**Warum so:** Sprint-7-Auflage „keine neue DB-Migration"; Per-Projekt-Tab-Stack analog Sprint-4-Terminal-Tabs ist konsistent (auch die sind in-memory). Der Daily-Driver-Use-Case in Sprint 7 ist „Editor + Terminal in einer Session" — und der hält sich automatisch, solange die App offen bleibt.
+**Warum so:** Sprint-7-Auflage „keine neue DB-Migration"; Per-Projekt-Tab-Stack analog Sprint-4-Terminal-Tabs ist konsistent (auch die sind in-memory).
 
-**Risiko:** UX-Reibung, wenn der User die App häufig neu startet (Updates, Crash-Recovery, Strom weg). Praktisch tolerierbar im MVP, weil Schnellzugriff plus Datei-Browser den Re-Open-Pfad in <5 s decken.
+**Risiko:** UX-Reibung beim Daily-Driver-Workflow „App schließen, am Folgetag dort weiter machen".
 
-**Auflösung:** Persistenz wahlweise über `localStorage` (analog Sprint-5-`activeProjectId`) oder über eine neue `file_tabs`-Tabelle in SQLite. localStorage reicht für MVP — pro Projekt eine Liste von relPath + activeId. Slot Sprint 8 oder Phase 2.
-
----
-
-## Sensitive-File-Patterns hartcoded statt konfigurierbar
-
-**Bereich:** `src/renderer/components/sensitiveFiles.ts` (`SENSITIVE_BASENAME_PATTERNS`)
-
-**Was:** Vier RegEx-Patterns (`.env(.*)`, `secrets.*`, `*.key`, `*.pem`) sind als Module-Konstante im Renderer hartcoded. User mit anderen Konventionen (z.B. `*.credentials.json`, `vault.yml`, `config/private/*`) können das nicht selbst ergänzen, ohne den Code zu editieren.
-
-**Warum so:** Sprint-7-Q7 Variante A. Settings-Dialog ist Sprint 8 — bis dahin gäbe es bei B (settings-konfigurierbar) keinen UI-Pfad, sondern nur Hand-Edit von `settings.json`. Hartcoded mit klarem Erweiterungs-Pfad ist sauberer als „konfigurierbar ohne UI".
-
-**Risiko:** Wer ein Custom-Sensitive-Pattern hat, bekommt im Pre-Commit-Modal keine Warnung und übersieht im schlimmsten Fall den Trigger-Send mit gelekten Credentials. Defensiv-Mittel: User schaut die File-Liste im PreCommitModal aktiv durch (das ist der Hauptzweck des Modals), und Claude refused realistischerweise „commit secrets/private/vault.yml" auf Basis seiner eigenen Heuristiken.
-
-**Auflösung:** Sprint 8 (Settings-Dialog). Schema-Erweiterung `AppSettings.sensitive_file_patterns: string[]`, Defaults wie heute. `findSensitiveFiles` bekommt das Array als zweiten Parameter — der API ist schon driver-frei, das wäre eine 5-Zeilen-Verdrahtung.
+**Auflösung:** Sprint 8 (V5-A): localStorage-Persistenz mit Schema-Versionierung (`v: 1`). Nur Tab-Identitäten (id/kind/relPath/label + activeId pro Projekt) werden gespeichert; Inhalt wird beim Hydrate per `fs:read` im Hintergrund neu geladen. Buffer-Cache bewusst weggelassen (Konflikt-UI-Vermeidung bei extern editierten Files). 7 neue Tests in `file-tabs-store.test.ts`.
 
 ---
 
-## Modell-Limits-Defaults zu hoch (1 M statt 200 k)
+## ✅ Sensitive-File-Patterns hartcoded statt konfigurierbar — aufgelöst 2026-05-10 (Sprint 8)
+
+**Bereich:** `src/renderer/components/sensitiveFiles.ts`, `AppSettings.sensitive_file_patterns`
+
+**Was:** Vier RegEx-Patterns (`.env(.*)`, `secrets.*`, `*.key`, `*.pem`) waren hartcoded. User mit Custom-Konventionen mussten den Code editieren.
+
+**Warum so:** Sprint-7-Q7 Variante A bewusst hartcoded gelassen, weil der Settings-Dialog erst Sprint 8 kommt.
+
+**Risiko:** Wer ein Custom-Sensitive-Pattern hat, bekommt im PreCommitModal keine Warnung.
+
+**Auflösung:** Sprint 8 (V8-A additiv): Neue Settings-Spalte `sensitive_file_patterns: string[]` (Default `[]`) mit Settings-Dialog-JSON-Editor. `findSensitiveFiles` nimmt das Array als zweiten Parameter, kompiliert die User-Patterns zur Laufzeit (kaputte still gedroppt). User-Patterns matchen auf den ganzen `relPath`, hartcoded Defaults bleiben Basename-only — beide Wege sind nicht abschaltbar (Sicherheits-Defaults additiv).
+
+---
+
+## ✅ Modell-Limits-Defaults zu hoch (1 M statt 200 k) — aufgelöst 2026-05-10 (Sprint 8)
 
 **Bereich:** `src/main/settings/defaults.ts` (`model_limits`)
 
-**Was:** Die Default-Werte für `claude-opus-4-7`, `claude-opus-4-6` und `claude-sonnet-4-6` stehen auf `1_000_000`. Das ist Anthropics Extended-Context-Beta-Wert; der reale Standard-Kontext für alle Modelle ist `200_000`. Folge: die Per-Session-Kontext-Bar im Token-Dashboard zeigt z.B. bei 80 k tokens nur ~8 % statt der echten ~40 % — User sieht eine grüne Bar, obwohl claude-codes `/context` schon orange wäre.
+**Was:** Default-Werte für `claude-opus-4-7`, `claude-opus-4-6` und `claude-sonnet-4-6` standen auf `1_000_000` (Extended-Context-Beta-Wert). Per-Session-Kontext-Bar zeigte bei 80 k Tokens nur ~8 % statt der realen ~40 %.
 
-**Warum so:** Architektur Kapitel 4 hat das `1_000_000` als Beispiel-Settings-JSON übernommen, ohne die Beta-vs-Standard-Differenz zu klären. Sprint 5 hat die Werte 1:1 in `buildDefaultSettings()` reingezogen und beim Smoke-Test fiel auf, dass die Kontext-Bar deshalb falsch skaliert.
+**Warum so:** Architektur Kapitel 4 hatte `1_000_000` als Beispiel-Settings-JSON übernommen; Sprint 5 hat das 1:1 in `buildDefaultSettings()` reingezogen.
 
-**Risiko:** Die Per-Session-Kontext-Bar ist als Daily-Driver-Element gedacht — wenn sie systematisch zu niedrig anzeigt, wird sie ignoriert. Außerdem könnten User unwissend auf ein hartes claude-Limit laufen, weil die Bar noch grün war. Globale 5h/weekly-Bars sind nicht betroffen (P90-basiert, nicht model_limits).
+**Risiko:** Per-Session-Kontext-Bar war systematisch zu niedrig, User hätten unwissend auf ein hartes claude-Limit laufen können.
 
-**Auflösung:** Quick-Fix: User editiert `%APPDATA%\TakumiDeck-dev\settings.json` und setzt alle `model_limits`-Werte auf `200_000`. Saubere Lösung: Defaults in `defaults.ts` anpassen, plus optional ein per-Modell-Flag `extended_context: true`, das auf `1_000_000` umstellt — sinnvoller Slot ist Sprint 8 (Settings-Dialog) oder ein Sprint-6/7-Drive-by, sobald die Datei ohnehin angefasst wird.
+**Auflösung:** Sprint 8: alle drei Werte auf `200_000` korrigiert. Extended-Context-Beta lässt sich pro Modell im Settings-Dialog (Tab Modelle, Per-Modell-Limits) auf 1 000 000 hochsetzen, wenn der User beta-aktiv ist.
 
 ---
 
@@ -102,7 +102,7 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ## Pre-Hotfix-Sessions ohne JSONL-Antwort sind dauerhaft resume-tot
 
-**Bereich:** `src/main/db/repos/sessions.ts` (`claude_session_id`-Spalte), `src/main/jsonl/watcher.ts` (Backfill-Pfad)
+**Bereich:** `src/main/db/repos/sessions.ts` (`claude_session_id`-Spalte), `src/main/jsonl/watcher.ts` (Backfill-Pfad), Sprint-8-UX-Hint in `src/renderer/panels/HistoryPane.tsx`
 
 **Was:** Sessions, die VOR dem Sprint-6-Resume-Hotfix (= Migration `0003_claude_session_id.sql`) gespawnt wurden UND nie eine JSONL-Antwort produziert haben (Spawn-Error sofort, oder User hat den Tab vor der ersten claude-Antwort geschlossen), bleiben dauerhaft resume-tot. Sie haben weder eine vom Spawn vorgegebene UUID (gab's vor dem Hotfix nicht) noch ein JSONL-File, aus dem der Watcher die UUID rückwirkend extrahieren könnte. Resume liefert einen klaren `SESSION_NO_CLAUDE_UUID`-Fehler statt eines verwirrenden „No conversation found".
 
@@ -110,7 +110,7 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 **Risiko:** User sieht im Verlauf-Panel eine Session, deren Resume mit einem klaren Fehler abbricht. Praktisch wenig Schaden — diese Sessions hatten ohnehin keine echte Konversation, der User würde sie sowieso archivieren oder neu spawnen.
 
-**Auflösung:** Keine technische Lösung möglich, weil die externe UUID nicht rekonstruierbar ist. UX-Politik: bei `SESSION_NO_CLAUDE_UUID` zeigt das Verlauf-Detail-Pane perspektivisch einen direkten „Archivieren"-Hint, weil Resume nicht mehr greift. Aktuell läuft das über die Standard-Fehlermeldung. Sprint-7-Polish-Punkt.
+**Auflösung:** Keine technische Lösung möglich (externe UUID nicht rekonstruierbar). Sprint-8-Cosmetic ✅: Verlauf-Detail-Pane rendert bei Resume-Fehler mit `code === 'SESSION_NO_CLAUDE_UUID'` jetzt eine gezielte Hint-Box („Diese Session ist nicht mehr resume-fähig") mit einem Direkt-Archivieren-Knopf statt nackter Fehlermeldung. Underlying-Schuld bleibt — UX ist aber jetzt sauber abgefedert.
 
 ---
 
@@ -200,17 +200,17 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## Crash-Recovery für orphane running-Sessions fehlt
+## ✅ Crash-Recovery für orphane running-Sessions fehlt — aufgelöst 2026-05-10 (Sprint 8)
 
-**Bereich:** `src/main/main.ts` (`app.whenReady()`), `src/main/sessions/lifecycle.ts`
+**Bereich:** `src/main/sessions/reconciliation.ts` (neu), Hook in `src/main/main.ts:124-138`
 
-**Was:** Sprint 3 deckt nur den geordneten App-Quit ab (`before-quit` patcht running → interrupted, *dann* killAll). Bei Hard-Crash (Strom weg, Task-Manager-Kill, OOM, Electron-Renderer-Crash mit Main-Mitnahme) bleibt eine Session in der DB mit `status='running'` und `ended_at IS NULL` zurück. Beim nächsten App-Start würde Sprint 6 (Verlauf-Panel) sie fälschlich als „läuft" anzeigen, obwohl der zugehörige claude-Prozess längst tot ist.
+**Was:** Sprint 3 deckte nur den geordneten App-Quit ab (`before-quit` patcht running → interrupted). Bei Hard-Crash blieb eine Session als `status='running' / ended_at IS NULL` zurück; das Sprint-6-Verlauf-Panel zeigte sie als „läuft", obwohl der claude-Prozess tot war.
 
-**Warum so:** Variante C aus dem Sprint-3-Briefing („Reconciliation beim nächsten App-Start") wurde vom User explizit auf Sprint 8 (Polish/Error-Handling) verschoben. In Sprint 3 zeigt die UI ohnehin nur Live-Tabs, nie historische Sessions — der Bug ist sichtbar erst ab Sprint 6.
+**Warum so:** Variante C aus dem Sprint-3-Briefing wurde explizit auf Sprint 8 (Polish) verschoben. In Sprint 3 zeigte die UI nur Live-Tabs, der Bug war erst ab Sprint 6 sichtbar.
 
-**Risiko:** Wer zwischen Sprint 3 und Sprint 8 die App durch Hard-Crash verliert, hat Karteileichen in der DB. Sprint 6 (Verlauf-Panel) würde sie als „running" zeigen — kein technischer Schaden, nur UI-Verwirrung. Wenn vor Sprint 6 jemand direkt in die DB schaut: dasselbe.
+**Risiko:** Karteileichen in der DB nach Hard-Crash; UI-Verwirrung im Verlauf.
 
-**Auflösung:** In `app.whenReady()` nach `openDatabase()` einen Reconciliation-Pass: über `sessions.listByStatus('running')` iterieren, alle Rows mit `ended_at IS NULL` auf `interrupted` patchen (`ended_at = now()` als Approximation, weil der Crash-Zeitpunkt nicht bekannt ist). Das Lifecycle-API existiert seit Sprint 3 und akzeptiert `running → interrupted`. Test-Idee: Session per Repo direkt mit `status='running' / ended_at=null` einfügen, App-Start-Reconciliation laufen lassen, Status auf `interrupted` und `ended_at` gesetzt erwarten.
+**Auflösung:** Sprint 8 (V4-C): `reconcileCrashedSessions(deps)` mit Driver-Injection (Sessions/Messages/Lifecycle). Beim App-Start nach `openDatabase()` werden alle running- und idle-Sessions ohne `ended_at` via `lifecycle.transition('interrupted', 'app-quit')` gepatcht; danach wird `ended_at` auf `MAX(messages.ts WHERE session_id)` korrigiert (genauester Crash-Zeit-Approximator). Sessions ohne Messages bekommen `now()` als Fallback. Idempotent (zweiter Pass macht nichts mehr). 9 neue Tests in `reconciliation.test.ts`.
 
 ---
 

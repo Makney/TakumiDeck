@@ -89,6 +89,13 @@ export function registerFsIpc(deps: {
         if (isFsNotFound(e)) {
           return err(`Datei „${input.relPath}" existiert nicht`, 'FS_NOT_FOUND');
         }
+        if (isFsPermissionDenied(e)) {
+          return err(
+            `Keine Lese-Berechtigung für „${input.relPath}". ` +
+              'Antimalware-Scanner oder Cloud-Sync (OneDrive/Dropbox) könnte die Datei locken.',
+            'FS_PERMISSION',
+          );
+        }
         log.warn(`[fs:read] readFile fehlgeschlagen path=${resolved}`, e);
         return errFromUnknown(e, 'FS_READ_FAILED');
       }
@@ -154,6 +161,14 @@ export function registerFsIpc(deps: {
             'FS_NOT_FOUND',
           );
         }
+        if (isFsPermissionDenied(e)) {
+          return err(
+            `Keine Schreib-Berechtigung für „${input.relPath}". ` +
+              'Datei könnte im Read-Only-Modus sein, von einem anderen Programm gehalten ' +
+              '(VS Code, Antimalware-Scan), oder das Volume ist read-only.',
+            'FS_PERMISSION',
+          );
+        }
         log.warn(`[fs:write] writeFile fehlgeschlagen path=${resolved}`, e);
         return errFromUnknown(e, 'FS_WRITE_FAILED');
       }
@@ -190,4 +205,13 @@ function isFsNotFound(e: unknown): boolean {
   if (typeof e !== 'object' || e === null) return false;
   const code = (e as { code?: unknown }).code;
   return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
+// Sprint 8 — Permission-denied auf allen drei OS-Flavours abdecken: EACCES (Linux/
+// macOS), EPERM (oft Windows), EBUSY (Datei ist von anderem Prozess gehalten —
+// nicht direkt Permission, aber gleiche User-Action: nochmal probieren).
+function isFsPermissionDenied(e: unknown): boolean {
+  if (typeof e !== 'object' || e === null) return false;
+  const code = (e as { code?: unknown }).code;
+  return code === 'EACCES' || code === 'EPERM' || code === 'EBUSY';
 }

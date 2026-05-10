@@ -247,13 +247,16 @@ export function TabContainer({ settings }: Props) {
       </div>
 
       {activeTab && (
-        <ActionBar
-          model={activeTab.model}
-          status={activeTab.status}
-          canCommit={activeProject !== null}
-          onOpenTemplates={() => setShowTemplatesModal(true)}
-          onOpenPreCommit={() => setShowPreCommitModal(true)}
-        />
+        <>
+          <ActionBar
+            model={activeTab.model}
+            status={activeTab.status}
+            canCommit={activeProject !== null}
+            onOpenTemplates={() => setShowTemplatesModal(true)}
+            onOpenPreCommit={() => setShowPreCommitModal(true)}
+          />
+          <KeyboardHints />
+        </>
       )}
 
       {showNewSessionModal && canAddSession && (
@@ -279,6 +282,7 @@ export function TabContainer({ settings }: Props) {
           project={activeProject}
           frontmatter={activeProjectFrontmatter}
           hasActiveTerminal={activeId !== null}
+          sensitivePatterns={settings.sensitive_file_patterns}
           onClose={() => setShowPreCommitModal(false)}
         />
       )}
@@ -349,6 +353,30 @@ function TabBar({ tabs, canAdd, onSelect, onClose, onResume, onAdd }: TabBarProp
 
 function StatusDot({ status }: { status: SessionStatus }) {
   return <span className={`td-status-dot ${status}`} aria-label={status} />;
+}
+
+// Sprint 8 — Tastatur-Hints (Architektur 6.0.2). Statisch, lädt zur Erkundung
+// ein. Erweiterte Shortcut-Konfiguration ist Phase 3.
+function KeyboardHints() {
+  return (
+    <div className="td-keyboard-hints" aria-hidden>
+      <span>
+        <kbd>Enter</kbd> senden
+      </span>
+      <span>
+        <kbd>Ctrl+T</kbd> Templates
+      </span>
+      <span>
+        <kbd>Ctrl+N</kbd> Neue Session
+      </span>
+      <span>
+        <kbd>Ctrl+K</kbd> Einstellungen
+      </span>
+      <span>
+        <kbd>Ctrl+Tab</kbd> nächster Tab
+      </span>
+    </div>
+  );
 }
 
 // Action-Bar unter dem Terminal — Sprint-6-UI-Fix nach docs/design/claude-export

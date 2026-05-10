@@ -11,6 +11,10 @@ export function openDatabase(file: string): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('synchronous = NORMAL');
+  // Sprint 8 — bei SQLITE_BUSY (z.B. paralleler Watcher-Insert + before-quit-Patch)
+  // bis zu 5 Sekunden warten, statt sofort SQLITE_BUSY zu werfen. better-sqlite3
+  // ist synchron; busy_timeout führt einen internen Backoff durch.
+  db.pragma('busy_timeout = 5000');
 
   const driver: MigrationDriver = {
     getUserVersion: () => Number(db.pragma('user_version', { simple: true })),

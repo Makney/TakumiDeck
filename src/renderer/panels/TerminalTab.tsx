@@ -158,6 +158,10 @@ export function TerminalTab({
           onStatusChange(sessionId, 'error');
           offData();
           offExit();
+          // Sprint 8 — Spawn-Fehler kann „claude-Binary nicht erreichbar" sein
+          // (typische Ursache: PATH-Wechsel ohne App-Restart). Header-Bar
+          // re-checkt seinen Health-Status, damit der ⚠-Banner sofort erscheint.
+          window.dispatchEvent(new CustomEvent('td-claude-recheck'));
         } else if (isActive) {
           terminal.focus();
         }

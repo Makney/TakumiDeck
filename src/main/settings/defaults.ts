@@ -21,14 +21,25 @@ export function buildDefaultSettings(): AppSettings {
     // wenn die Binary nicht im PATH liegt oder mehrere Installationen koexistieren.
     claude_binary_path: 'claude',
 
+    // Sprint-8-Korrektur (TECH_SCHULDEN „Modell-Limits-Defaults zu hoch"):
+    // Standard-Kontextfenster aller Modelle sind 200k. Das ältere 1M war Anthropics
+    // Extended-Context-Beta — als Default falsch, weil die Per-Session-Kontext-Bar
+    // dann grün bleibt, obwohl /context schon orange wäre.
     model_limits: {
-      'claude-opus-4-7': 1_000_000,
-      'claude-opus-4-6': 1_000_000,
-      'claude-sonnet-4-6': 1_000_000,
+      'claude-opus-4-7': 200_000,
+      'claude-opus-4-6': 200_000,
+      'claude-sonnet-4-6': 200_000,
       'claude-sonnet-4-5': 200_000,
       'claude-haiku-4-5': 200_000,
     },
     default_limit: 200_000,
+
+    // Sprint-8: User-definierte Sensitive-File-Patterns — additiv zu den
+    // hartcoded Defaults in src/renderer/components/sensitiveFiles.ts (Variante A:
+    // Defaults bleiben immer aktiv, User kann nur erweitern). Default-Wert ist
+    // ein leeres Array; Eintragsformat sind RegEx-Strings ohne Slashes (z.B.
+    // 'credentials\\.json$', 'vault\\.ya?ml$').
+    sensitive_file_patterns: [],
 
     limit_bars: [
       { id: '5h', label: '5-Stunden-Limit', window_hours: 5, filter: 'all', limit_method: 'p90' },

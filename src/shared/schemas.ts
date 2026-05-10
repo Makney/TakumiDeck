@@ -34,6 +34,11 @@ export const AppSettingsSchema = z.object({
   theme: z.enum(['dark', 'light']),
   accent_color: z.string(),
   shortcuts: z.record(z.string(), z.string()),
+  // Sprint-8 (Variante A): additive User-Patterns. Strings müssen
+  // gültige RegEx-Quellen sein; das Renderer-Util prüft per try/catch
+  // beim Compile (RegExp-Konstruktor-Fehler werden gemeldet, aber das
+  // Pattern still gedroppt — die Defaults greifen weiterhin).
+  sensitive_file_patterns: z.array(z.string()),
 });
 
 // Patch-Schema: alle Felder optional, damit settings:set teilweise updaten kann.

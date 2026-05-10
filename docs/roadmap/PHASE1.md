@@ -304,7 +304,7 @@ Vor dem Commit-Trigger.
 
 Header-Bar und Globale UI-Komponenten.
 
-### Feature: Header-Bar
+### Feature: Header-Bar ✅
 
 Globale Header-Leiste oben in der App.
 
@@ -323,7 +323,7 @@ Pill-Style-Buttons mit Schnellaktionen.
 - ctx-Mini-Bar (zeigt aktuellen Kontext-Verbrauch)
 - läuft/wartet-Status-Badge rechts
 
-### Feature: Tastatur-Hints
+### Feature: Tastatur-Hints ✅
 
 Hilfreiche Shortcuts unter der Eingabezeile.
 
@@ -385,7 +385,7 @@ Toggle-Buttons unter dem Terminal-Bereich.
 
 Abschluss-Schliff vor MVP-Release.
 
-### Feature: Settings-Dialog
+### Feature: Settings-Dialog ✅
 
 Erreichbar via Menü-Button.
 
@@ -393,7 +393,7 @@ Erreichbar via Menü-Button.
 - Mix aus UI-Forms und "Edit Raw JSON" für komplexe Settings
 - "Open Data Folder"-Button
 
-### Feature: Error-Handling
+### Feature: Error-Handling ✅
 
 Robuste Fehler-Behandlung in Edge-Cases.
 
@@ -402,14 +402,14 @@ Robuste Fehler-Behandlung in Edge-Cases.
 - Claude-Code nicht installiert
 - SQLite-Locking-Konflikte
 
-### Feature: Dark-Theme
+### Feature: Dark-Theme ✅
 
 Einheitliches dunkles Theme.
 
 - xterm.js, CodeMirror, App-Chrome harmonisch
 - Keine helle Variante im MVP (kann in Phase 2)
 
-### Feature: Build + Distribution
+### Feature: Build + Distribution ✅
 
 Production-Builds via Electron Forge.
 

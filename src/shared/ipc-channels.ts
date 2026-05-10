@@ -55,6 +55,12 @@ export const Channels = {
   // App-Misc (Sprint 1 teilweise)
   AppOpenDataFolder: 'app:open-data-folder',
   AppGetVersion: 'app:get-version',
+  // Sprint 8 — Header-Bar Window-Controls (frameless wäre Phase 5+; aktuell
+  // bedienen wir die Standard-Electron-Frame-Controls über IPC).
+  AppWindowAction: 'app:window-action',
+  // Sprint 8 — Health-Check, ob die claude-Binary erreichbar ist. Header-Bar
+  // ruft beim Mount + bei PTY-Spawn-Fehlern.
+  AppClaudeHealth: 'app:claude-health',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];

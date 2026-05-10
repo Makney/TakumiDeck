@@ -17,6 +17,54 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-10 — Season 8: Polish — MVP-Abschluss
+
+### Was jetzt geht
+
+- **Settings-Dialog mit sechs Tabs (Architektur 6.9).** Ctrl+K oder Settings-Icon im Header öffnen das Modal: Allgemein (Theme, claude-Binary-Pfad, Open-Data-Folder, Akzent-Farbe), Workspace (Pfad, manueller Re-Scan, Sensitive-Patterns als JSON), Modelle (Default-Modell, Per-Modell-Limits, Default-Limit), Token-Tracking (P90-Window, Warning-Schwellen, Plannutzungs-Bars als JSON), Terminal (Font-Family, Font-Size), About (Version, Repo, Lizenz). Form-Inputs sind Auto-Save mit 500-ms-Debounce + Coalescing pro Patch — Indikator unten links zeigt „Auto-Save aktiv / Speichert… / ✓ Gespeichert (N Felder) / ⚠ <Fehler>". Komplexe Settings (`limit_bars[]`, `sensitive_file_patterns[]`) leben in einem CodeMirror-6-JSON-Editor mit Live-Lint (300-ms-Debounce, zod-validiert) und explizitem „Anwenden"-Knopf — Apply ist nur bei valider Quelle aktiv.
+- **Header-Bar (Architektur 6.0, td-titlebar).** 36-px-Bar oben mit drei Sektionen: Brand (匠-Kanji + TakumiDeck + Version), Meta (aktives Projekt, Branch via `git:status`-Cache, running/total Sessions-Counter), Window-Controls (⚙ Settings-Icon + min/max/close). Drag-Region via `-webkit-app-region: drag`. Native Electron-Frame ist `frame: false` — keine doppelte Title-Bar mehr. Branch-Anzeige re-loadet bei Project-Wechsel und nach `td-git-refresh`-CustomEvent (PreCommitModal feuert ihn nach Send) plus manuellem ↻-Knopf, kein Polling.
+- **Crash-Recovery-Reconciliation-Pass beim App-Start.** Nach `openDatabase()` läuft `reconcileCrashedSessions`: alle running- und idle-Sessions mit `ended_at IS NULL` werden via `lifecycle.transition('interrupted', 'app-quit')` gepatcht, danach `ended_at` auf `MAX(messages.ts)` der Session korrigiert (genaueste verfügbare Approximation des Crash-Zeitpunkts statt nichtssagendem App-Start-Now). Sessions ohne Messages bleiben bei `now()` als Fallback. Idempotent — zweiter Pass macht nichts mehr.
+- **Datei-Tab-Persistenz pro Projekt.** `useFileTabsStore.hydrateFromStorage` rekonstruiert beim App-Start die Tab-Liste pro Projekt aus localStorage (Schlüssel `td.fileTabs`, Schema-versioniert `v: 1`); jeder file-Tab triggert einen `fs:read` im Hintergrund, sodass der Inhalt sauber re-fetched wird. Diff-Tab überlebt unverändert vorne. Persistenz schreibt nur die Tab-Identitäten (id/kind/relPath/label + activeId) — kein Buffer-Cache, sodass extern editierte Dateien beim Re-Open keinen Konflikt-UI brauchen. Korrupte/version-fremde Snapshots werden still verworfen.
+- **Konfigurierbare Sensitive-File-Patterns (additiv zu den hartcoded Defaults).** Neue Settings-Spalte `sensitive_file_patterns: string[]` (Default `[]`, RegEx-Quellen). `findSensitiveFiles` nimmt das Array als zweiten Parameter, kompiliert die User-Patterns zur Laufzeit (kaputte Quellen werden still gedroppt) und matcht sie auf den ganzen `relPath` zusätzlich zu den hartcoded Basename-Defaults `.env(.*)`, `secrets.*`, `*.key`, `*.pem`. PreCommitModal reicht die User-Liste durch.
+- **Modell-Limit-Defaults korrekt auf 200 000 Token.** TECH_SCHULDEN-Eintrag aufgelöst — Per-Session-Kontext-Bar skaliert jetzt realistisch (80 k Tokens zeigen ~40 % statt vorher ~8 %). Extended-Context-Beta lässt sich pro Modell im Settings-Dialog auf 1 000 000 hochsetzen.
+- **Tastatur-Hints unter dem Terminal.** Statische `<kbd>`-Pillen-Reihe: `Enter` senden · `Ctrl+T` Templates · `Ctrl+N` Neue Session · `Ctrl+K` Einstellungen · `Ctrl+Tab` nächster Tab. Lädt zur Erkundung ein, ohne Cheatsheet-Modal.
+- **Error-Handling-Pässe (V7-C: User-Aktion vorne, technische Details on-Demand).** FS-IPC mappt EACCES/EPERM/EBUSY auf `FS_PERMISSION` mit konkretem Aktion-Hint („Antimalware-Scanner oder Cloud-Sync könnte die Datei locken"); SQLite bekommt `pragma busy_timeout=5000` und macht damit interne Backoffs statt SQLITE_BUSY-Throws bei parallelem Watcher-Insert + before-quit-Patch; neuer `app:claude-health`-Channel prüft die `claude_binary_path`-Auflösbarkeit beim App-Start und nach jedem PTY-Spawn-Fehler — fehlende Binary erscheint als anklickbarer ⚠-Banner in der Header-Bar, der direkt das Settings-Modal öffnet.
+- **`SESSION_NO_CLAUDE_UUID`-Hint im Verlauf-Detail-Pane.** TECH_SCHULDEN-Reminder aus Sprint 6/7 aufgelöst: Resume einer Pre-Hotfix-Session ohne JSONL gibt jetzt eine gezielte Hint-Box („Session ist nicht mehr resume-fähig — externe UUID nicht rekonstruierbar") mit einem Direkt-Archivieren-Knopf statt der nackten globalen Fehlermeldung.
+- **Build + Distribution: Squirrel-Setup + Portable-ZIP.** `npm run make` produziert beide Artefakte parallel — `out/make/squirrel.windows/x64/TakumiDeck-<version> Setup.exe` für die klassische Windows-Installation, `out/make/zip/win32/x64/TakumiDeck-win32-x64-<version>.zip` für USB-Stick / Probelauf / Distribution an Freunde ohne Installations-Stress. Manuelle GitHub-Release-Anleitung in `docs/DEV_SETUP.md`. Kein Code-Signing, kein Auto-Update (Phase 5+, Architektur 12).
+
+### Umgesetzte Entscheidungen
+
+- **9 Variants vor dem Code, alle Empfehlungen direkt übernommen.** V1-A (Live-JSON-Lint debounced 300 ms), V2-A (Auto-Save pro Form-Field 500 ms + expliziter Apply für Raw-JSON), V3-B (Branch via Cache + Trigger-Refresh), V4-C (`ended_at` aus `MAX(messages.ts)`), V5-A (nur Tab-Liste, kein Buffer-Cache), V6-B (Setup + Portable-ZIP), V7-C (Mix: User-Aktion vorne, Details on-Demand), V8-A (Sensitive-Patterns additiv), V9-A (Settings-Dialog zuerst, dann isolierte Wins, dann Chrome, dann Polish, dann Build). Plus drei Bugfix-Entscheidungen nach User-Screenshot: Filter-Pillen-Wrap, `frame: false`, Spalten-Verteilung 1.6fr/1fr.
+- **Driver-Injection bleibt das tragende Test-Pattern.** `reconciliation.ts` nimmt `SessionRepository` + `MessageRepository` + `SessionLifecycle` injiziert — Tests fahren mit den InMemory-Drivern aus Sprint 2/5, kein echtes SQLite. `settingsAutoSave.ts` nimmt `SettingsApi` + `Scheduler` injiziert — Tests fahren mit Manual-Scheduler statt vi.useFakeTimers, deterministisch ohne Timer-Tricks.
+- **Memory-Konvention „UX-Defaults: konvenient vor traditionell" 8 von 9 Mal getragen.** V1-A (Live-Lint statt on-Save), V2-A (Auto-Save statt Save-Button), V3-B (Cache statt Polling — billiger Daily-Driver), V4-C (genaue Approximation statt now()), V5-A (Tab-Liste-Persist statt Buffer-Cache mit Konflikt-UI), V7-C (Mix statt rein-technisch), V8-A (additiv statt komplette Übernahme), V9-A (Skeleton-First-Reihenfolge). V6-B war neutral (Setup+Portable parallel). Memory-Konvention bleibt damit empirisch validiert.
+
+### Mid-Sprint-Anpassungen
+
+- **User-Screenshot zeigte drei Layout-Defekte gleichzeitig.** (1) HistoryPane-Filter-Pillen wurden vom `overflow: hidden` der Mid-Spalte abgeschnitten, weil `.td-history-filter-group` kein `flex-wrap: wrap` hatte (Group-Container mit `<span>Status</span>` + `<div class="td-form-pills">…</div>` als ein Flex-Item). Fix: Group bekommt `flex-wrap: wrap` + `min-width: 0`, Label `flex-shrink: 0`. (2) Doppel-Header (Electron-Native + meine td-titlebar). Fix: `frame: false` in `BrowserWindow`. (3) 1fr/1fr-Mid-Verteilung war für Tabelle + Filter zu eng. Fix: 1.6fr/1fr — Terminal/Verlauf bekommt 62 % der Mittenfläche. Alle drei in einem Pass nach AskUserQuestion-Abklärung.
+- **`@codemirror/lang-json` als neue Dependency.** Settings-Dialog braucht den JSON-Sprache-Modus für die Raw-JSON-Editoren. Kein Workaround mit textarea (User hat „CodeMirror 6 wiederverwenden" als etablierte Entscheidung gelistet). Installation per `npm install`, package-lock.json updated.
+- **`registerAppIpc()` braucht jetzt `SettingsStore`.** `app:claude-health` muss `claude_binary_path` aus den Settings lesen — Signatur erweitert um optionales `deps?: { settings?: SettingsStore }`. Aufrufer in `main.ts` reicht den Store durch; bei `undefined` (Tests) fällt der Health-Check auf `'claude'` zurück.
+
+### Bonus-Bugfixes unterwegs
+
+- **`PreCommitModal` feuert nach Send `td-git-refresh`.** Header-Bar weiß sonst nicht, dass sich nach einem erfolgreichen Commit-Trigger der Branch-State ändern könnte (z.B. Working-Tree-Clean nach Commit). CustomEvent-Pattern analog `td-template-send` — billiger als ein zusätzlicher IPC-Roundtrip.
+- **`TerminalTab` feuert bei Spawn-Fehler `td-claude-recheck`.** Header-Bar re-checkt die Binary-Health, der ⚠-Banner erscheint sofort statt erst beim nächsten manuellen Health-Lookup.
+
+### Offen geblieben (bewusst Phase 2/5+)
+
+- **Code-Signing + Auto-Update** — Architektur 12, Phase 5+. SmartScreen-Warnung bei der ersten Installation ist akzeptierter Single-User-Tradeoff.
+- **GitHub Actions Build** — bei Bedarf wenn aktiv geteilt wird. Sprint 8 nutzt manuelle Releases.
+- **Light-Theme** — Phase 2. Dark ist im MVP einheitlich.
+- **Phase-2/5-Auslassungen aus Architektur 12** unverändert: Worktree-UI, Pull/Fetch/Branch-Switch, Brainstorming-Panel, OpenAI Codex als zweite Engine, semantische Chunk-Suche, mehrere Workspace-Ordner, Stream-JSON-Mode.
+- **Notes-Auto-Save bei Hard-Quit best-effort** — TECH_SCHULDEN-Eintrag bleibt. Synchroner IPC-Pfad lohnt sich nur, wenn das in der Praxis schmerzt.
+- **`awaitWriteFinish`-Latenz im JSONL-Watcher** — TECH_SCHULDEN. 100-ms-Verzögerung der Live-Updates. Phase-2-Optimierung wäre zweiter Polling-Ring mit fs-stat.
+- **Multi-Session-im-selben-cwd-Backfill nimmt nur die jüngste** — TECH_SCHULDEN, Edge-Case.
+
+### MVP-Abschluss
+
+Phase 1 ist komplett. Alle Roadmap-Features auf ✅. 396 Tests grün, Suite ~1.1 s. Ready für `npm run make` und manuelle GitHub-Release.
+
+---
+
 ## 2026-05-10 — Season 7: Editor + Git + Right-Pane
 
 ### Was jetzt geht

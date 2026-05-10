@@ -55,6 +55,15 @@ const api: RendererApi = {
     getVersion: () => ipcRenderer.invoke(Channels.AppGetVersion) as Promise<IpcResult<string>>,
     openDataFolder: () =>
       ipcRenderer.invoke(Channels.AppOpenDataFolder) as Promise<IpcResult<string>>,
+    windowAction: (action) =>
+      ipcRenderer.invoke(Channels.AppWindowAction, action) as Promise<IpcResult<null>>,
+    claudeHealth: () =>
+      ipcRenderer.invoke(Channels.AppClaudeHealth) as Promise<
+        IpcResult<
+          | { resolved: string; healthy: true }
+          | { resolved: null; healthy: false; hint: string }
+        >
+      >,
   },
   pty: {
     create: (input: PtyCreateInput) =>

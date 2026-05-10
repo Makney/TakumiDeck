@@ -40,6 +40,11 @@ export interface AppSettings {
   theme: 'dark' | 'light';
   accent_color: string;
   shortcuts: Record<string, string>;
+  // Sprint-8 (Variante A): zusätzliche Sensitive-File-Patterns als RegEx-Strings.
+  // Werden im Pre-Commit-Panel ZUSÄTZLICH zu den hartcoded Defaults
+  // (.env(.*), secrets.*, *.key, *.pem) ausgewertet. Defaults sind nicht
+  // deaktivierbar — der User kann nur erweitern.
+  sensitive_file_patterns: string[];
 }
 
 // Session-Row laut SQLite-Schema (Architektur Kapitel 4).
@@ -485,6 +490,15 @@ export interface RendererApi {
   app: {
     getVersion: () => Promise<IpcResult<string>>;
     openDataFolder: () => Promise<IpcResult<string>>;
+    // Sprint 8 (Architektur 6.0 Header-Bar): Window-Controls aus dem Renderer
+    // triggern, weil die Header-Bar eigene Buttons rendert (-webkit-app-region:
+    // no-drag).
+    windowAction: (action: 'minimize' | 'maximize' | 'close') => Promise<IpcResult<null>>;
+    // Sprint 8: Health-Check für die claude-Binary. Liefert ok=true mit dem
+    // resolved-Pfad oder ok=false mit User-freundlicher Hinweistext.
+    claudeHealth: () => Promise<
+      IpcResult<{ resolved: string; healthy: true } | { resolved: null; healthy: false; hint: string }>
+    >;
   };
   pty: {
     create: (input: PtyCreateInput) => Promise<IpcResult<SessionRow>>;

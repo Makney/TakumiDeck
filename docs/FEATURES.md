@@ -97,9 +97,9 @@ Header-Bar und globale UI-Komponenten.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Header-Bar`                    | ⛔      |           |
+| `Header-Bar`                    | ✅      | 2026-05-10 (Sprint 8) — 36-px td-titlebar (Architektur 6.0) mit Brand (匠 + TakumiDeck + Version), Meta (Projekt + Branch via git:status-Cache + Sessions-Counter), Window-Controls (Settings ⚙ + min/max/close). `frame: false` — keine native Doppel-Bar. Branch-Refresh per CustomEvent (V3-B), claude-Health-Banner bei fehlender Binary. |
 | `Action-Bar`                    | ✅      | 2026-05-10 (Sprint 7) — `td-term-bar` aus Sprint 6 ergänzt um `commit`-Pill, die das PreCommitModal öffnet (Sprint-6-SEASON_LOG-Hinweis erfüllt). Modell-Pill (read-only), Templates-Pill, commit-Pill, Status-Badge rechts. |
-| `Tastatur-Hints`                | ⛔      |           |
+| `Tastatur-Hints`                | ✅      | 2026-05-10 (Sprint 8) — Statische `<kbd>`-Pillen unter dem Terminal: Enter senden · Ctrl+T Templates · Ctrl+N Neue Session · Ctrl+K Einstellungen · Ctrl+Tab nächster Tab. |
 
 ## Right-Pane (Sprint 7)
 
@@ -125,10 +125,10 @@ Abschluss-Schliff vor MVP-Release.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Settings-Dialog`               | ⛔      |           |
-| `Error-Handling`                | ⛔      |           |
-| `Dark-Theme`                    | ⛔      |           |
-| `Build + Distribution`          | ⛔      |           |
+| `Settings-Dialog`               | ✅      | 2026-05-10 — 6 Tabs (Allgemein/Workspace/Modelle/Token-Tracking/Terminal/About) mit Auto-Save pro Form-Field (V2-A, 500 ms Debounce + Coalescing) und CodeMirror-6-JSON-Editor mit Live-Lint (V1-A, zod-validiert, expliziter Apply). Trigger Ctrl+K oder ⚙ in der Header-Bar. Open-Data-Folder-Button. |
+| `Error-Handling`                | ✅      | 2026-05-10 — V7-C-Mix: FS-EACCES/EPERM/EBUSY → FS_PERMISSION mit Aktion-Hint, SQLite `busy_timeout=5000`, claude-Health-Channel + Header-⚠-Banner mit Klick-zu-Settings, SESSION_NO_CLAUDE_UUID-Direkt-Archivieren-Hint im HistoryPane. Korrupte JSONL bleibt Sprint-5-robust. |
+| `Dark-Theme`                    | ✅      | 2026-05-10 — Im MVP einheitlich Dark via `tokens.css` (CSS Custom Properties aus dem Design-Handoff). Keine Light-Variante (Phase 2). |
+| `Build + Distribution`          | ✅      | 2026-05-10 — `npm run make` produziert Squirrel-Setup + Portable-ZIP parallel (V6-B). Manuelle GitHub-Release-Anleitung in `docs/DEV_SETUP.md`. Kein Code-Signing, kein Auto-Update (Phase 5+). |
 
 ---
 

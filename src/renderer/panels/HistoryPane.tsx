@@ -68,6 +68,14 @@ export function HistoryPane({ project }: Props) {
   const [selectedStatuses, setSelectedStatuses] = useState<SessionStatus[]>([]);
   const [query, setQuery] = useState('');
   const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null);
+  // Sprint 8 — gezielter Resume-Fehler-Hint für SESSION_NO_CLAUDE_UUID
+  // (TECH_SCHULDEN „Pre-Hotfix-Sessions ohne JSONL-Antwort sind dauerhaft
+  // resume-tot"). Direkt-Archivieren-Knopf statt nackter Fehlermeldung.
+  const [resumeError, setResumeError] = useState<{
+    sessionId: string;
+    code: string | undefined;
+    message: string;
+  } | null>(null);
 
   const tabs = useSessionStore((s) => s.tabs);
   const addTab = useSessionStore((s) => s.addTab);
@@ -170,13 +178,44 @@ export function HistoryPane({ project }: Props) {
         rows: 24,
       });
       if (!result.ok) {
+        // Spezial-Fall SESSION_NO_CLAUDE_UUID (Sprint-6/7-Resume-Hotfix-Lücke):
+        // Pre-Hotfix-Session ohne JSONL — Resume ist dauerhaft tot. Statt einer
+        // nackten Fehlermeldung im globalen Error-Slot zeigen wir eine
+        // gezielte Hint-Box im Detail-Pane mit Direkt-Archivieren.
+        if (result.code === 'SESSION_NO_CLAUDE_UUID') {
+          setResumeError({
+            sessionId: entry.id,
+            code: result.code,
+            message: result.error,
+          });
+          return;
+        }
         setError(`Resume fehlgeschlagen: ${result.error}`);
         return;
       }
+      setResumeError(null);
       setStatus(entry.id, 'running');
       setMainView('terminals');
     },
     [tabs, addTab, setActiveTab, setStatus, setMainView],
+  );
+
+  // Sprint 8 — Direkt-Archivieren ohne Confirm-Step für Resume-tote Sessions
+  // (SESSION_NO_CLAUDE_UUID-Hint). Der Hint im Detail-Pane ist die
+  // Confirm-Stufe, also bringt ein zweiter Klick keinen Mehrwert.
+  const handleArchiveDirect = useCallback(
+    async (entry: SessionHistoryEntry) => {
+      const result = await window.api.sessions.archive({ sessionId: entry.id });
+      if (!result.ok) {
+        setError(`Archivieren fehlgeschlagen: ${result.error}`);
+        return;
+      }
+      setResumeError(null);
+      setEntries((prev) =>
+        prev.map((e) => (e.id === entry.id ? { ...e, status: 'archived' as const } : e)),
+      );
+    },
+    [],
   );
 
   const handleArchive = useCallback(
@@ -354,8 +393,14 @@ export function HistoryPane({ project }: Props) {
             <HistoryDetail
               entry={selectedEntry}
               archiveConfirmActive={archiveConfirmId === selectedEntry.id}
+              resumeBlockedHint={
+                resumeError && resumeError.sessionId === selectedEntry.id
+                  ? resumeError
+                  : null
+              }
               onResume={() => void handleResume(selectedEntry)}
               onArchive={() => void handleArchive(selectedEntry)}
+              onArchiveDirect={() => void handleArchiveDirect(selectedEntry)}
               onCancelArchive={() => setArchiveConfirmId(null)}
             />
           ) : (
@@ -372,16 +417,22 @@ export function HistoryPane({ project }: Props) {
 interface HistoryDetailProps {
   entry: SessionHistoryEntry;
   archiveConfirmActive: boolean;
+  // Sprint 8: bei SESSION_NO_CLAUDE_UUID setzt der Resume-Handler den Hint —
+  // Detail-Pane rendert dann eine Hint-Box mit Direkt-Archivieren-Knopf.
+  resumeBlockedHint: { code: string | undefined; message: string } | null;
   onResume: () => void;
   onArchive: () => void;
+  onArchiveDirect: () => void;
   onCancelArchive: () => void;
 }
 
 function HistoryDetail({
   entry,
   archiveConfirmActive,
+  resumeBlockedHint,
   onResume,
   onArchive,
+  onArchiveDirect,
   onCancelArchive,
 }: HistoryDetailProps) {
   // Resume ist in der State-Machine (Sprint 3) für completed/interrupted/error/idle
@@ -438,6 +489,26 @@ function HistoryDetail({
           <div className="td-history-detail-notes-empty">Keine Notizen.</div>
         )}
       </div>
+
+      {resumeBlockedHint && resumeBlockedHint.code === 'SESSION_NO_CLAUDE_UUID' && (
+        <div className="td-history-resume-blocked">
+          <div className="td-history-resume-blocked-title">
+            ⓘ Resume nicht möglich
+          </div>
+          <div className="td-history-resume-blocked-body">
+            Diese Session stammt aus der Zeit vor dem Sprint-6-Resume-Hotfix und
+            hat nie eine claude-Antwort produziert — die externe UUID ist nicht
+            mehr rekonstruierbar. Resume bleibt dauerhaft tot.
+          </div>
+          <button
+            type="button"
+            className="td-btn td-btn-danger"
+            onClick={onArchiveDirect}
+          >
+            Direkt archivieren
+          </button>
+        </div>
+      )}
 
       <div className="td-history-detail-actions">
         {entry.status !== 'archived' && canArchive && (

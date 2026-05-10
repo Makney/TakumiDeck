@@ -54,7 +54,30 @@ Im Dev-Mode wird ein separater AppData-Ordner verwendet (`%APPDATA%\TakumiDeck-d
 npm run make
 ```
 
-Erzeugt einen Windows-Installer unter `out/make/`. Dieser kann installiert werden und nutzt dann den Standard-AppData-Ordner (`%APPDATA%\TakumiDeck\`).
+Erzeugt zwei Artefakte unter `out/make/` (V6-B aus Sprint 8 — Setup + Portable):
+
+| Artefakt | Pfad | Wann nehmen |
+|---|---|---|
+| **Squirrel-Setup** | `out/make/squirrel.windows/x64/TakumiDeck-<version> Setup.exe` | Klassische Windows-Installation mit Start-Menü-Eintrag und automatischem Update-Stub (im MVP nicht aktiviert) |
+| **Portable-ZIP** | `out/make/zip/win32/x64/TakumiDeck-win32-x64-<version>.zip` | Auf USB-Stick, Probelauf auf zweiter Maschine, Distribution an Freunde ohne Installations-Stress |
+
+Beide nutzen den Standard-AppData-Ordner (`%APPDATA%\TakumiDeck\`). Erste Installation triggert SmartScreen einmalig — kein Code-Signing im MVP (Architektur 12, Phase 5+).
+
+### 6. Manuelle GitHub-Release-Anleitung
+
+Sprint 8 nutzt manuelle Releases (kein Auto-Update, keine GitHub Actions):
+
+1. Version in `package.json` bumpen (`"version": "0.1.0"` → `"0.1.1"`).
+2. `npm run make` lokal laufen lassen.
+3. Beide Artefakte aus `out/make/` einsammeln:
+   - `squirrel.windows/x64/TakumiDeck-*.exe`
+   - `zip/win32/x64/TakumiDeck-*.zip`
+4. Auf GitHub: **Releases → Draft a new release → Choose a tag** (z.B. `v0.1.1` neu anlegen).
+5. Release-Notes aus `docs/CHANGELOG.md` den letzten Sprint-Block kopieren.
+6. Beide Artefakte als Asset hochladen.
+7. **Publish release** — GitHub bewahrt die Files dauerhaft.
+
+Code-Signing und Auto-Update kommen erst in Phase 5+ (Architektur 12), wenn die App aktiv geteilt wird.
 
 ---
 

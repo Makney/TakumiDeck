@@ -30,6 +30,7 @@ import {
   SqliteJsonlOffsetDriver,
 } from './db/repos/jsonl-offsets';
 import { SessionLifecycle } from './sessions/lifecycle';
+import { reconcileCrashedSessions } from './sessions/reconciliation';
 import { StateDetectionLoop } from './sessions/state-detection-loop';
 import { JsonlWatcher, defaultClaudeProjectsPath } from './jsonl/watcher';
 import { realJsonlReadDriver } from './jsonl/parser';
@@ -70,6 +71,11 @@ function createMainWindow(): void {
     backgroundColor: '#0d0f0e',
     show: false,
     autoHideMenuBar: true,
+    // Sprint 8 — native Title-Bar weg, td-titlebar (Architektur 6.0) übernimmt
+    // Branding + Window-Controls. Drag-Region kommt aus -webkit-app-region: drag
+    // auf .td-titlebar selbst. resizable bleibt true (Electron-Default), die
+    // OS-Resize-Handles am Rand greifen weiter.
+    frame: false,
     webPreferences: {
       // Hardening laut Architektur Kapitel 3.
       preload: path.join(__dirname, 'preload.js'),
@@ -123,6 +129,22 @@ app.whenReady().then(async () => {
     const jsonlOffsetRepo = new JsonlOffsetRepository(new SqliteJsonlOffsetDriver(db));
     ptyManager = new PtyManager(realPtySpawn);
 
+    // Sprint 8 — Crash-Recovery (Variante C aus Sprint-3-Briefing).
+    // Nach openDatabase, vor Workspace-Scan: orphane running/idle-Sessions ohne
+    // ended_at auf interrupted patchen. Hartfehler beim Reconciliation-Pass
+    // dürfen den App-Start nicht blocken (try/catch lokal). ended_at = MAX(messages.ts)
+    // für die Session, Fallback now() — siehe sessions/reconciliation.ts.
+    try {
+      reconcileCrashedSessions({
+        sessions,
+        messages: messageRepo,
+        lifecycle,
+        log: logger,
+      });
+    } catch (e) {
+      logger.warn('[startup] Crash-Recovery-Reconciliation fehlgeschlagen', e);
+    }
+
     // Sprint-4-Initial-Pass: workspace_path scannen, neue Projekte einfügen,
     // dann die Sprint-2/3-Default-Sessions per cwd-Prefix umhängen. Ein Hard-Crash
     // im Scanner darf den App-Start nicht blocken — daher try/catch um den ganzen Pass.
@@ -142,7 +164,7 @@ app.whenReady().then(async () => {
     }
 
     registerSettingsIpc(settings);
-    registerAppIpc();
+    registerAppIpc({ settings });
     registerSessionIpc({
       sessions,
       lifecycle,

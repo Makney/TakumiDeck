@@ -24,6 +24,136 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Settings-Persistenz: Auto-Save pro Form-Field statt Save-Button
+
+**Entscheidung:** Form-Inputs im Settings-Modal triggern beim Tippen einen 500-ms-debounced Patch via `settings:set` — kein expliziter Save-Button. Mehrere Felder werden in einem einzelnen Patch koalesziert (`createDebouncedSaver` puffert pro Tick und feuert atomar). Der Raw-JSON-Editor (für `limit_bars[]`, `sensitive_file_patterns[]`) hat einen separaten „Anwenden"-Knopf, weil unfertiges JSON sonst die `settings.json` verkrüppeln würde.
+
+**Varianten:**
+
+- **A** Auto-Save pro Field (gewählt — V2-A)
+- **B** Expliziter Save-Button mit Dirty-Indikator
+- **C** Save+Schließen kombiniert im Modal-Footer
+
+**Grund:** Settings-Tweaks im Daily-Driver sind kleine Korrekturen („P90-Window von 192 auf 168 ziehen", „Modell-Limit auf 200 k") — kein Modal-Overhead pro Tweak. Pattern ist konsistent mit dem 500-ms-Notes-Save (Sprint 3) und dem 500-ms-CodeMirror-YAML-Linter (Sprint 7). Variante B würde jeden Tweak einen Klick mehr kosten; Variante C zwingt Modal-Reopen pro Setting. Raw-JSON ist explizit ausgenommen, weil ein zwischenzeitlich kaputter Buffer den Server schreiben würde — beim Tippen ist „valid JSON" ein hartes Pre-Check.
+
+**Konsequenz:** Lokaler optimistischer State pro Modal — der Eingabewert ist sofort sichtbar, der Server-Roundtrip ersetzt ihn beim nächsten Tick. SaveStatusBadge zeigt „Auto-Save aktiv / Speichert… / ✓ Gespeichert (N Felder) / ⚠ <Fehler>" als dezenten Indikator unten links. Beim Modal-Close wird einmal explizit `flush()` getriggert, damit die letzten <500 ms Tipps nicht verloren gehen.
+
+**Implementierungsdetail:** `createDebouncedSaver(api, { scheduler })` mit injectable Scheduler — Tests fahren mit Manual-Scheduler statt vi.useFakeTimers, deterministisch. Lokale Schema-Validation via `AppSettingsPatchSchema.safeParse` BEVOR der IPC läuft, damit ungültige Werte als error-Outcome ohne Server-Belastung gemeldet werden.
+
+---
+
+## JSON-Editor-Validation: Live-Lint debounced statt on-Save
+
+**Entscheidung:** Der CodeMirror-6-Raw-JSON-Editor (für `limit_bars[]`, `sensitive_file_patterns[]`) hat einen `linter`-Extension mit 300-ms-Debounce, der bei jedem Tipp den aktuellen Buffer gegen ein zod-Schema parst und Fehler-Marker an der jeweiligen Zeile setzt. Der „Anwenden"-Knopf ist nur aktiv, wenn der Linter keine Fehler meldet.
+
+**Varianten:**
+
+- **A** Live-Lint via zod-Parse beim Tippen, debounced 300 ms (gewählt — V1-A)
+- **B** on-Save: Fehler erst beim Anwenden-Klick als Toast
+- **C** on-Blur: Marker erst, wenn der Editor-Fokus rausgeht
+
+**Grund:** Daily-Driver-Pattern: wer JSON tippt, will sofort wissen, ob's noch Sinn ergibt. Variante A ist konsistent mit dem Sprint-7-YAML-Linter (auch debounced). Variante B verschiebt das Feedback zu spät — User klickt Apply, sieht Fehler, muss zur Stelle scrollen. Variante C unterdrückt Tipp-Lärm, aber auch jede Live-Bestätigung — ungewöhnlich für CodeMirror-Erfahrung. 300 ms (nicht 500 ms wie YAML) sind eine kürzere Pause, weil JSON-Strukturfehler lauter sind als YAML-Indentation-Drift und sofortige Sichtbarkeit hilft.
+
+**Konsequenz:** `JsonRawEditor`-Komponente nimmt eine `validate(source) → { value, errors }`-Funktion injected — Tests können Pure-Validierung gegen synthetische Buffer fahren. CM6-Diagnostics-Marker mappen Zeile 1 als Fallback bei strukturellen JSON-Fehlern, weil `JSON.parse` keine Position-Info im Standard-Error liefert.
+
+---
+
+## Crash-Recovery: ended_at = MAX(messages.ts) statt now()
+
+**Entscheidung:** Reconciliation-Pass beim App-Start patcht orphane running/idle-Sessions mit `ended_at IS NULL` auf `interrupted` und korrigiert `ended_at` anschließend auf den letzten `messages.ts` der Session (genauester verfügbarer Crash-Zeit-Approximator). Sessions ohne Messages bekommen `now()` als Fallback.
+
+**Varianten:**
+
+- **A** `ended_at = now()` beim App-Start
+- **B** `ended_at = null`, nur Status patchen
+- **C** `ended_at = MAX(messages.ts WHERE session_id)`, Fallback `now()` (gewählt — V4-C)
+
+**Grund:** Variante A zeigt im Verlauf-Detail „endete heute Mittag", obwohl der Crash gestern Abend war — User wird verwirrt. Variante B verzichtet auf Dauer-Berechnung („Endete: —" optisch ehrlich, aber nutzlos für Reporting). Variante C ist genauer — der Timestamp der letzten claude-Antwort vor Crash ist die beste verfügbare Approximation. Kosten: ein indizierter `MAX(ts)`-Query pro Karteileiche, bei der Größenordnung (selten >1-2 pro Crash) vernachlässigbar.
+
+**Konsequenz:** Neues Modul `src/main/sessions/reconciliation.ts` mit Driver-Injection (SessionRepository + MessageRepository + Lifecycle). Lifecycle-Transition setzt `ended_at = clock()` initial, danach explizites `sessions.update()` mit dem MAX-Wert — kein State-Machine-Touch nötig, weil running/idle → interrupted seit Sprint 5 erlaubt ist. Idempotent: zweiter Pass macht nichts mehr (alle Live-Sessions sind dann bereits interrupted).
+
+---
+
+## Datei-Tab-Persistenz: nur Tab-Liste, kein Buffer-Cache
+
+**Entscheidung:** `useFileTabsStore.hydrateFromStorage` rekonstruiert Tab-Identitäten (id/kind/relPath/label + activeId pro Projekt) aus localStorage und triggert für jeden file-Tab einen `fs:read` im Hintergrund. Unsaved Buffer werden NICHT persistiert — der User muss vor App-Schluss bewusst Ctrl+S drücken (Sprint-7-Konvention „manueller Save").
+
+**Varianten:**
+
+- **A** Nur Tab-Liste, Inhalt re-fetched (gewählt — V5-A)
+- **B** Tab-Liste + unsaved Buffer im localStorage
+- **C** Tab-Liste + Buffer + Konflikt-UI bei extern editierten Files
+
+**Grund:** Variante B müsste mit dem Edge-Case „Datei wurde extern editiert während App geschlossen war" umgehen — entweder still überschreiben (Datenverlust) oder Konflikt-UI bauen (Variante C). Variante C ist Konflikt-Modal-Aufwand für einen seltenen Fall. Variante A ist konsistent mit Sprint-3-Notes-Save-Pattern (Daten leben in der DB, Restart sauber) und vermeidet das Datei-Konflikt-Problem komplett. Manuelle-Save-Konvention aus Sprint 7 deckt den Buffer-Verlust-Fall: der User ist gewohnt, Ctrl+S zu drücken, weil die Editor-Toolbar einen ●/○-Indikator hat.
+
+**Konsequenz:** Schema-versioniert mit `v: 1` — künftige Tab-Felder können einen Schema-Bump auslösen, der alte Snapshots still verwirft. localStorage-Schreibwege sind in `persistCurrent(getter)` zentralisiert: jede Mutation, die Identität/Reihenfolge/Active-Pointer ändert, schreibt sofort. `setDirty/setSaved` schreiben bewusst nicht — Dirty-Status ist ohnehin nicht persistiert.
+
+---
+
+## Sensitive-File-Patterns: additiv zu hartcoded Defaults
+
+**Entscheidung:** Neue Settings-Spalte `sensitive_file_patterns: string[]` (Default `[]`) wird ZUSÄTZLICH zu den hartcoded Defaults (`.env(.*)`, `secrets.*`, `*.key`, `*.pem`) ausgewertet. Defaults sind nicht abschaltbar — der User kann nur erweitern. User-Patterns matchen auf den ganzen `relPath` (nicht nur den Basename), damit Regeln wie `config/private/.*` möglich sind.
+
+**Varianten:**
+
+- **A** Additiv (gewählt — V8-A)
+- **B** User-Patterns ersetzen die Defaults komplett
+- **C** Additiv mit `disable_default_sensitive_patterns`-Flag
+
+**Grund:** Die hartcoded Defaults sind universell richtig — es gibt kein Projekt, in dem `.env` *nicht* sensitiv ist. Variante B würde User erlauben, sich versehentlich in den Fuß zu schießen (Defaults löschen, später `.env` exposen). Variante C wäre Phase-2-Power-User-Komfort, kostet aber Komplexität für einen ungeklärten Bedarf. Variante A deckt 100 % der realistischen Custom-Cases ab (eigene Konventionen wie `*.credentials.json`, `vault.yml`) ohne Sicherheits-Downgrade.
+
+**Konsequenz:** `findSensitiveFiles(paths, userPatterns)` nimmt das Array als zweiten Parameter; ungültige RegEx-Quellen werden still gedroppt (Aufrufer kann via `validateUserPatterns` für UI-Hint nachfragen). PreCommitModal reicht `settings.sensitive_file_patterns` durch. Settings-Dialog hat den JSON-Editor in der Workspace-Tab.
+
+---
+
+## Header-Bar: native Frame entfernt, td-titlebar übernimmt komplett
+
+**Entscheidung:** `BrowserWindow` wird mit `frame: false` erstellt — die native Electron-Title-Bar ist weg. Die td-titlebar (36 px hoch, Architektur 6.0) übernimmt Drag-Region (`-webkit-app-region: drag`) und Window-Controls (min/max/close via IPC `app:window-action`). Keine doppelte Header-Reihe.
+
+**Varianten:**
+
+- **A** `frame: false`, nur td-titlebar (gewählt nach User-Screenshot)
+- **B** Native Frame + td-titlebar parallel
+- **C** Native Frame, keine td-titlebar (Sprint-8-Rückabwicklung)
+
+**Grund:** Variante B war der initiale Sprint-8-Stand und produzierte einen Doppel-Header (Electron's native + meine td-titlebar zeigen beide „TakumiDeck"). User-Feedback zum Screenshot machte das offensichtlich. Variante C würde Brand, Projekt+Branch+Sessions-Anzeige und den Settings-Button verlieren — nicht akzeptabel. Variante A ist die saubere Implementierung der Architektur-6.0-Spec, die ohnehin „Window-Controls (minimieren, maximieren, schließen)" als Teil der Header-Bar definiert hatte.
+
+**Konsequenz:** OS-Resize-Handles bleiben funktional (Electron-Default), Drag funktioniert über `-webkit-app-region: drag` auf `.td-titlebar`, Buttons innerhalb sind `no-drag`. macOS würde traffic-lights verlieren, aber TakumiDeck ist Windows-primär (Architektur K3). Phase 5+ könnte einen `titleBarStyle: 'hidden'`-Pfad für macOS dazustellen, falls die App jemals dorthin portiert wird.
+
+---
+
+## Mid-Spalten-Verteilung: 1.6fr/1fr statt 1fr/1fr
+
+**Entscheidung:** Das App-Grid ist `240px 1.6fr 1fr 232px` — Mid-Spalte (Terminal/Verlauf) bekommt ~62 % der mittleren Fläche, Editor ~38 %. Sprint-7 hatte 1fr/1fr; bei realer Bildschirmbreite war die Tabelle in der HistoryPane + die Filter-Pillen für 50 % zu eng (clipping in `overflow: hidden`).
+
+**Varianten:**
+
+- **A** 1.6fr/1fr — Terminal/Verlauf bekommt mehr Platz (gewählt nach User-Screenshot)
+- **B** Bei 1fr/1fr lassen, nur Filter-Wrap fixen
+- **C** Editor ein-/ausklappbar machen
+
+**Grund:** Variante B hätte den Filter-Bug allein gefixt, aber die Tabelle bleibt in 6 Spalten auf 640 px gequetscht. Variante C ist Phase-2-Komfort — Toggle-Komponente plus Persist plus Layout-Reflow beim Klick. Variante A ist die billigste Lösung mit dem größten Effekt: zwei Zeichen in `app.css`, Daily-Driver-Workflow „Terminal links + Code-Edit rechts gleichzeitig sehen" funktioniert weiter, Editor ist schmaler aber CodeMirror skaliert problemlos.
+
+**Konsequenz:** Sprint-7-Layout-Spec war nicht eindeutig zu 1fr/1fr — das Design-Handoff-`styles.css` hat das Grid mit `1fr 1fr` gezeichnet, aber das war eher Initial-Wireframe als bindende Spec. Bei 32"-Monitoren (typische Daily-Driver-Konfiguration ~2560 px breit) sind beide Spalten weiter komfortabel groß; bei 14" (~1366 px) ist Mid jetzt ~700 px statt 560 px — knapp ausreichend für die Tabelle.
+
+---
+
+## Build-Distribution: Squirrel-Setup + Portable-ZIP parallel
+
+**Entscheidung:** `npm run make` produziert beide Artefakte: Squirrel-Setup-EXE (klassische Windows-Installation mit Start-Menü-Eintrag) UND Portable-ZIP (entpackbar auf USB-Stick). Forge-Config hatte `MakerSquirrel` + `MakerZIP` schon konfiguriert; Sprint 8 bestätigt das als verbindliche Distribution.
+
+**Varianten:**
+
+- **A** Squirrel-Default mit totem Auto-Updater-Stub
+- **B** Squirrel + Portable-ZIP (gewählt — V6-B)
+- **C** Nur Portable-ZIP, kein Installer
+
+**Grund:** Variante A reicht für die Stamm-Maschine, hilft aber nicht bei „mal schnell auf der zweiten Maschine probieren" oder „an Freunde weitergeben". Portable-ZIP entspannt zusätzlich den SmartScreen-Stress (kein Code-Signing im MVP, Architektur 12) — Doppelklick auf entpackten Ordner überspringt die Installer-Warnung komplett. Variante C verliert Start-Menü-Komfort und macht Updates schwerer. B kostet kaum mehr Build-Zeit und gibt beide Distribution-Pfade.
+
+**Konsequenz:** Manuelle GitHub-Release-Anleitung in `docs/DEV_SETUP.md`: Version bumpen → `npm run make` → Setup-EXE + ZIP als Asset hochladen → Release publish. Auto-Update wäre Phase 5+ via electron-updater, GitHub Actions Build wäre Phase 5+ bei aktiver Distribution.
+
+---
+
 ## Right-Pane-Layout: 4-Spalten-Grid statt 232-px-Single-Pane
 
 **Entscheidung:** App-Layout ist ein 4-Spalten-Grid (240 / 1fr / 1fr / 232 px) mit zwei Zeilen (1fr / 300 px). Editor und Diff bekommen eine eigene breite Spalte (3. Cell, oben); Files und Notes leben als schmaler Stack ganz rechts (4. Cell, full-height); PlanPane sitzt unter dem Editor (3. Cell, unten); StatsPane bleibt unter dem Terminal (2. Cell, unten). Klassen-Vokabular `td-col-mid-top / -mid-bottom / -right-top / -right-bottom / -right-stack` 1:1 aus `docs/design/claude-export/styles.css`.

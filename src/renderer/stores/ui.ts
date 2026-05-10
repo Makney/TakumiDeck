@@ -75,6 +75,9 @@ interface UiStoreState {
   // weitere Trigger dazukommen (z.B. Sidebar-Footer-Action), öffnen sie alle
   // denselben Zustand.
   showPreCommitModal: boolean;
+  // Sprint 8 (Architektur 6.9): Settings-Modal-Trigger via Ctrl+K oder
+  // Settings-Icon im neuen Header. Globaler Zustand wie die anderen Modals.
+  showSettingsModal: boolean;
 
   setActiveProject: (projectId: string | null, view?: MainView) => void;
   setMainView: (view: MainView) => void;
@@ -82,6 +85,7 @@ interface UiStoreState {
   setShowNewSessionModal: (show: boolean) => void;
   setShowTemplatesModal: (show: boolean) => void;
   setShowPreCommitModal: (show: boolean) => void;
+  setShowSettingsModal: (show: boolean) => void;
   hydrateFromStorage: () => void;
   loadActiveProjectFrontmatter: (projectId: string) => Promise<void>;
   setDashboardDetailBar: (barId: string | null) => void;
@@ -97,6 +101,7 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
   showNewSessionModal: false,
   showTemplatesModal: false,
   showPreCommitModal: false,
+  showSettingsModal: false,
 
   setActiveProject: (projectId, view) => {
     const state = get();
@@ -144,6 +149,11 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
   setShowPreCommitModal: (show) => {
     if (get().showPreCommitModal === show) return;
     set({ showPreCommitModal: show });
+  },
+
+  setShowSettingsModal: (show) => {
+    if (get().showSettingsModal === show) return;
+    set({ showSettingsModal: show });
   },
 
   hydrateFromStorage: () => {
