@@ -30,6 +30,34 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Datei-Tabs gehen beim App-Restart verloren
+
+**Bereich:** `src/renderer/stores/fileTabs.ts` (`useFileTabsStore` ohne Persistenz)
+
+**Was:** Der Sprint-7-Datei-Tab-Stack lebt rein in-memory. Beim App-Restart sind alle offenen Editor-Tabs (inkl. Diff-Tab) weg; der User muss sie über den Schnellzugriff oder den Datei-Browser wieder einzeln aufmachen. `savedContent` wird beim erneuten Öffnen via `fs:read` neu geladen, also kein Datenverlust — aber der User-Workflow „App schließen, am Folgetag dort weiter machen, wo ich aufgehört habe" funktioniert nicht.
+
+**Warum so:** Sprint-7-Auflage „keine neue DB-Migration"; Per-Projekt-Tab-Stack analog Sprint-4-Terminal-Tabs ist konsistent (auch die sind in-memory). Der Daily-Driver-Use-Case in Sprint 7 ist „Editor + Terminal in einer Session" — und der hält sich automatisch, solange die App offen bleibt.
+
+**Risiko:** UX-Reibung, wenn der User die App häufig neu startet (Updates, Crash-Recovery, Strom weg). Praktisch tolerierbar im MVP, weil Schnellzugriff plus Datei-Browser den Re-Open-Pfad in <5 s decken.
+
+**Auflösung:** Persistenz wahlweise über `localStorage` (analog Sprint-5-`activeProjectId`) oder über eine neue `file_tabs`-Tabelle in SQLite. localStorage reicht für MVP — pro Projekt eine Liste von relPath + activeId. Slot Sprint 8 oder Phase 2.
+
+---
+
+## Sensitive-File-Patterns hartcoded statt konfigurierbar
+
+**Bereich:** `src/renderer/components/sensitiveFiles.ts` (`SENSITIVE_BASENAME_PATTERNS`)
+
+**Was:** Vier RegEx-Patterns (`.env(.*)`, `secrets.*`, `*.key`, `*.pem`) sind als Module-Konstante im Renderer hartcoded. User mit anderen Konventionen (z.B. `*.credentials.json`, `vault.yml`, `config/private/*`) können das nicht selbst ergänzen, ohne den Code zu editieren.
+
+**Warum so:** Sprint-7-Q7 Variante A. Settings-Dialog ist Sprint 8 — bis dahin gäbe es bei B (settings-konfigurierbar) keinen UI-Pfad, sondern nur Hand-Edit von `settings.json`. Hartcoded mit klarem Erweiterungs-Pfad ist sauberer als „konfigurierbar ohne UI".
+
+**Risiko:** Wer ein Custom-Sensitive-Pattern hat, bekommt im Pre-Commit-Modal keine Warnung und übersieht im schlimmsten Fall den Trigger-Send mit gelekten Credentials. Defensiv-Mittel: User schaut die File-Liste im PreCommitModal aktiv durch (das ist der Hauptzweck des Modals), und Claude refused realistischerweise „commit secrets/private/vault.yml" auf Basis seiner eigenen Heuristiken.
+
+**Auflösung:** Sprint 8 (Settings-Dialog). Schema-Erweiterung `AppSettings.sensitive_file_patterns: string[]`, Defaults wie heute. `findSensitiveFiles` bekommt das Array als zweiten Parameter — der API ist schon driver-frei, das wäre eine 5-Zeilen-Verdrahtung.
+
+---
+
 ## Modell-Limits-Defaults zu hoch (1 M statt 200 k)
 
 **Bereich:** `src/main/settings/defaults.ts` (`model_limits`)
@@ -100,7 +128,7 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## Tote `.td-sidebar-*`-CSS-Blöcke aus dem Pre-3-Sektionen-Layout
+## ✅ Tote `.td-sidebar-*`-CSS-Blöcke aus dem Pre-3-Sektionen-Layout — aufgelöst 2026-05-10 (Sprint 7)
 
 **Bereich:** `src/renderer/styles/app.css` (Sektion `.td-sidebar-header`, `.td-sidebar-list`, `.td-sidebar-item`, `.td-sidebar-views`, `.td-sidebar-view-btn` etc.)
 
@@ -108,9 +136,11 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 **Warum so:** Beim Refactor war das CSS-Aufräumen ein Cosmetic-Schritt; ich habe die Funktionalität priorisiert und das Aufräumen verschoben, um keine unnötigen Diff-Konflikte beim parallelen Schreiben zu produzieren.
 
-**Risiko:** Reine CSS-Bytes-Schuld (~200 Zeilen tote Regeln). Kein Funktionsschaden, kein Build-Fehler. Beim nächsten Touch der `app.css` für Sprint 7 (Right-Pane) sollten die Blöcke entfernt werden.
+**Risiko:** Reine CSS-Bytes-Schuld (~200 Zeilen tote Regeln). Kein Funktionsschaden, kein Build-Fehler.
 
-**Auflösung:** Beim nächsten Renderer-CSS-Touch (Sprint 7 / 8): Klassen mit `grep -r 'td-sidebar-'` im `src/renderer/`-Tree gegenchecken und Tote rauswerfen. Aktuell behalten als Sicherheitsnetz, falls die alte LeftSidebar als Fallback gebraucht würde.
+**Auflösung:** Sprint 7 hat den Block beim Right-Pane-CSS-Touch mitgenommen — alle Pre-3-Sektionen-Klassen (`.td-sidebar-header / -title / -actions / -icon-btn / -list / -item / -item-row / -item-name / -item-path / -badge / -item-wrap / -views / -view-btn`) sind raus. Plus zusätzlich die alten `.td-notes-footer / -header / -toggle / -meta / -textarea`-Blöcke aus dem ehemaligen Sprint-3-NotesFooter (Notes wandert in den Right-Stack mit neuen `.td-notes / -head / -body / -saving / -empty`-Klassen). Generische `.td-panel:nth-child(2)` / `.td-panel-history`-Regeln auf `.td-sidebar > .td-panel*` gescoped, damit der Right-Stack nicht versehentlich erbt.
+
+---
 
 ---
 

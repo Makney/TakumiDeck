@@ -258,7 +258,7 @@ Liste aller Sessions des aktiven Projekts.
 
 Markdown-Editor und Diff-Viewer.
 
-### Feature: Markdown-Editor
+### Feature: Markdown-Editor ✅
 
 CodeMirror 6 für `.md`-Files des aktiven Projekts.
 
@@ -267,14 +267,14 @@ CodeMirror 6 für `.md`-Files des aktiven Projekts.
 - Fuzzy-Search-Fallback für seltene Files
 - Manueller Save (Ctrl+S, "unsaved changes"-Indikator)
 
-### Feature: YAML-Validierung
+### Feature: YAML-Validierung ✅
 
 Inline-Validierung für CLAUDE.md.
 
 - YAML-Parse beim Tippen, Fehler-Marker im Editor
 - Keine Auto-Fix, nur Anzeige
 
-### Feature: Markdown-Preview-Toggle
+### Feature: Markdown-Preview-Toggle ✅
 
 Editor ↔ Preview umschaltbar.
 
@@ -282,14 +282,14 @@ Editor ↔ Preview umschaltbar.
 - Toggle-Button in der Editor-Toolbar
 - Default: Editor-Mode
 
-### Feature: Diff-Viewer
+### Feature: Diff-Viewer ✅
 
 Working Tree Diff via simple-git.
 
 - `@codemirror/merge`-Extension für Side-by-Side-Diff
 - Read-only im MVP
 
-### Feature: Pre-Commit-Panel
+### Feature: Pre-Commit-Panel ✅
 
 Vor dem Commit-Trigger.
 
@@ -313,7 +313,7 @@ Globale Header-Leiste oben in der App.
 - Status-Hinweis rechts ("Terminal · P90 192h")
 - Window-Controls (minimieren, maximieren, schließen)
 
-### Feature: Action-Bar unter Eingabezeile
+### Feature: Action-Bar unter Eingabezeile ✅
 
 Pill-Style-Buttons mit Schnellaktionen.
 
@@ -337,7 +337,7 @@ Hilfreiche Shortcuts unter der Eingabezeile.
 
 Permanent sichtbarer Right-Pane mit Diff, Markdown-Editor und Notizen.
 
-### Feature: Right-Pane-Layout
+### Feature: Right-Pane-Layout ✅
 
 Drei vertikale Sektionen mit Tabs.
 
@@ -346,7 +346,7 @@ Drei vertikale Sektionen mit Tabs.
 - Notizen-Section: Plain-Text-Textarea mit Auto-Save (siehe Sessions-Bereich)
 - Plannutzung-Section: Konfigurierbare Limit-Bars (siehe Token-Dashboard)
 
-### Feature: Datei-Tabs
+### Feature: Datei-Tabs ✅
 
 Mehrere Markdown-Dateien parallel offen.
 
@@ -355,7 +355,7 @@ Mehrere Markdown-Dateien parallel offen.
 - Tab schließen via × pro Tab
 - "Diff" als spezieller Tab (immer ganz links)
 
-### Feature: Datei-Browser
+### Feature: Datei-Browser ✅
 
 Liste der Files im aktiven Projekt.
 

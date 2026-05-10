@@ -3,6 +3,8 @@ import type { AppSettings, IpcResult } from '@shared/types';
 import { TabContainer } from './panels/TabContainer';
 import { HistoryPane } from './panels/HistoryPane';
 import { LeftSidebar } from './panels/LeftSidebar';
+import { EditorPane } from './panels/EditorPane';
+import { RightStack } from './panels/RightStack';
 import { PlanPane } from './panels/PlanPane';
 import { StatsPane } from './panels/StatsPane';
 import { UsageDetailModal } from './modals/UsageDetailModal';
@@ -10,14 +12,19 @@ import { useUsageStore } from './stores/usage';
 import { useProjectStore } from './stores/projects';
 import { useUiStore } from './stores/ui';
 
-// Renderer-Layout (Sprint 4 + Sprint-5-Bottom-Row):
-//   Header
-//   ├── LeftSidebar (240 px)  ┃  TabContainer (1 fr) — Tabs + Terminals + Notes
-//   ───────────────────────────────────────────────────────────────────────────
-//   StatsPane (1 fr) ┃ PlanPane (1 fr) — beide in der unteren Zeile (300 px)
+// Renderer-Layout — 4-Spalten-Grid nach docs/design/claude-export/styles.css
+// (.td-main, Zeilen 122-195). Die ursprüngliche Sprint-7-Variante mit Editor
+// im 232 px-Right-Pane war visuell zu eng; User-Feedback nach Phase-4-Test
+// hat auf das Design-Vorlage-Layout zurückgeführt.
 //
-// Architektur 4 zeichnet die untere Zeile mit Stats links + Plannutzung rechts.
-// Right-Pane (Files + Notes) bleibt bis Sprint 7 ausgeblendet.
+//   ┌────────┬──────────┬──────────┬─────────┐
+//   │ Left   │ Terminal │ Editor / │ Files   │
+//   │Sidebar │ (TabCont)│ Diff     │   +     │
+//   │ 240 px │  1 fr    │ 1 fr     │ Notes   │
+//   │        ├──────────┼──────────┤ 232 px  │
+//   │ (full) │ Stats    │ PlanPane │ (full)  │
+//   │        │ 300 px   │ 300 px   │         │
+//   └────────┴──────────┴──────────┴─────────┘
 
 export function App() {
   const [version, setVersion] = useState<string | null>(null);
@@ -82,33 +89,47 @@ export function App() {
         <span className="td-app-meta">v{version} · Sprint 5 (Token-Dashboard)</span>
       </header>
       <main className="td-app-main">
-        <LeftSidebar settings={settings} />
-        <div className="td-app-content">
-          <div className="td-app-row-top">
-            {/* Sprint 6 (Q4 Variante A): Replace-View per CSS-Toggle. Wir rendern
-                BEIDE Komponenten dauerhaft, damit die xterm-Instanzen im
-                TabContainer beim Wechsel zu Verlauf nicht disposed werden
-                (Sprint-3-Variante-A: alle xterm dauerhaft mounted). HistoryPane
-                bekommt Mount/Unmount-Lifecycles — der Component ist read-only
-                und macht keine teuren Side-Effects, das Re-Mount kostet nur
-                den session:history-IPC. */}
-            <div
-              className="td-view-slot"
-              style={{ display: mainView === 'terminals' ? 'flex' : 'none' }}
-            >
-              <TabContainer settings={settings} />
-            </div>
-            {mainView === 'history' && activeProject && (
-              <div className="td-view-slot">
-                <HistoryPane project={activeProject} />
-              </div>
-            )}
-          </div>
-          <div className="td-app-row-bottom">
-            <StatsPane />
-            <PlanPane settings={settings} />
-          </div>
+        {/* Spalte 1: LeftSidebar, full-height */}
+        <div className="td-col-left">
+          <LeftSidebar settings={settings} />
         </div>
+
+        {/* Spalte 2 oben: Terminal-Tabs (oder HistoryPane bei mainView=history).
+            Sprint-3-Variante-A: alle xterm dauerhaft mounted, CSS-Toggle für die
+            Sichtbarkeit. HistoryPane mountet/unmountet (read-only IPC, billig). */}
+        <div className="td-col-mid-top">
+          <div
+            className="td-view-slot"
+            style={{ display: mainView === 'terminals' ? 'flex' : 'none' }}
+          >
+            <TabContainer settings={settings} />
+          </div>
+          {mainView === 'history' && activeProject && (
+            <div className="td-view-slot">
+              <HistoryPane project={activeProject} />
+            </div>
+          )}
+        </div>
+
+        {/* Spalte 3 oben: Editor / Diff (ehemals RightPane-Top, jetzt eigene
+            breite Spalte) */}
+        <div className="td-col-right-top">
+          <EditorPane />
+        </div>
+
+        {/* Spalte 2 unten: Stats (Sprint 5) */}
+        <div className="td-col-mid-bottom">
+          <StatsPane />
+        </div>
+
+        {/* Spalte 3 unten: PlanPane (von der Mitte-unten umgezogen, weil das
+            Design-Layout PlanPane unter dem Editor zeichnet) */}
+        <div className="td-col-right-bottom">
+          <PlanPane settings={settings} />
+        </div>
+
+        {/* Spalte 4: Files + Notes als schmaler Stack, full-height */}
+        <RightStack />
       </main>
       {detailBar && (
         <UsageDetailModal

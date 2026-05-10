@@ -12,6 +12,8 @@ import { registerSessionIpc } from './ipc/session';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
 import { registerUsageIpc } from './ipc/usage';
 import { registerFsIpc, templatesDirFromUserData } from './ipc/fs';
+import { registerGitIpc } from './ipc/git';
+import { realGitDriver } from './git/driver';
 import { PtyManager } from './pty/manager';
 import { realPtySpawn } from './pty/spawn';
 import { SessionRepository, SqliteSessionDriver } from './db/repos/sessions';
@@ -173,6 +175,11 @@ app.whenReady().then(async () => {
     registerFsIpc({
       projects: projectRepo,
       templatesDir: templatesDirFromUserData(getDataDir()),
+      log: logger,
+    });
+    registerGitIpc({
+      projects: projectRepo,
+      driver: realGitDriver,
       log: logger,
     });
 

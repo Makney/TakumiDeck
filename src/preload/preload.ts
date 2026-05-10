@@ -4,6 +4,18 @@ import type {
   AppSettings,
   ClaudeMdParseResult,
   FsListTemplatesInput,
+  FsListTreeInput,
+  FsReadInput,
+  FsReadResult,
+  FsTreeNode,
+  FsWriteInput,
+  FsWriteResult,
+  GitDiffInput,
+  GitDiffResult,
+  GitShowInput,
+  GitShowResult,
+  GitStatusInput,
+  GitStatusResult,
   IpcResult,
   ProjectReadCfgInput,
   ProjectRow,
@@ -85,6 +97,22 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.FsListTemplates, input) as Promise<
         IpcResult<TemplateFile[]>
       >,
+    read: (input: FsReadInput) =>
+      ipcRenderer.invoke(Channels.FsRead, input) as Promise<IpcResult<FsReadResult>>,
+    write: (input: FsWriteInput) =>
+      ipcRenderer.invoke(Channels.FsWrite, input) as Promise<IpcResult<FsWriteResult>>,
+    listTree: (input: FsListTreeInput) =>
+      ipcRenderer.invoke(Channels.FsListTree, input) as Promise<IpcResult<FsTreeNode[]>>,
+  },
+  git: {
+    status: (input: GitStatusInput) =>
+      ipcRenderer.invoke(Channels.GitStatus, input) as Promise<
+        IpcResult<GitStatusResult>
+      >,
+    diff: (input: GitDiffInput) =>
+      ipcRenderer.invoke(Channels.GitDiff, input) as Promise<IpcResult<GitDiffResult>>,
+    show: (input: GitShowInput) =>
+      ipcRenderer.invoke(Channels.GitShow, input) as Promise<IpcResult<GitShowResult>>,
   },
   projects: {
     list: () => ipcRenderer.invoke(Channels.ProjectList) as Promise<IpcResult<ProjectRow[]>>,

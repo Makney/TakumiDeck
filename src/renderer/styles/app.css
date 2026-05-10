@@ -84,36 +84,97 @@ body,
   letter-spacing: 0.04em;
 }
 
+/* Sprint-7-Layout (post-User-Feedback): 4-Spalten-Grid nach
+   docs/design/claude-export/styles.css (.td-main-Block). Editor + Diff bekommen
+   eine eigene breite Spalte (1fr) statt im 232 px-Right-Pane zu hängen.
+   Ehemalige .td-app-content / .td-app-row-top / .td-app-row-bottom entfallen —
+   das Grid macht das Layout in einem Schritt. */
 .td-app-main {
   flex: 1;
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: 240px 1fr 1fr 232px;
+  grid-template-rows: minmax(0, 1fr) 300px;
+  gap: 1px;
+  background: var(--td-line);
   min-height: 0;
-  background: var(--td-bg);
 }
 
-/* Sprint-5-Layout: Sidebar + Content-Spalte (Top-Row Tabs/Terminal, Bottom-Row Stats/Plannutzung). */
-.td-app-content {
-  flex: 1;
+.td-col-left {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  background: var(--td-panel-2);
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.td-col-mid-top {
+  grid-row: 1;
+  grid-column: 2;
+  background: var(--td-panel);
+  min-height: 0;
   min-width: 0;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.td-app-row-top {
+.td-col-right-top {
+  grid-row: 1;
+  grid-column: 3;
+  background: var(--td-panel);
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.td-col-mid-bottom {
+  grid-row: 2;
+  grid-column: 2;
+  background: var(--td-panel);
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.td-col-right-bottom {
+  grid-row: 2;
+  grid-column: 3;
+  background: var(--td-panel);
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Files + Notes als schmaler Stack, full-height (4. Spalte). Files ~55 %,
+   Notes ~45 % nach LAYOUT.FILES_FLEX/NOTES_FLEX (Architektur 6.0). */
+.td-right-stack {
+  grid-row: 1 / span 2;
+  grid-column: 4;
+  background: var(--td-panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.td-right-stack > .td-files {
+  flex: 0 0 55%;
+  min-height: 0;
+  border-bottom: 1px solid var(--td-line);
+}
+
+.td-right-stack > .td-notes {
   flex: 1;
-  display: flex;
   min-height: 0;
-}
-
-.td-app-row-bottom {
-  height: 300px; /* LAYOUT.ROW_BOTTOM_HEIGHT */
-  display: flex;
-  flex-direction: row;
-  border-top: 1px solid var(--td-line);
-  background: var(--td-panel-2);
-  flex-shrink: 0;
 }
 
 /* Sprint-4-Sidebar (Architektur 6.0, LAYOUT.COL_LEFT_WIDTH=240).
@@ -121,13 +182,15 @@ body,
    des Design-Handoff-Exports (docs/design/claude-export). Jede Sektion ist
    ein .td-panel mit Head/Body/Foot. */
 .td-sidebar {
-  width: 240px;
-  flex-shrink: 0;
+  /* Sprint-7-Layout-Umstellung: width/border-right entfallen — Grid-Cell
+     .td-col-left gibt jetzt Breite (240 px) und Trennstrich (gap=1px im
+     .td-app-main-Grid). Die Sidebar füllt ihre Cell aus. */
+  flex: 1;
   display: flex;
   flex-direction: column;
   background: var(--td-panel-2);
-  border-right: 1px solid var(--td-line);
   overflow: hidden;
+  min-height: 0;
 }
 
 .td-panel {
@@ -143,13 +206,14 @@ body,
 }
 
 /* Mittlere Sektion (Aktive Sessions) flex-grow, damit lange Tab-Listen Raum
-   nehmen; Projekte und Verlauf bleiben kompakter. */
-.td-panel:nth-child(2) {
+   nehmen; Projekte und Verlauf bleiben kompakter. Sprint-7-Scope: nur in der
+   Sidebar greifen, sonst würde der Right-Pane (3 Sektionen) auch betroffen sein. */
+.td-sidebar > .td-panel:nth-child(2) {
   flex: 1 1 auto;
   min-height: 80px;
 }
 
-.td-panel-history {
+.td-sidebar > .td-panel-history {
   flex: 0 0 auto;
   max-height: 280px;
 }
@@ -404,59 +468,15 @@ body,
   text-overflow: ellipsis;
 }
 
-/* Empty-States in der Sidebar */
+/* Empty-States in der Sidebar (Sprint-7-Cleanup: nur die 3 noch aktiv genutzten
+   Klassen sind hier; tote .td-sidebar-header/-title/-actions/-icon-btn/-list/
+   -item/-item-row/-item-name/-item-path/-badge/-item-wrap/-views/-view-btn-Blöcke
+   aus dem Pre-3-Sektionen-Layout sind entfernt — TECH_SCHULDEN-Drive-by). */
 .td-sidebar-empty-soft {
   color: var(--td-text-mute);
   font-size: 11px;
   padding: 8px;
   line-height: 1.5;
-}
-
-.td-sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px 6px;
-  border-bottom: 1px solid var(--td-line);
-  flex-shrink: 0;
-}
-
-.td-sidebar-title {
-  font-family: var(--td-display);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--td-text-mute);
-}
-
-.td-sidebar-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.td-sidebar-icon-btn {
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--td-line);
-  background: transparent;
-  color: var(--td-text-mute);
-  font-size: 12px;
-  cursor: pointer;
-  border-radius: 2px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color .12s, color .12s;
-}
-
-.td-sidebar-icon-btn:hover:not(:disabled) {
-  border-color: var(--td-accent-line);
-  color: var(--td-accent);
-}
-
-.td-sidebar-icon-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .td-sidebar-error {
@@ -486,83 +506,6 @@ body,
   padding: 0 4px;
   color: var(--td-text-dim);
   border-radius: 2px;
-}
-
-.td-sidebar-list {
-  list-style: none;
-  margin: 0;
-  padding: 4px 0;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.td-sidebar-item {
-  padding: 6px 10px;
-  border-left: 2px solid transparent;
-  color: var(--td-text-dim);
-  cursor: pointer;
-  transition: border-color .12s, color .12s, background .12s;
-}
-
-.td-sidebar-item:hover {
-  border-left-color: var(--td-accent-line);
-  color: var(--td-accent);
-}
-
-.td-sidebar-item.active {
-  border-left-color: var(--td-accent);
-  color: var(--td-text);
-  background: var(--td-bg-3);
-}
-
-.td-sidebar-item.legacy {
-  font-style: italic;
-  opacity: 0.7;
-}
-
-.td-sidebar-item-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.td-sidebar-item-name {
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.td-sidebar-item-path {
-  margin-top: 2px;
-  font-size: 10px;
-  color: var(--td-text-mute);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.td-sidebar-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 5px;
-  background: var(--td-bg-3);
-  border: 1px solid var(--td-line);
-  color: var(--td-text-mute);
-  font-size: 10px;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
-.td-sidebar-badge.running {
-  background: var(--td-accent-soft);
-  border-color: var(--td-accent-line);
-  color: var(--td-accent);
 }
 
 /* TerminalTab — Sprint 3 Multi-Tab-Variante (eine Instanz pro Tab, alle dauerhaft mounted). */
@@ -837,67 +780,9 @@ body,
   letter-spacing: 0.04em;
 }
 
-/* Notes-Footer (Sprint 3). Collapsed: nur Header sichtbar. */
-.td-notes-footer {
-  border-top: 1px solid var(--td-line);
-  background: var(--td-panel-2);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.td-notes-footer.expanded {
-  height: 160px;
-}
-
-.td-notes-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 12px;
-  height: 24px;
-  flex-shrink: 0;
-}
-
-.td-notes-toggle {
-  border: none;
-  background: transparent;
-  color: var(--td-text-dim);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  padding: 0;
-  font-family: inherit;
-}
-
-.td-notes-toggle:hover {
-  color: var(--td-accent);
-}
-
-.td-notes-meta {
-  color: var(--td-text-mute);
-  font-size: 11px;
-}
-
-.td-notes-textarea {
-  flex: 1;
-  min-height: 0;
-  margin: 0 12px 8px;
-  padding: 8px 10px;
-  background: var(--td-bg-3);
-  border: 1px solid var(--td-line);
-  color: var(--td-text);
-  font-family: var(--td-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  resize: none;
-  border-radius: 2px;
-}
-
-.td-notes-textarea:focus {
-  outline: none;
-  border-color: var(--td-accent-line);
-}
+/* (Sprint-7-Cleanup: alte .td-notes-footer/-header/-toggle/-meta/-textarea-Blöcke
+   aus dem Sprint-3-NotesFooter sind entfernt — Notes lebt jetzt im RightPane
+   als .td-notes-Sektion, siehe weiter unten im Right-Pane-Block.) */
 
 /* Modal (Architektur 6.0.1). */
 .td-modal-backdrop {
@@ -1393,43 +1278,8 @@ body,
   min-height: 0;
 }
 
-.td-sidebar-item-wrap {
-  /* Wrapper-li, damit ProjectItem (jetzt <div>) und ViewToggle eine Einheit
-     in der Sidebar-Liste bilden können. Kein eigenes Padding — das steckt
-     im Project-Item. */
-  list-style: none;
-}
-
-.td-sidebar-views {
-  display: flex;
-  gap: 4px;
-  margin: 4px 10px 8px;
-}
-
-.td-sidebar-view-btn {
-  flex: 1;
-  padding: 4px 8px;
-  border: 1px solid var(--td-line);
-  background: transparent;
-  color: var(--td-text-mute);
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  border-radius: 2px;
-  transition: border-color .12s, color .12s, background .12s;
-}
-
-.td-sidebar-view-btn:hover:not(.active) {
-  border-color: var(--td-accent-line);
-  color: var(--td-accent);
-}
-
-.td-sidebar-view-btn.active {
-  background: var(--td-accent-soft);
-  border-color: var(--td-accent-line);
-  color: var(--td-accent);
-}
+/* (Sprint-7-Cleanup: tote .td-sidebar-item-wrap / .td-sidebar-views /
+   .td-sidebar-view-btn-Blöcke aus dem Pre-3-Sektionen-Layout entfernt.) */
 
 /* Modal-Form-Hint (Season-Vorschau-Zeile im NewSessionModal). */
 .td-form-hint {
@@ -1961,4 +1811,826 @@ body,
   white-space: pre-wrap;
   word-break: break-word;
   overflow-y: auto;
+}
+
+/* === Right-Pane (Sprint 7) ============================================== */
+/* (Sprint-7-Layout-Umstellung: alte .td-right-pane-Block-Variante mit Editor
+   im 232 px-Stack ist entfernt. Editor lebt jetzt in .td-col-right-top als
+   eigene breite Spalte; Files+Notes-Stack ist .td-right-stack in der 4. Grid-
+   Spalte — siehe oben im .td-app-main-Block.) */
+
+/* Skeleton-Hinweistext für leere Empty-States. */
+.td-skeleton {
+  color: var(--td-text-mute);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 12px;
+  text-align: center;
+  font-style: italic;
+}
+
+/* === Notes-Panel (Right-Pane-Variante, Sprint 7 Q8 Variante A) ========== */
+/* Migriert aus Sprint-3-NotesFooter; Klassennamen folgen claude-export/styles.css
+   Zeilen 761-804 (.td-notes / .td-notes-head / .td-notes-body / .td-notes-saving). */
+.td-notes {
+  display: flex;
+  flex-direction: column;
+  background: var(--td-panel);
+}
+
+.td-notes-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 8px 14px;
+  border-bottom: 1px solid var(--td-line);
+  background: var(--td-panel-2);
+  flex-shrink: 0;
+}
+
+.td-notes-saving {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--td-text-mute);
+  font-family: var(--td-mono);
+  letter-spacing: 0.04em;
+}
+
+.td-notes-saving.saved {
+  color: var(--td-accent);
+}
+
+.td-notes-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  min-height: 0;
+}
+
+.td-notes-body textarea {
+  flex: 1;
+  background: var(--td-bg);
+  border: 1px solid var(--td-line);
+  color: var(--td-text);
+  resize: none;
+  outline: none;
+  padding: 10px 12px;
+  font-family: var(--td-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  border-radius: 2px;
+  min-height: 0;
+}
+
+.td-notes-body textarea:focus {
+  border-color: var(--td-accent-line);
+  box-shadow: 0 0 0 2px var(--td-accent-soft);
+}
+
+.td-notes-empty {
+  color: var(--td-text-mute);
+  font-size: 11.5px;
+  padding: 10px;
+  text-align: center;
+  font-style: italic;
+}
+
+/* === Code/Files-Sektionen (Sprint-7-Phasen 3-6) ========================= */
+/* td-code lebt direkt im Grid-Cell .td-col-right-top — daher flex:1, damit es
+   die Cell ausfüllt. */
+.td-code {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--td-panel);
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Skeleton-Variante für die Tab-Bar, wenn kein Projekt aktiv (gibt der Sektion
+   eine konstante Höhe oben, damit der td-code-body sauber starten kann). */
+.td-code-tabs-empty {
+  min-height: 28px;
+}
+
+.td-files {
+  display: flex;
+  flex-direction: column;
+  background: var(--td-panel);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.td-files-head {
+  padding: 8px 10px 6px 10px;
+  border-bottom: 1px solid var(--td-line);
+  background: var(--td-bg-2);
+  flex-shrink: 0;
+}
+
+.td-files-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--td-bg);
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--td-text-mute);
+}
+
+.td-files-search input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--td-text);
+  font-family: var(--td-mono);
+  font-size: 11px;
+  min-width: 0;
+}
+
+.td-files-clear {
+  background: transparent;
+  border: 0;
+  color: var(--td-text-mute);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.td-files-clear:hover {
+  color: var(--td-red);
+}
+
+.td-files-list {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 4px;
+}
+
+.td-file {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--td-text);
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-file:hover {
+  background: var(--td-bg-2);
+}
+
+.td-file .gl {
+  color: var(--td-text-mute);
+  font-size: 10px;
+  text-align: center;
+}
+
+.td-file.dir .gl { color: var(--td-text-dim); }
+.td-file.md .gl  { color: var(--td-blue); }
+.td-file.ts .gl  { color: var(--td-purple); font-size: 9.5px; }
+.td-file.js .gl  { color: var(--td-warn); font-size: 9.5px; }
+.td-file.json .gl { color: var(--td-text-mute); }
+.td-file.css .gl  { color: var(--td-orange); }
+.td-file.html .gl { color: var(--td-orange); font-size: 9.5px; }
+.td-file.py .gl   { color: var(--td-purple); font-size: 9.5px; }
+.td-file.yaml .gl { color: var(--td-warn); }
+
+.td-file-dirty {
+  color: var(--td-warn);
+  font-family: var(--td-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+/* === Diff-Viewer (Sprint 7, Phase 6) =================================== */
+.td-diff {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.td-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--td-line);
+  background: var(--td-bg-2);
+  font-size: 11px;
+  color: var(--td-text-dim);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.td-diff-head .crumb { color: var(--td-text); }
+.td-diff-head .crumb b { color: var(--td-accent); font-weight: 500; }
+.td-diff-head .arr { color: var(--td-text-mute); }
+.td-diff-head .meta {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--td-mono);
+  font-size: 10.5px;
+}
+.td-diff-head .meta .add { color: var(--td-accent); }
+.td-diff-head .meta .rem { color: var(--td-red); }
+
+/* Split: links File-Liste, rechts Merge-View. Im engen Right-Pane stapeln
+   wir vertikal — File-Liste bleibt schmal oben, Merge-View nimmt den Rest. */
+.td-diff-body-split {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.td-diff-files {
+  max-height: 120px;
+  overflow: auto;
+  border-bottom: 1px solid var(--td-line);
+  background: var(--td-bg-2);
+  flex-shrink: 0;
+}
+
+.td-diff-file {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 6px;
+  padding: 3px 8px;
+  font-family: var(--td-mono);
+  font-size: 11px;
+  color: var(--td-text);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-diff-file:hover {
+  background: var(--td-bg-3);
+}
+
+.td-diff-file.active {
+  background: var(--td-bg-3);
+  border-left-color: var(--td-accent);
+  color: var(--td-text);
+}
+
+.td-diff-file-mark {
+  font-weight: 600;
+  text-align: center;
+  color: var(--td-text-mute);
+}
+
+.td-diff-file.modified .td-diff-file-mark { color: var(--td-warn); }
+.td-diff-file.added .td-diff-file-mark,
+.td-diff-file.untracked .td-diff-file-mark { color: var(--td-accent); }
+.td-diff-file.deleted .td-diff-file-mark { color: var(--td-red); }
+
+.td-diff-file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-diff-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.td-diff-cm {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.td-diff-cm > .cm-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.td-diff-cm .cm-scroller {
+  overflow: auto;
+}
+
+/* === Pre-Commit-Modal (Sprint 7, Phase 7) ============================== */
+.td-modal.td-precommit-modal {
+  width: min(560px, 92vw);
+}
+
+.td-precommit-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--td-text-dim);
+  margin-bottom: 12px;
+}
+
+.td-precommit-label {
+  font-family: var(--td-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-precommit-branch {
+  font-family: var(--td-mono);
+  background: var(--td-bg);
+  border: 1px solid var(--td-line);
+  padding: 1px 6px;
+  border-radius: 2px;
+  color: var(--td-accent);
+  font-size: 11.5px;
+}
+
+.td-precommit-ahead {
+  color: var(--td-accent);
+  font-size: 10.5px;
+  font-family: var(--td-mono);
+}
+
+.td-precommit-behind {
+  color: var(--td-orange);
+  font-size: 10.5px;
+  font-family: var(--td-mono);
+}
+
+.td-precommit-warning {
+  margin: 8px 0 12px 0;
+  padding: 10px 12px;
+  background: rgba(240, 180, 0, 0.08);
+  border: 1px solid var(--td-warn);
+  border-radius: 2px;
+  color: var(--td-warn);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.td-precommit-warning strong {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.td-precommit-warning ul {
+  margin: 4px 0 6px 0;
+  padding-left: 20px;
+}
+
+.td-precommit-warning li {
+  font-family: var(--td-mono);
+  font-size: 11px;
+}
+
+.td-precommit-warning code {
+  font-family: var(--td-mono);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0 4px;
+  border-radius: 2px;
+  color: var(--td-warn);
+}
+
+.td-precommit-empty {
+  padding: 16px 8px;
+  color: var(--td-text-mute);
+  font-size: 12px;
+  text-align: center;
+  font-style: italic;
+}
+
+.td-precommit-files {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  background: var(--td-bg);
+  margin-top: 4px;
+  margin-bottom: 12px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.td-precommit-file {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 10px;
+  font-family: var(--td-mono);
+  font-size: 11.5px;
+  color: var(--td-text);
+}
+
+.td-precommit-file:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.td-precommit-file-mark {
+  font-weight: 600;
+  text-align: center;
+  color: var(--td-text-mute);
+}
+
+.td-precommit-file.modified .td-precommit-file-mark { color: var(--td-warn); }
+.td-precommit-file.added .td-precommit-file-mark,
+.td-precommit-file.untracked .td-precommit-file-mark { color: var(--td-accent); }
+.td-precommit-file.deleted .td-precommit-file-mark { color: var(--td-red); }
+.td-precommit-file.renamed .td-precommit-file-mark { color: var(--td-blue); }
+
+.td-precommit-file-path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-precommit-file.sensitive {
+  background: rgba(240, 180, 0, 0.08);
+  border-left: 2px solid var(--td-warn);
+}
+
+.td-precommit-file-warn {
+  font-size: 10px;
+  color: var(--td-warn);
+  font-family: var(--td-mono);
+  letter-spacing: 0.04em;
+}
+
+.td-precommit-trigger-info {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--td-text-mute);
+}
+
+.td-precommit-trigger {
+  font-family: var(--td-mono);
+  background: var(--td-bg);
+  border: 1px solid var(--td-line);
+  padding: 1px 6px;
+  border-radius: 2px;
+  color: var(--td-accent);
+}
+
+/* === Datei-Tab-Bar im Right-Pane (Sprint 7, Phase 4) =================== */
+.td-code-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--td-panel-2);
+  border-bottom: 1px solid var(--td-line);
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+.td-code-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px 3px 8px;
+  font-size: 11px;
+  color: var(--td-text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  max-width: 180px;
+  transition: border-color .12s, color .12s, background .12s;
+}
+
+.td-code-tab:hover {
+  border-color: var(--td-line);
+  color: var(--td-text);
+}
+
+.td-code-tab.active {
+  background: var(--td-bg-3);
+  border-color: var(--td-accent-line);
+  color: var(--td-text);
+}
+
+.td-code-tab .td-tab-kind {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border: 1px solid var(--td-line-2);
+  border-radius: 2px;
+  color: var(--td-text-mute);
+}
+
+.td-code-tab .td-tab-kind.diff {
+  color: var(--td-accent);
+  border-color: var(--td-accent-line);
+}
+
+.td-code-tab .td-tab-kind.md {
+  color: var(--td-blue);
+  border-color: rgba(92, 184, 255, 0.35);
+}
+
+.td-code-tab-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-code-tab-dirty {
+  color: var(--td-warn);
+  font-size: 10px;
+}
+
+.td-code-tab .td-tab-x {
+  background: transparent;
+  border: 0;
+  color: var(--td-text-mute);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.td-code-tab .td-tab-x:hover {
+  color: var(--td-red);
+}
+
+.td-code-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+.td-code-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* === Schnellzugriff-Empty (kein Tab offen) ============================= */
+.td-code-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+  overflow: auto;
+}
+
+.td-code-empty-title {
+  font-family: var(--td-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-code-empty-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.td-code-empty-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 6px;
+  background: transparent;
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  color: var(--td-text);
+  font-size: 11.5px;
+  font-family: var(--td-mono);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+
+.td-code-empty-item:hover {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-code-empty-name {
+  grid-column: 2;
+}
+
+.td-code-empty-path {
+  grid-column: 2;
+  font-size: 10px;
+  color: var(--td-text-mute);
+}
+
+/* === Schnellzugriff-Footer (Tabs offen) ================================ */
+.td-code-quick-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--td-bg-2);
+  border-top: 1px solid var(--td-line);
+  flex-shrink: 0;
+}
+
+.td-code-quick-pill {
+  background: transparent;
+  border: 1px solid var(--td-line);
+  color: var(--td-text-mute);
+  font-family: var(--td-mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+
+.td-code-quick-pill:hover {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+/* === Markdown-Editor (Sprint 7, Phase 3) =============================== */
+/* Die td-md-*-Klassen leben innerhalb der td-code-Sektion (oder als full-pane,
+   wenn Phase 4 die Datei-Tabs ein Editor-Slot zuweist). Toolbar oben mit
+   File-Pfad + Editor/Preview-Toggle + Save-Button + Dirty-Indikator,
+   darunter entweder CodeMirror oder die react-markdown-Preview. */
+.td-md-edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.td-md-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--td-line);
+  background: var(--td-bg-2);
+  font-size: 11px;
+  color: var(--td-text-mute);
+  flex-shrink: 0;
+}
+
+.td-md-path {
+  color: var(--td-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.td-md-spacer {
+  flex: 1;
+}
+
+.td-md-mode,
+.td-md-save {
+  background: transparent;
+  border: 1px solid var(--td-line);
+  color: var(--td-text-mute);
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+
+.td-md-mode:hover:not(.active),
+.td-md-save:hover:not(:disabled) {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-md-mode.active {
+  background: var(--td-accent-soft);
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-md-save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.td-md-status {
+  font-family: var(--td-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.td-md-status.clean {
+  color: var(--td-accent);
+}
+
+.td-md-status.dirty {
+  color: var(--td-warn);
+}
+
+.td-md-error {
+  padding: 6px 10px;
+  background: rgba(239, 93, 93, 0.1);
+  border-bottom: 1px solid var(--td-rem-line);
+  color: var(--td-red);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.td-md-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--td-panel);
+}
+
+.td-md-cm {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+.td-md-cm > .cm-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.td-md-cm .cm-scroller {
+  overflow: auto;
+}
+
+.td-md-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px;
+  font-family: var(--td-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--td-text);
+  background: var(--td-panel);
+}
+
+.td-md-preview h1, .td-md-preview h2, .td-md-preview h3 {
+  font-family: var(--td-display);
+  color: var(--td-accent);
+  letter-spacing: 0.02em;
+  margin-top: 1.2em;
+}
+
+.td-md-preview code {
+  font-family: var(--td-mono);
+  background: var(--td-bg);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 12px;
+  color: var(--td-blue);
+}
+
+.td-md-preview pre {
+  background: var(--td-bg);
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  padding: 10px 12px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.td-md-preview a {
+  color: var(--td-accent);
+  text-decoration: none;
+}
+
+.td-md-preview a:hover {
+  text-decoration: underline;
 }

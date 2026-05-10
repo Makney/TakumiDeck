@@ -24,6 +24,88 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Right-Pane-Layout: 4-Spalten-Grid statt 232-px-Single-Pane
+
+**Entscheidung:** App-Layout ist ein 4-Spalten-Grid (240 / 1fr / 1fr / 232 px) mit zwei Zeilen (1fr / 300 px). Editor und Diff bekommen eine eigene breite Spalte (3. Cell, oben); Files und Notes leben als schmaler Stack ganz rechts (4. Cell, full-height); PlanPane sitzt unter dem Editor (3. Cell, unten); StatsPane bleibt unter dem Terminal (2. Cell, unten). Klassen-Vokabular `td-col-mid-top / -mid-bottom / -right-top / -right-bottom / -right-stack` 1:1 aus `docs/design/claude-export/styles.css`.
+
+**Varianten:**
+
+- **A** Single-Right-Pane (232 px, drei Sektionen vertikal: Editor/Diff oben + Files mitte + Notes unten) — Sprint-7-Briefing-Wortlaut
+- **B** 4-Spalten-Grid wie Design-Handoff: Editor in eigener `1fr`-Spalte, Files+Notes als `td-col-right-stack`-Spalte ganz rechts (gewählt nach User-Feedback)
+- **C** Editor verdrängt das Terminal über einen Mitte-Toggle (Design-Handoff-„midPanel"-Tweak) — wäre Phase-2-Komfort, kostet aber Sicht auf Terminal + Editor parallel
+
+**Grund:** Variante A war der pragmatische Erstwurf aus dem Briefing — 232 px für einen vollständigen Markdown-Editor sind aber zu eng (Code wickelt nach 30 Zeichen, YAML-Linter-Marker schwer lesbar). User-Feedback nach Phase 4: „in der Vorlage sieht es besser aus" — und die Design-Vorlage hat von Anfang an 4 Spalten gezeichnet, nicht 3 mit Editor im schmalen Stack. Variante C wäre ein moderner Toggle-Pfad gewesen, kostet aber den Daily-Driver-Use-Case „Terminal links + Code-Edit rechts gleichzeitig sehen", der das Hauptargument für eine Multi-Pane-Workbench ist.
+
+**Konsequenz:** PlanPane wandert von Mitte-unten nach Editor-unten (3. Spalte, untere Zeile). Die ehemaligen `.td-app-content / -row-top / -row-bottom`-Flex-Container entfallen — das CSS-Grid macht das in einem Schritt. `RightPane.tsx` wird in `EditorPane.tsx` (Editor + Diff) und `RightStack.tsx` (Files + Notes) aufgeteilt, eine Komponente pro Grid-Cell. Die Sidebar verliert ihre explizite 240-px-Breite — Grid-Cell `.td-col-left` ist jetzt die Quelle.
+
+**Implementierungsdetail:** Trennstriche zwischen Cells laufen über `gap: 1px; background: var(--td-line)` am Grid statt über `border-right`/`border-left` an den einzelnen Cells. Genau die Design-Handoff-Implementierung.
+
+---
+
+## Markdown-Editor: manueller Save (Ctrl+S) statt Auto-Save
+
+**Entscheidung:** Ctrl+S triggert `fs:write`; Editor-Toolbar zeigt einen Save-Button und einen Dirty-Indikator („○ tippt…/● gespeichert"). Pure-Logik-Util `editorDirtyState` mit `saved`/`buffer`-Strings + `isDirty/updateBuffer/markSaved`. Auto-Save gibt es bewusst NICHT.
+
+**Varianten:**
+
+- **A** Manueller Save mit Ctrl+S + dirty-Indikator (gewählt — Architektur 6.8 + Roadmap-Wortlaut)
+- **B** Debounced Auto-Save 500 ms wie Notes (Memory-Default-Pfad „konvenient vor traditionell")
+- **C** Hybrid: Auto-Save 1.5 s + Ctrl+S Force
+
+**Grund:** Notes sind ephemeres Pad-Editing — Auto-Save passt. CLAUDE.md / CHANGELOG / Roadmap-Files sind aber versionierte Doku, die der User bewusst editiert, dann den Diff anschaut, dann den commit-Trigger sendet. Auto-Save würde unbeabsichtigte Tipps sofort persistieren und den manuellen Diff-/Commit-Workflow korrumpieren — der dirty-Stand ist hier ein Feature, nicht ein Reibungspunkt. **Bewusste Abweichung von der „UX-Defaults: konvenient vor traditionell"-Memory-Konvention** — Architektur 6.8 + Roadmap-Spec waren eindeutig, und die Workflow-Begründung trägt.
+
+**Konsequenz:** Memory-Konvention bleibt für reine UX-Picks gültig (Daily-Driver-bevorzugte Pfade), aber Spec hat Vorrang, wenn die App-Workflow-Logik auf Sichtbarkeit von Zwischenzuständen baut (hier: dirty vs. saved als Trigger für die User-Entscheidung „commit jetzt vs. weiter editieren").
+
+---
+
+## Datei-Tab-Stack pro Projekt statt globale Tab-Liste
+
+**Entscheidung:** `useFileTabsStore` hält `tabs: Record<projectId, FileTab[]>` und `activeId: Record<projectId, string|null>`. Beim Project-Wechsel sieht der User die Datei-Tabs des neuen Projekts; die alten bleiben in-memory erhalten und kommen zurück, wenn er das Projekt erneut aktiviert. Diff-Tab ist Sonderfall mit fester ID `'diff'` und sitzt immer ganz links pro Projekt-Stack.
+
+**Varianten:**
+
+- **A** Alle Datei-Tabs verwerfen beim Project-Wechsel
+- **B** Per-Projekt-Stack analog Sprint-4-Terminal-Tabs (gewählt)
+
+**Grund:** Daily-Driver-Case ist Multi-Tasking zwischen Projekten — A würde User dauerhaft frustrieren. B ist konsistent mit dem etablierten Terminal-Tab-Pattern (Sprint 4 Variante A: Tabs sind projekt-scoped, alle dauerhaft mounted). Implementierungsaufwand für B: ~80 Zeilen Store + 12 Tests; A wäre ~10 Zeilen, hätte aber UX-Schaden.
+
+**Konsequenz:** Persistenz nur In-Memory beim App-Lauf — kein DB-Schema-Touch (Sprint-7-Auflage „keine neue Migration"). Beim App-Restart sind die Datei-Tabs weg, genau wie Terminal-Tabs in Sprint 4. Phase 2+ kann das in `localStorage` persistieren, wenn der Daily-Driver-Use-Case das fordert.
+
+---
+
+## Sensitive-File-Patterns: hartcoded statt konfigurierbar
+
+**Entscheidung:** Pure-Logik-Util `isSensitiveFile` matcht den Datei-Basename gegen vier RegEx-Pattern: `^\.env(\..+)?$/i`, `^secrets\..+$/i`, `\.key$/i`, `\.pem$/i`. Settings-konfigurierbar wäre eine `sensitive_file_patterns: string[]`-Spalte in `AppSettings` — bewusst nicht implementiert.
+
+**Varianten:**
+
+- **A** Hartcoded-Liste (gewählt)
+- **B** Konfigurierbar via `settings.json` mit denselben Defaults
+
+**Grund:** Settings-Dialog kommt erst Sprint 8 — bei B müsste der User bis dahin die `settings.json` per Texteditor anfassen, um eigene Patterns zu ergänzen. Defaults decken die Standard-Cases (Twelve-Factor-`.env`, CI-Secrets, SSL-Keys/PEMs) bereits ab. „Hartcoded mit klarem Erweiterungs-Pfad bei echtem User-Bedarf" ist sauberer als „konfigurierbar, aber ohne UI".
+
+**Konsequenz:** Sprint 8 (Settings-Dialog) kann die Liste in den UI-Editor ziehen, wenn nach erstem User-Test echte Custom-Patterns nachgefordert werden. Das `findSensitiveFiles`-API ist schon driver-frei, der Settings-Hook wäre eine 5-Zeilen-Verdrahtung.
+
+**Implementierungsdetail:** Match läuft auf den BASENAME, nicht auf den ganzen Pfad — sonst würde `docs/keyboard-notes.md` als sensitiv markiert, weil der Pfad „key" enthält. Defensiv-Test deckt diesen False-Positive-Pfad ab.
+
+---
+
+## Diff-Viewer: @codemirror/merge.unifiedMergeView pro Datei statt Patch-Renderer
+
+**Entscheidung:** Diff-Tab zeigt eine File-Liste oben (klickbar) und unten den Inline-Diff der ausgewählten Datei via `@codemirror/merge.unifiedMergeView`. Der Renderer holt parallel `git:show` (HEAD-Version) und `fs:read` (Working-Tree-Inhalt) und übergibt beide an die Extension — die berechnet den Diff intern und markiert Hinzufügungen/Löschungen inline.
+
+**Varianten:**
+
+- **A** Raw `git diff`-Output in einem CodeMirror-Plain-View mit eigener `+ / -`-Färbung (Design-Handoff-Pattern in `claude-export/components.jsx` `DiffViewer`)
+- **B** `@codemirror/merge.unifiedMergeView` mit HEAD-Version als `original` (gewählt — Architektur 6.7 + Sprint-7-Briefing-Wortlaut)
+- **C** Side-by-side `MergeView` aus demselben Paket — wäre Phase-2-Komfort, braucht mehr horizontalen Platz
+
+**Grund:** Architektur 6.7 sagt explizit „Render mit @codemirror/merge"; das Briefing wiederholt das. Variante A war einfacher (kein zusätzliches `git:show`-IPC), hätte aber die Spec gebrochen und wäre kein „echter" Inline-Diff (kein Edit-fähiges Original-Reference). Variante C ist Phase 2 — im 1fr-breiten Editor-Slot reicht unified.
+
+**Konsequenz:** Neuer IPC-Channel `git:show` mit `showFile(repoPath, relPath, ref='HEAD')`-Method im GitDriver. Untracked Files werfen einen simple-git-Error („exists on disk, but not in HEAD") — der Driver fängt das ab und liefert leeren String, sodass der unifiedMergeView alle Working-Tree-Zeilen korrekt als Hinzufügung markiert. Read-only via `EditorView.editable.of(false) + EditorState.readOnly.of(true)`.
+
+---
+
 ## Sidebar-Layout: 3 Sektionen statt View-Toggle
 
 **Entscheidung:** Die LeftSidebar rendert drei vertikal gestapelte `td-panel`-Sektionen (Projekte / Aktive Sessions / Verlauf) wie im Claude-Design-Handoff (`docs/design/claude-export/components.jsx`). Klick auf ein aktives Tab-Item wechselt zur Terminals-Hauptansicht und aktiviert den Tab; Klick auf einen Verlauf-Eintrag wechselt zur Replace-View des HistoryPane mit dem Item vorausgewählt. Modal-State (NewSession/Templates) liegt im `useUiStore`, weil sowohl die Sidebar als auch die Tab-Bar Buttons besitzen, die dieselben Modale öffnen.

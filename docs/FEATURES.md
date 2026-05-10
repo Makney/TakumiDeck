@@ -85,11 +85,11 @@ Markdown-Editor und Diff-Viewer.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Markdown-Editor`               | ⛔      |           |
-| `YAML-Validierung`              | ⛔      |           |
-| `Markdown-Preview-Toggle`       | ⛔      |           |
-| `Diff-Viewer`                   | ⛔      |           |
-| `Pre-Commit-Panel`              | ⛔      |           |
+| `Markdown-Editor`               | ✅      | 2026-05-10 — CodeMirror 6 + lang-markdown + lang-yaml, oneDark + Custom-Override (Q5-B), manueller Save Ctrl+S mit unsaved-Indikator (Q1-A), Datei-Tab-Stack pro Projekt |
+| `YAML-Validierung`              | ✅      | 2026-05-10 — Pure-Logik via js-yaml + 500ms-Debounce-Linter (Q4-B), Marker-Mapping auf Quell-Datei-Zeilen, nur CLAUDE.md, kein Auto-Fix |
+| `Markdown-Preview-Toggle`       | ✅      | 2026-05-10 — Toggle-Pills in der Editor-Toolbar; Preview via react-markdown mit App-Tokens (Display-Font für Headings, Mono für Code) |
+| `Diff-Viewer`                   | ✅      | 2026-05-10 — @codemirror/merge.unifiedMergeView via git:show (HEAD) + fs:read (Working); File-Liste mit Status-Marks; Empty-States für clean-tree und non-git; read-only |
+| `Pre-Commit-Panel`              | ✅      | 2026-05-10 — Eigener Modal (Q3-A) mit Branch + File-Liste + Sensitive-File-Warnung (Q7-A: hartcoded .env(.*)/secrets.*/`*.key`/`*.pem`); Trigger-Phrase via Sprint-6-Bracketed-Paste an aktive PTY |
 
 ## App-Chrome (Sprint 7-8)
 
@@ -98,7 +98,7 @@ Header-Bar und globale UI-Komponenten.
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
 | `Header-Bar`                    | ⛔      |           |
-| `Action-Bar`                    | ⛔      |           |
+| `Action-Bar`                    | ✅      | 2026-05-10 (Sprint 7) — `td-term-bar` aus Sprint 6 ergänzt um `commit`-Pill, die das PreCommitModal öffnet (Sprint-6-SEASON_LOG-Hinweis erfüllt). Modell-Pill (read-only), Templates-Pill, commit-Pill, Status-Badge rechts. |
 | `Tastatur-Hints`                | ⛔      |           |
 
 ## Right-Pane (Sprint 7)
@@ -107,9 +107,9 @@ Permanent sichtbarer Right-Pane mit Diff, Editor und Notizen.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Right-Pane-Layout`             | ⛔      |           |
-| `Datei-Tabs`                    | ⛔      |           |
-| `Datei-Browser`                 | ⛔      |           |
+| `Right-Pane-Layout`             | ✅      | 2026-05-10 — 4-Spalten-Grid (240/1fr/1fr/232) nach Design-Handoff; Editor in eigener breiter Spalte, Files+Notes als 232-px-Stack ganz rechts (Mid-Sprint-Pivot vom 232-px-Single-Pane-Briefing) |
+| `Datei-Tabs`                    | ✅      | 2026-05-10 — Per-Projekt-Tab-Stack (Q6-B) im useFileTabsStore; Diff-Tab immer ganz links; Schnellzugriff aus on_demand_files + Standards (CLAUDE.md/CHANGELOG/FEATURES/ENTSCHEIDUNGEN/Phase-File); M-Indikator für dirty Tabs |
+| `Datei-Browser`                 | ✅      | 2026-05-10 — fs:list-tree mit Driver-Injection und Skip-Liste (node_modules/.git/dist/build/.vite/.next/.idea/.vscode/out/coverage); hierarchisch mit Expand/Collapse; Filter vorbelegt mit `.md` (Q2-B); M-Indikator für dirty Files |
 
 ## Stats-Section (Sprint 5, Skeleton)
 

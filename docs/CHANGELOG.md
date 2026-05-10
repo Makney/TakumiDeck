@@ -17,6 +17,53 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-10 — Season 7: Editor + Git + Right-Pane
+
+### Was jetzt geht
+
+- **Right-Pane als 4-Spalten-Grid (240 / 1fr / 1fr / 232 px).** Editor + Diff bekommen eine eigene breite Spalte (3. Grid-Cell, full-flex), Files + Notes leben als schmaler 232-px-Stack ganz rechts (4. Grid-Cell, full-height), PlanPane wandert von „Mitte unten" nach „Editor unten" (3. Spalte, untere Zeile). StatsPane bleibt unter dem Terminal (2. Spalte unten). Layout-Klassen `td-col-mid-top / -mid-bottom / -right-top / -right-bottom / -right-stack` 1:1 aus `docs/design/claude-export/styles.css` übernommen — nicht mehr selbst erfunden.
+- **Markdown-Editor mit CodeMirror 6.** `@codemirror/lang-markdown` + `@codemirror/lang-yaml`, oneDark als Highlighting-Basis plus Custom-Theme-Override für Background / Selection / Cursor / Gutter auf die `td-*`-Variablen. Manueller Save mit Ctrl+S, „○ tippt…/● gespeichert"-Indikator pro Tab, Save-Button in der Editor-Toolbar. Datei-Tabs pro Projekt (eine MarkdownEditor-Instanz pro Tab, CSS-Toggle für Sichtbarkeit — Buffer überlebt Tab-Wechsel analog Sprint-3-xterm-Pattern). Schnellzugriff-Liste aus `workbench.on_demand_files` plus Standards (CLAUDE.md / CHANGELOG / FEATURES / ENTSCHEIDUNGEN / aktuelles Phase-File) — leerer Tab-Stack zeigt die Liste prominent, befüllter Stack zeigt sie als Pill-Footer mit „nicht-bereits-offenen" Einträgen.
+- **Inline-YAML-Validation für CLAUDE.md.** Pure-Logik-Util `validateClaudeMdYaml` extrahiert das Frontmatter zwischen `---`-Trennern und ruft `js-yaml.load()` darauf; CodeMirror-Linter hängt das mit 500-ms-Debounce in den Editor und mappt Fehler-Zeilen auf die Quell-Datei (statt auf den Block-internen Offset). Nur Anzeige, kein Auto-Fix.
+- **Markdown-Preview-Toggle.** Editor/Preview-Pills in der Toolbar; Preview-Modus rendert via `react-markdown` mit den App-Tokens (Display-Font für Headings, Mono-Font für Code-Blocks, Akzent-Farbe für Links).
+- **Diff-Viewer mit `@codemirror/merge`.** Working-Tree-Diff via `git:status` + `git:show`-IPC (HEAD-Version pro Datei) + `fs:read` (Working-Tree-Inhalt) → `unifiedMergeView({ original: HEAD })` mit aktuellem Inhalt als Doc. File-Liste oben mit Status-Mark (M/A/D/?/R), Klick wechselt das aktive File. Clean Tree und Non-Git-Repo bekommen explizite Empty-States. Read-only.
+- **PreCommitModal.** Eigener Modal (kein Inline-Drawer) mit Branch-Anzeige + Counts (ahead/behind), File-Liste mit Worktree/Index-Status, Sensitive-File-Warnung (`.env`, `.env.*`, `secrets.*`, `*.key`, `*.pem`) als Pure-Logik-Util mit Basename-Match (kein Pfad-False-Positive). Commit-Trigger geht über die existierende Sprint-6-`td-template-send`-Bracketed-Paste-Mechanik direkt an die aktive PTY — die App committed nicht selbst (Architektur 6.7).
+- **commit-Pill in der Action-Bar.** `td-term-bar` neben Templates ergänzt; `⎇ commit` öffnet das PreCommitModal. Disabled, wenn kein Projekt aktiv ist; Status-Hinweis im title-Attribut.
+- **Hierarchischer Datei-Browser im Right-Stack.** `fs:list-tree`-IPC scannt das aktive Projekt mit Driver-Injection (Skip-Liste: `node_modules`, `.git`, `dist`, `build`, `.vite`, `.next`, `.idea`, `.vscode`, `out`, `coverage`; versteckte Files raus außer `.gitignore`/`.gitattributes`/`.editorconfig`). Tree mit Click-to-Expand pro Verzeichnis; Filter-Suchfeld vorbelegt mit „.md", aber leerbar. Dateien zeigen einen `M`-Indikator, wenn der entsprechende Datei-Tab gerade dirty ist (kommt aus dem File-Tabs-Store). Klick öffnet die Datei in einem neuen Editor-Tab.
+- **Notizen-Panel migriert in den Right-Stack.** Sprint-3-`NotesFooter` ist komplett entfernt; `NotesPanel` lebt jetzt in der unteren Hälfte der 4. Grid-Spalte. Pure-Logik-Util `createNotesSaver` (500 ms Debounce + onBlur + onUnmount + beforeunload) ist unverändert wiederverwendet — alle 10 bestehenden Tests tragen weiter. Empty-State, wenn keine Session aktiv.
+- **Filesystem-IPC `fs:read` / `fs:write` mit Anti-Traversal.** Renderer schickt `projectId` + `relPath`; Main resolved gegen den Project-Pfad und prüft per `path.relative`, dass das Ergebnis innerhalb des Project-Roots bleibt. `..\..\windows\system32`-Versuche werden als `FS_PATH_ESCAPED` abgewiesen, bevor irgendein Filesystem-Aufruf läuft.
+- **simple-git als neue Dependency mit Driver-Injection.** `GitDriver`-Interface (`status` / `diff` / `showFile`) mit `realGitDriver` (simple-git) und Fake-Driver für Tests. `git:status` / `git:diff` / `git:show`-IPC liefern Branch + geänderte Files, Working-Tree-Patch und HEAD-Version pro Datei; alle drei Channels mit `PROJECT_NOT_FOUND` / `NOT_A_GIT_REPO` / `GIT_*_FAILED`-Codes statt nackten simple-git-Exceptions.
+- **Per-Projekt-Datei-Tab-Stack.** `useFileTabsStore` analog Sprint-4-Terminal-Tabs: `tabs[projectId]: FileTab[]` plus `activeId[projectId]`. Diff-Tab ist Sonderfall mit fester ID `'diff'` und sitzt immer ganz links pro Projekt. Tab-Schließen wählt links bevorzugt, sonst rechts, sonst null als nächste aktive Tab-ID — gleiches Pattern wie der Terminal-Tab-Stack.
+- **Tote Sidebar-CSS-Blöcke aufgeräumt (TECH_SCHULDEN-Drive-by).** Pre-3-Sektionen-Layout-Klassen (`.td-sidebar-header / -title / -actions / -icon-btn / -list / -item-* / -badge / -item-wrap / -views / -view-btn`) sind aus `app.css` raus, plus die alten `.td-notes-footer / -header / -toggle / -meta / -textarea`-Blöcke. Nur die noch genutzten `.td-sidebar-empty / -empty-soft / -error` bleiben. Generische `.td-panel:nth-child(2)` / `.td-panel-history`-Regeln auf `.td-sidebar > .td-panel*` gescoped, damit der Right-Stack nicht versehentlich erbt.
+
+### Umgesetzte Entscheidungen
+
+- **9 Variants vor dem Code, alle Empfehlungen direkt übernommen.** Q1 A (manueller Save, gegen UX-Default-Memory), Q2 B (Filter mit `.md`-Default), Q3 A (eigener PreCommitModal), Q4 B (500 ms YAML-Debounce), Q5 B (oneDark + Custom-Override), Q6 B (Per-Projekt-Datei-Tab-Stack), Q7 A (Sensitive-Patterns hartcoded), Q8 A (NotesFooter komplett raus), Q9 A (Skeleton-First-Reihenfolge). Plus eine Mid-Sprint-Layout-Entscheidung (Editor in eigener breiter Spalte statt im 232-px-Right-Pane) — siehe Mid-Sprint-Anpassungen.
+- **Skeleton-First-Phasenreihenfolge aus Sprint-6-Lehre.** Phase 1 (Right-Pane-Skeleton + Notes-Migration + CSS-Cleanup) zuerst, damit die Layout-Risiken früh sichtbar werden. Hat sich beim User-Feedback nach Phase 4 ausgezahlt — der Layout-Schmerz war sofort sichtbar, Pivot auf das Design-Handoff-4-Spalten-Grid kostete nur ~30 min, weil alle Komponenten schon in eigenen Files lagen und nur das App-Grid + die Eltern-Aufteilung umgebaut werden musste.
+
+### Mid-Sprint-Anpassungen
+
+- **Layout-Pivot von Single-Right-Pane (232 px Stack mit 3 Sektionen) auf 4-Spalten-Grid (240 / 1fr / 1fr / 232).** Briefing hatte den Editor im 232-px-Right-Pane vorgesehen — visuell zu eng beim ersten User-Test. User-Feedback: „in der Vorlage sieht es besser aus". Design-Handoff (`docs/design/claude-export/styles.css` Zeilen 122-195 + `app.jsx` Layout-Grid) hat von Anfang an 4 Spalten gezeichnet (Editor in eigener `1fr`-Spalte, Files+Notes als separate `td-col-right-stack`-Spalte ganz rechts, PlanPane unter dem Editor statt unter dem Terminal). `RightPane.tsx` aufgeteilt in `EditorPane.tsx` (Editor + Diff, breite Spalte) und `RightStack.tsx` (Files + Notes, schmale Spalte) — saubere Trennung pro Grid-Cell. ~30 min inkl. CSS-Cleanup. Lehre wandert ins SEASON_LOG.
+- **Re-Render-Endlosschleifen durch instabile Selectors.** Erster App-Start zeigte zwei aufeinanderfolgende „Maximum update depth exceeded"-Crashes: (1) `useFileTabsStore((s) => ... ?? [])` und `useFileTabsStore((s) => { return new Set() })` returnten neue Referenzen pro Render, was Zustand als State-Change interpretierte → infinite Re-Render. (2) Eltern reichten `(d) => setDirty(...)` als Inline-Closure an MarkdownEditor durch, dessen useEffect-deps `[dirty, onDirtyChange]` enthielten → bei jedem Render neuer Closure, Effect feuert, `setDirty` triggert Store-Mutation auch bei No-Op, neuer Render, neuer Closure, infinite. Zwei getrennte Fixes: stable EMPTY-Module-Konstanten + `useMemo` für abgeleitete Sets/Maps; und `setDirty/setSaved/setActive` im Store idempotent (early-return bei No-Op) plus `onDirtyChange` über einen Ref im MarkdownEditor.
+- **NotesFooter-Migration brauchte CSS-Pfad-Auflösung.** Sprint-3-`NotesFooter` hatte eigene `.td-notes-footer / -header / -toggle / -textarea`-Klassen mit Footer-Layout-Annahmen (border-top, expanded-Höhe, Toggle-Button). Im Right-Stack als full-Sektion sind die Annahmen falsch. CSS-Block ersetzt durch eine schlanke `.td-notes / -head / -body / -saving / -empty`-Variante, die das Design-Handoff-Vokabular 1:1 spiegelt.
+
+### Bonus-Bugfixes unterwegs
+
+- **`setActive` / `setDirty` / `setSaved` jetzt idempotent.** Defensiv-Pattern, das den oben beschriebenen Re-Render-Loop final entschärft — Store-Mutationen ohne Wert-Änderung sind ab sofort No-Ops, was auch bei zukünftigen Eltern-Inline-Closures keinen Loop mehr triggern kann.
+- **Sprint-6-`SESSION_NO_CLAUDE_UUID`-Cosmetic-Punkt offen geblieben.** SEASON_LOG hatte das als Sprint-7-Cosmetic-Slot vorgemerkt; Phase 7 hat den PreCommitModal gebaut, aber das Verlauf-Detail-Pane für tote Sessions nicht angefasst — bleibt für Sprint 8.
+
+### Offen geblieben (bewusst verschoben)
+
+- **Side-by-Side-Markdown-Preview** — Architektur 8 / 12 Phase-2-Auslassung. Toggle (Editor ↔ Preview) reicht im MVP.
+- **Diff-Viewer-Multi-Tab (Working / Staged / Session)** — Phase 2. Sprint 7 zeigt nur Working-Tree-Diff.
+- **YAML-Auto-Fix** — Phase 2. Sprint 7 zeigt nur Marker.
+- **Pull / Fetch / Branch-Switch** — Phase 5+ (Worktrees). simple-git-Driver ist da, der App-Pfad fehlt bewusst.
+- **Eigener Commit-Workflow durch die App** — Architektur 6.7. App schickt nur die Trigger-Phrase an Claude, das committed real.
+- **Settings-konfigurierbare Sensitive-Patterns** — Sprint 8 (Settings-Dialog). Bis dahin hartcoded.
+- **Per-Bucket-Burn-Rate / Heatmap-Filter** — Sprint 5 hatte das schon offen, weiter Phase 2.
+- **`SESSION_NO_CLAUDE_UUID`-Cosmetic-Hint im Verlauf-Detail-Pane** — Sprint-6-SEASON_LOG-Reminder, nach Sprint 8 verschoben (PreCommit + commit-Pill hatten Vorrang).
+
+---
+
 ## 2026-05-10 — Season 6: Templates + Season-Tracker
 
 ### Was jetzt geht

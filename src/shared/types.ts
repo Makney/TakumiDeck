@@ -237,6 +237,130 @@ export interface ProjectReadCfgInput {
   projectId: string;
 }
 
+// --- Datei-Browser-Tree (Sprint 7, Phase 5) ---------------------------
+
+// Hierarchischer Tree-Knoten für den Right-Pane-Datei-Browser. Verzeichnisse
+// haben children (rekursiv); Files haben kein children-Feld. Pfade sind
+// Forward-Slash-getrennt und projekt-relativ — der Renderer gibt sie 1:1 an
+// fs:read zurück, wenn der User auf eine Datei klickt.
+export interface FsTreeNode {
+  name: string;
+  relPath: string;
+  kind: 'file' | 'dir';
+  // Pflicht bei kind=dir; optional bei file (= immer leer/undefined). Leeres
+  // children-Array bei dir bedeutet entweder echtes Leere-Verzeichnis ODER
+  // dass die maxDepth des Scans erreicht wurde — Renderer kann das nicht
+  // unterscheiden, was im MVP akzeptabel ist.
+  children?: FsTreeNode[];
+}
+
+export interface FsListTreeInput {
+  projectId: string;
+  // Optional: Tiefe override. Default 5 (gleiches Limit wie Workspace-Scanner).
+  maxDepth?: number;
+}
+
+// --- Filesystem read/write (Sprint 7) ---------------------------------
+
+export interface FsReadInput {
+  projectId: string;
+  relPath: string;
+}
+
+export interface FsWriteInput {
+  projectId: string;
+  relPath: string;
+  content: string;
+}
+
+export interface FsReadResult {
+  // Voller Datei-Inhalt (UTF-8). Editor lädt diesen als Initial-Content.
+  content: string;
+  // Pfad relativ zum Projekt — Renderer behält ihn im Tab-State.
+  relPath: string;
+  // Absoluter Pfad (für Hover/Title-Anzeige); nie zur Re-Identifikation nutzen,
+  // weil dasselbe File zwei Project-Backings haben kann.
+  absolutePath: string;
+}
+
+export interface FsWriteResult {
+  // Bytes geschrieben (UTF-8-Länge). Renderer nutzt das als Bestätigung, nicht
+  // semantisch — der wichtige Effekt ist der Save selbst.
+  bytesWritten: number;
+}
+
+// --- Git (Sprint 7) --------------------------------------------------
+
+// Status-Codes aus simple-git's Single-Char-Codes auf semantisches Vokabular gemappt.
+// 'unchanged' deckt Whitespace/leeren Code im jeweiligen Slot ab (z.B. wenn nur der
+// Worktree, nicht der Index verändert wurde).
+export type GitFileStatus =
+  | 'unchanged'
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'untracked'
+  | 'renamed'
+  | 'copied'
+  | 'unmerged';
+
+export interface GitFileChange {
+  // Pfad relativ zum Repo-Root, in Forward-Slash-Notation (simple-git normalisiert).
+  path: string;
+  // Worktree-Status: was hat der User im Working-Tree, das noch nicht gestaged ist.
+  worktreeStatus: GitFileStatus;
+  // Index-Status: was ist schon mit `git add` markiert. Beide getrennt, damit das
+  // Pre-Commit-Panel staged vs. unstaged differenzieren kann.
+  indexStatus: GitFileStatus;
+}
+
+export interface GitStatusResult {
+  branch: string;
+  files: GitFileChange[];
+  ahead: number;
+  behind: number;
+}
+
+// IPC-Inputs: Renderer schickt die projectId, der Main löst sie gegen die DB auf
+// und ruft den Driver mit dem absoluten Repo-Pfad. Direkte Pfad-Übergabe vermeiden
+// wir bewusst — sonst kann der Renderer einen beliebigen Pfad reinschicken und
+// simple-git darauf laufen lassen.
+export interface GitStatusInput {
+  projectId: string;
+}
+
+export interface GitDiffInput {
+  projectId: string;
+  // Optional: nur den Diff einer einzelnen Datei (für Datei-Tab-Diff in Sprint 7+).
+  // null/undefined = kompletter Working-Tree-Diff.
+  filePath?: string;
+}
+
+export interface GitDiffResult {
+  // Roher Unified-Diff-Text wie git diff ihn ausgibt. Leer-String = kein Diff.
+  // Renderer parst den Patch via @codemirror/merge (Phase 6).
+  patch: string;
+  // Ob der Pfad ein Git-Repo ist. False = kein .git im Project-Pfad,
+  // Renderer zeigt entsprechenden Hinweis statt eines Diffs.
+  hasGit: boolean;
+}
+
+// Phase 6: Datei-Inhalt am Git-Ref (Default 'HEAD'). Leerer String = Datei
+// existiert am Ref nicht (z.B. neu im Working-Tree, nie committed).
+export interface GitShowInput {
+  projectId: string;
+  relPath: string;
+  ref?: string;
+}
+
+export interface GitShowResult {
+  content: string;
+  // hasGit-Hint analog zu GitDiffResult — sollte praktisch nie false sein,
+  // weil der Caller vorher git:status gerufen hat (das hätte schon NOT_A_GIT_REPO
+  // geliefert). Hier zur Defensiv-Konsistenz.
+  hasGit: boolean;
+}
+
 // --- Templates (Sprint 6) --------------------------------------------
 
 // Q1 + Q2 (B/B): on-demand-Discovery + beide Quellen separat mit source-Tag.
@@ -380,6 +504,19 @@ export interface RendererApi {
   };
   fs: {
     listTemplates: (input: FsListTemplatesInput) => Promise<IpcResult<TemplateFile[]>>;
+    // Sprint 7: Markdown-Editor liest und schreibt nur projekt-relativ.
+    read: (input: FsReadInput) => Promise<IpcResult<FsReadResult>>;
+    write: (input: FsWriteInput) => Promise<IpcResult<FsWriteResult>>;
+    // Sprint 7, Phase 5: hierarchischer Datei-Browser-Tree für den Right-Pane.
+    listTree: (input: FsListTreeInput) => Promise<IpcResult<FsTreeNode[]>>;
+  };
+  git: {
+    // Sprint 7: Branch + geänderte Files für Pre-Commit-Panel + Diff-Tab.
+    status: (input: GitStatusInput) => Promise<IpcResult<GitStatusResult>>;
+    // Working-Tree-Diff. filePath optional (= ganzer Tree).
+    diff: (input: GitDiffInput) => Promise<IpcResult<GitDiffResult>>;
+    // Datei-Inhalt am Ref (Default 'HEAD'); für Diff-Viewer (Phase 6).
+    show: (input: GitShowInput) => Promise<IpcResult<GitShowResult>>;
   };
   projects: {
     list: () => Promise<IpcResult<ProjectRow[]>>;

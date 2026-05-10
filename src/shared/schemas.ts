@@ -138,6 +138,56 @@ export const FsListTemplatesInputSchema = z.object({
   projectId: z.string().min(1),
 });
 
+// --- Filesystem read/write (Sprint 7) ---------------------------------
+
+// fs:read / fs:write laufen ausschließlich relativ zu einem registrierten Projekt.
+// Der Renderer kann keinen freien Pfad reinschicken — wir resolven serverseitig
+// gegen Project-Pfad + relPath und prüfen, dass das Ergebnis innerhalb des
+// Project-Roots bleibt (Anti-Traversal). relPath ist Forward-Slash-getrennt
+// (Renderer-Konvention; Main normalisiert).
+export const FsReadInputSchema = z.object({
+  projectId: z.string().min(1),
+  relPath: z.string().min(1),
+});
+
+export const FsWriteInputSchema = z.object({
+  projectId: z.string().min(1),
+  relPath: z.string().min(1),
+  // Voller Datei-Inhalt; UTF-8 ohne BOM. Save-Trigger ist manuell (Q1 Variante A:
+  // Ctrl+S), kein Streaming.
+  content: z.string(),
+});
+
+// fs:list-tree (Phase 5): hierarchischer Scan eines Projekts. maxDepth bewusst
+// optional — Default kommt aus dem Scanner (5).
+export const FsListTreeInputSchema = z.object({
+  projectId: z.string().min(1),
+  maxDepth: z.number().int().min(0).max(10).optional(),
+});
+
+// --- Git (Sprint 7) --------------------------------------------------
+
+// git:status / git:diff laufen immer gegen ein bekanntes Projekt. Renderer schickt
+// nur die projectId; der Main resolved gegen ProjectRepository.getById und ruft
+// den GitDriver mit dem absoluten Repo-Pfad. Direkte Pfad-Übergabe wäre eine
+// Renderer-→-Filesystem-Lücke (Sandboxing-Bypass).
+export const GitStatusInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
+export const GitDiffInputSchema = z.object({
+  projectId: z.string().min(1),
+  filePath: z.string().min(1).optional(),
+});
+
+// Phase 6: HEAD-Version einer Datei für die @codemirror/merge.unifiedMergeView.
+// ref optional, Default 'HEAD'.
+export const GitShowInputSchema = z.object({
+  projectId: z.string().min(1),
+  relPath: z.string().min(1),
+  ref: z.string().min(1).optional(),
+});
+
 // --- Workspace / Projects (Sprint 4) ---------------------------------
 
 // CLAUDE.md-YAML-Frontmatter laut Architektur Kapitel 5.

@@ -28,6 +28,7 @@ export const Channels = {
   // Git (Sprint 7)
   GitStatus: 'git:status',
   GitDiff: 'git:diff',
+  GitShow: 'git:show',
   GitWorktrees: 'git:worktrees',
 
   // Token-Tracking (Sprint 5)
@@ -42,6 +43,7 @@ export const Channels = {
   FsRead: 'fs:read',
   FsWrite: 'fs:write',
   FsListTemplates: 'fs:list-templates',
+  FsListTree: 'fs:list-tree',
 
   // Settings (Sprint 1)
   SettingsGet: 'settings:get',

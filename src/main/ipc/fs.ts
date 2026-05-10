@@ -1,10 +1,18 @@
 import { ipcMain } from 'electron';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { Channels } from '@shared/ipc-channels';
 import { ok, err, errFromUnknown } from '@shared/result';
-import { FsListTemplatesInputSchema } from '@shared/schemas';
+import {
+  FsListTemplatesInputSchema,
+  FsListTreeInputSchema,
+  FsReadInputSchema,
+  FsWriteInputSchema,
+} from '@shared/schemas';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
+import type { FsReadResult, FsTreeNode, FsWriteResult } from '@shared/types';
 import { listTemplates, realTemplateFsDriver } from '../templates/reader';
+import { scanProjectTree, realFsTreeDriver } from '../fs/treeScanner';
 import type { ProjectRepository } from '../db/repos/projects';
 import type { Logger } from '../logger';
 
@@ -15,7 +23,11 @@ import type { Logger } from '../logger';
 //   Per-Projekt:   <projektPfad>/docs/templates/*.md  +  <projektPfad>/docs/*_TEMPLATE.md
 //   Beide Quellen kommen mit source-Tag separat zurück (Q2 Variante B).
 //
-// fs:read / fs:write folgen mit Sprint 7 (Markdown-Editor).
+// fs:read / fs:write (Sprint 7, Q1 Variante A: manueller Save) — Markdown-Editor.
+//   Pfad-Auflösung: projectId → projects.getById → path.resolve(projectPath, relPath).
+//   Anti-Traversal: das Ergebnis muss innerhalb des Project-Roots liegen, sonst
+//   FS_PATH_ESCAPED. Damit kann der Renderer keinen `../../../etc/passwd`-Pfad
+//   reinschicken, selbst wenn die zod-Schema-Validation ihn passieren ließe.
 
 export function registerFsIpc(deps: {
   projects: ProjectRepository;
@@ -50,9 +62,132 @@ export function registerFsIpc(deps: {
       return errFromUnknown(e, 'FS_LIST_TEMPLATES');
     }
   });
+
+  ipcMain.handle(Channels.FsRead, async (_event, payload: unknown) => {
+    try {
+      const input = FsReadInputSchema.parse(payload);
+      const project = projects.getById(input.projectId);
+      if (!project) {
+        return err(`Projekt ${input.projectId} nicht gefunden`, 'PROJECT_NOT_FOUND');
+      }
+      const resolved = resolveProjectRelative(project.path, input.relPath);
+      if (resolved === null) {
+        return err(
+          `Pfad „${input.relPath}" liegt außerhalb des Projekts`,
+          'FS_PATH_ESCAPED',
+        );
+      }
+      try {
+        const content = await fs.readFile(resolved, 'utf8');
+        const result: FsReadResult = {
+          content,
+          relPath: input.relPath,
+          absolutePath: resolved,
+        };
+        return ok(result);
+      } catch (e) {
+        if (isFsNotFound(e)) {
+          return err(`Datei „${input.relPath}" existiert nicht`, 'FS_NOT_FOUND');
+        }
+        log.warn(`[fs:read] readFile fehlgeschlagen path=${resolved}`, e);
+        return errFromUnknown(e, 'FS_READ_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'FS_READ');
+    }
+  });
+
+  ipcMain.handle(Channels.FsListTree, async (_event, payload: unknown) => {
+    try {
+      const input = FsListTreeInputSchema.parse(payload);
+      // Default-Bucket hat keinen real existierenden Pfad — leeres Tree-Array
+      // ist der saubere Empty-State (Renderer rendert „kein Browser verfügbar").
+      if (input.projectId === DEFAULT_PROJECT_ID) {
+        return ok([] as FsTreeNode[]);
+      }
+      const project = projects.getById(input.projectId);
+      if (!project) {
+        return err(`Projekt ${input.projectId} nicht gefunden`, 'PROJECT_NOT_FOUND');
+      }
+      try {
+        const tree = await scanProjectTree(
+          { rootPath: project.path, maxDepth: input.maxDepth },
+          realFsTreeDriver,
+        );
+        return ok(tree);
+      } catch (e) {
+        log.warn(`[fs:list-tree] Scan fehlgeschlagen path=${project.path}`, e);
+        return errFromUnknown(e, 'FS_LIST_TREE_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'FS_LIST_TREE');
+    }
+  });
+
+  ipcMain.handle(Channels.FsWrite, async (_event, payload: unknown) => {
+    try {
+      const input = FsWriteInputSchema.parse(payload);
+      const project = projects.getById(input.projectId);
+      if (!project) {
+        return err(`Projekt ${input.projectId} nicht gefunden`, 'PROJECT_NOT_FOUND');
+      }
+      const resolved = resolveProjectRelative(project.path, input.relPath);
+      if (resolved === null) {
+        return err(
+          `Pfad „${input.relPath}" liegt außerhalb des Projekts`,
+          'FS_PATH_ESCAPED',
+        );
+      }
+      try {
+        // Eltern-Verzeichnis muss existieren — wir legen es NICHT automatisch an.
+        // Editor öffnet existierende Files (Datei-Browser oder Schnellzugriff),
+        // nicht ad-hoc-Pfade — fehlende Parent-Dirs sind ein User-Fehler, der
+        // sich im Klartext melden soll, statt versteckt mkdir -p auszuführen.
+        await fs.writeFile(resolved, input.content, 'utf8');
+        const bytesWritten = Buffer.byteLength(input.content, 'utf8');
+        const result: FsWriteResult = { bytesWritten };
+        return ok(result);
+      } catch (e) {
+        if (isFsNotFound(e)) {
+          return err(
+            `Verzeichnis von „${input.relPath}" existiert nicht`,
+            'FS_NOT_FOUND',
+          );
+        }
+        log.warn(`[fs:write] writeFile fehlgeschlagen path=${resolved}`, e);
+        return errFromUnknown(e, 'FS_WRITE_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'FS_WRITE');
+    }
+  });
 }
 
 // Helper: liefert den globalen Templates-Pfad (configurePaths legt ihn beim Start an).
 export function templatesDirFromUserData(userDataDir: string): string {
   return path.join(userDataDir, 'templates');
+}
+
+// Anti-Traversal: löst projectPath + relPath auf und prüft, dass das Ergebnis
+// innerhalb von projectPath bleibt. null = Pfad würde aus dem Project-Root
+// herausführen (z.B. via `..\..\windows\system32`).
+//
+// Exportiert für Tests; in den Handlern direkt aufrufbar.
+export function resolveProjectRelative(
+  projectPath: string,
+  relPath: string,
+): string | null {
+  const root = path.resolve(projectPath);
+  const candidate = path.resolve(root, relPath);
+  // Plattform-aware: path.relative liefert auf Windows den Backslash-Pfad,
+  // der mit '..' beginnt, wenn candidate außerhalb von root liegt.
+  const rel = path.relative(root, candidate);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return candidate;
+}
+
+function isFsNotFound(e: unknown): boolean {
+  if (typeof e !== 'object' || e === null) return false;
+  const code = (e as { code?: unknown }).code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }

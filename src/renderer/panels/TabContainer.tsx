@@ -6,8 +6,11 @@ import { useProjectStore } from '../stores/projects';
 import { TerminalTab } from './TerminalTab';
 import { NewSessionModal } from '../modals/NewSessionModal';
 import { TemplatesModal } from '../modals/TemplatesModal';
-import { NotesFooter } from '../components/NotesFooter';
+import { PreCommitModal } from '../modals/PreCommitModal';
 import { displayProjectName } from '../components/displayProjectName';
+// Sprint 7 (Q8 Variante A): NotesFooter ist hier weg — Notes leben jetzt im
+// RightPane (panels/RightPane.tsx → components/NotesPanel.tsx). Ein klarer Ort
+// statt zwei (sonst Sync-Bugs + Konflikt mit der commit-Pill in der Action-Bar).
 
 // Sprint-3-Tab-Container, in Sprint 4 erweitert um Per-Projekt-Filter:
 // - Tab-Bar zeigt nur Tabs des aktiven Projekts (Variante A: Renderer-Filter).
@@ -35,6 +38,8 @@ export function TabContainer({ settings }: Props) {
   const setShowNewSessionModal = useUiStore((s) => s.setShowNewSessionModal);
   const showTemplatesModal = useUiStore((s) => s.showTemplatesModal);
   const setShowTemplatesModal = useUiStore((s) => s.setShowTemplatesModal);
+  const showPreCommitModal = useUiStore((s) => s.showPreCommitModal);
+  const setShowPreCommitModal = useUiStore((s) => s.setShowPreCommitModal);
   const projects = useProjectStore((s) => s.projects);
 
   const activeProject = useMemo(
@@ -87,9 +92,9 @@ export function TabContainer({ settings }: Props) {
   // events landen am body — Ctrl+C/V wirken erst nach einem Klick auf die Canvas.
   // TerminalTab hört auf 'td-focus-active' und ruft `terminal.focus()` auf.
   useEffect(() => {
-    if (showNewSessionModal || showTemplatesModal) return;
+    if (showNewSessionModal || showTemplatesModal || showPreCommitModal) return;
     window.dispatchEvent(new Event('td-focus-active'));
-  }, [showNewSessionModal, showTemplatesModal]);
+  }, [showNewSessionModal, showTemplatesModal, showPreCommitModal]);
 
   // Globale Keyboard-Shortcuts: Ctrl+N neue Session, Ctrl+T Templates, Ctrl+Tab /
   // Ctrl+Shift+Tab Wechsel. Tab-Navigation ist auf das aktive Projekt beschränkt
@@ -245,11 +250,11 @@ export function TabContainer({ settings }: Props) {
         <ActionBar
           model={activeTab.model}
           status={activeTab.status}
+          canCommit={activeProject !== null}
           onOpenTemplates={() => setShowTemplatesModal(true)}
+          onOpenPreCommit={() => setShowPreCommitModal(true)}
         />
       )}
-
-      {activeId && <NotesFooter sessionId={activeId} />}
 
       {showNewSessionModal && canAddSession && (
         <NewSessionModal
@@ -266,6 +271,15 @@ export function TabContainer({ settings }: Props) {
           frontmatter={activeProjectFrontmatter}
           hasActiveTerminal={activeId !== null}
           onClose={() => setShowTemplatesModal(false)}
+        />
+      )}
+
+      {showPreCommitModal && activeProject && (
+        <PreCommitModal
+          project={activeProject}
+          frontmatter={activeProjectFrontmatter}
+          hasActiveTerminal={activeId !== null}
+          onClose={() => setShowPreCommitModal(false)}
         />
       )}
     </div>
@@ -363,10 +377,19 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
 interface ActionBarProps {
   model: string;
   status: SessionStatus;
+  // false → commit-Pill ist disabled (kein aktives Projekt → kein Trigger sinnvoll).
+  canCommit: boolean;
   onOpenTemplates: () => void;
+  onOpenPreCommit: () => void;
 }
 
-function ActionBar({ model, status, onOpenTemplates }: ActionBarProps) {
+function ActionBar({
+  model,
+  status,
+  canCommit,
+  onOpenTemplates,
+  onOpenPreCommit,
+}: ActionBarProps) {
   const modelLabel = ACTION_BAR_MODEL_LABELS[model] ?? model;
   return (
     <div className="td-term-bar">
@@ -383,6 +406,23 @@ function ActionBar({ model, status, onOpenTemplates }: ActionBarProps) {
         title="Templates (Ctrl+T)"
       >
         <span aria-hidden>⌘</span> Templates
+      </button>
+      {/* Sprint-7-Phase-8: commit-Pill öffnet PreCommitModal. Trigger-Phrase
+          aus workbench.trigger_phrases.commit wird per Bracketed-Paste an
+          die aktive PTY geschickt — die App committed selbst nicht
+          (Architektur 6.7). */}
+      <button
+        type="button"
+        className="td-pill td-pill-button"
+        onClick={onOpenPreCommit}
+        disabled={!canCommit}
+        title={
+          canCommit
+            ? 'Pre-Commit-Panel öffnen'
+            : 'Erst ein Projekt links auswählen'
+        }
+      >
+        <span aria-hidden>⎇</span> commit
       </button>
       <div className="td-term-bar-spacer" aria-hidden />
       <span className="td-term-bar-status">{STATUS_LABEL[status]}</span>

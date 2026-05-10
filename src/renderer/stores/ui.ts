@@ -70,12 +70,18 @@ interface UiStoreState {
   // geöffnet werden — also gehört der Zustand in einen gemeinsamen Store.
   showNewSessionModal: boolean;
   showTemplatesModal: boolean;
+  // Sprint-7-Phase-8: PreCommitModal wird aus der commit-Pill in der Action-Bar
+  // geöffnet. Globaler Zustand wie die anderen Modals — falls in Phase 8+
+  // weitere Trigger dazukommen (z.B. Sidebar-Footer-Action), öffnen sie alle
+  // denselben Zustand.
+  showPreCommitModal: boolean;
 
   setActiveProject: (projectId: string | null, view?: MainView) => void;
   setMainView: (view: MainView) => void;
   setHistorySelected: (sessionId: string | null) => void;
   setShowNewSessionModal: (show: boolean) => void;
   setShowTemplatesModal: (show: boolean) => void;
+  setShowPreCommitModal: (show: boolean) => void;
   hydrateFromStorage: () => void;
   loadActiveProjectFrontmatter: (projectId: string) => Promise<void>;
   setDashboardDetailBar: (barId: string | null) => void;
@@ -90,6 +96,7 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
   historySelectedId: null,
   showNewSessionModal: false,
   showTemplatesModal: false,
+  showPreCommitModal: false,
 
   setActiveProject: (projectId, view) => {
     const state = get();
@@ -132,6 +139,11 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
   setShowTemplatesModal: (show) => {
     if (get().showTemplatesModal === show) return;
     set({ showTemplatesModal: show });
+  },
+
+  setShowPreCommitModal: (show) => {
+    if (get().showPreCommitModal === show) return;
+    set({ showPreCommitModal: show });
   },
 
   hydrateFromStorage: () => {
