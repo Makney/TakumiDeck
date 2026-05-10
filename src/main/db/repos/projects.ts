@@ -54,6 +54,12 @@ export interface ProjectDbDriver {
   // Wird beim Remap-Pass gebraucht: liefert die Sessions, die noch am Default-Project hängen.
   // Nur die Felder, die der Remap-Algorithmus liest (id + cwd) — kein Volltext-Join.
   listSessionsForProject(projectId: string): Array<{ id: string; cwd: string }>;
+  // Sprint 6: atomar (Transaktion) den aktuellen next_season_number-Wert lesen und
+  // um 1 erhöhen. Returnt den VORHERIGEN Wert (= die Season-Nummer, die der Caller
+  // der frisch zu erstellenden Session zuweisen kann). null, wenn das Project nicht
+  // existiert. Lücken bei späterem Spawn-Fehler sind explizit akzeptiert
+  // (Architektur 6.6: "Lücken bei Abbruch akzeptiert").
+  allocateSeasonNumber(projectId: string): number | null;
 }
 
 // Path-Match-Helper: prüft, ob `cwd` ein Pfad innerhalb von `projectPath` ist.
@@ -146,6 +152,14 @@ export class ProjectRepository {
     }
     return moved;
   }
+
+  // Sprint 6 (Q6 Variante B): nur durchreichen — der atomare SELECT+UPDATE-Schritt
+  // sitzt im Driver, weil die Transaktion eine Datenbankprimitive ist. Caller im
+  // pty:create-Handler ruft das nur, wenn type === 'feature' (Architektur 6.6:
+  // Bug/Review/Docs-Sync bekommen kein season_number).
+  allocateSeasonNumber(projectId: string): number | null {
+    return this.driver.allocateSeasonNumber(projectId);
+  }
 }
 
 // --- SQLite-Driver --------------------------------------------------
@@ -161,6 +175,9 @@ export class SqliteProjectDriver implements ProjectDbDriver {
     [string],
     { id: string; cwd: string }
   >;
+  private readonly readSeasonStmt: Database.Statement<[string], { next_season_number: number }>;
+  private readonly bumpSeasonStmt: Database.Statement;
+  private readonly allocateSeasonTxn: Database.Transaction<(projectId: string) => number | null>;
 
   constructor(private readonly db: Database.Database) {
     this.insertStmt = db.prepare(
@@ -200,6 +217,22 @@ export class SqliteProjectDriver implements ProjectDbDriver {
     this.listSessionsStmt = db.prepare<[string], { id: string; cwd: string }>(
       'SELECT id, cwd FROM sessions WHERE project_id = ?',
     );
+    // Sprint 6: atomare Counter-Allocation. SELECT+UPDATE in einer better-sqlite3-
+    // Transaction (synchron, lokales File → Race nur theoretisch). Die Side-Effects
+    // einer fehlgeschlagenen Spawn-Folge (Counter incrementiert, kein Insert) sind
+    // bewusst akzeptierte Lücken laut Architektur 6.6.
+    this.readSeasonStmt = db.prepare<[string], { next_season_number: number }>(
+      'SELECT next_season_number FROM projects WHERE id = ?',
+    );
+    this.bumpSeasonStmt = db.prepare(
+      'UPDATE projects SET next_season_number = next_season_number + 1 WHERE id = ?',
+    );
+    this.allocateSeasonTxn = db.transaction((projectId: string): number | null => {
+      const row = this.readSeasonStmt.get(projectId);
+      if (!row) return null;
+      this.bumpSeasonStmt.run(projectId);
+      return row.next_season_number;
+    });
   }
 
   insert(row: ProjectInsert): void {
@@ -230,6 +263,10 @@ export class SqliteProjectDriver implements ProjectDbDriver {
 
   listSessionsForProject(projectId: string): Array<{ id: string; cwd: string }> {
     return this.listSessionsStmt.all(projectId);
+  }
+
+  allocateSeasonNumber(projectId: string): number | null {
+    return this.allocateSeasonTxn(projectId);
   }
 }
 
@@ -317,6 +354,14 @@ export class InMemoryProjectDriver implements ProjectDbDriver {
       if (s.project_id === projectId) out.push({ id: s.id, cwd: s.cwd });
     }
     return out;
+  }
+
+  allocateSeasonNumber(projectId: string): number | null {
+    const project = this.projects.get(projectId);
+    if (!project) return null;
+    const previous = project.next_season_number;
+    project.next_season_number = previous + 1;
+    return previous;
   }
 
   // Test-Hilfe: Session zur Map hinzufügen, ohne über Sessions-Repo zu gehen.

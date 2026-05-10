@@ -9,7 +9,7 @@ import type { UsageRepository } from '../db/repos/usage';
 import type { JsonlOffsetRepository } from '../db/repos/jsonl-offsets';
 import { parseJsonlSegment, type JsonlReadDriver } from './parser';
 import { hourBucket } from '../db/repos/usage';
-import { encodeCwd, encodedCwdFromJsonlPath } from './cwd-encoding';
+import { claudeUuidFromJsonlPath, encodeCwd, encodedCwdFromJsonlPath } from './cwd-encoding';
 
 // JSONL-Watcher (Sprint 5).
 //
@@ -115,11 +115,15 @@ export class JsonlWatcher {
 
   private async handleFile(filePath: string): Promise<void> {
     try {
-      // Schritt 1: TakumiDeck-Session finden, die zu dieser JSONL gehört. claude-code
-      // vergibt eigene UUIDs — der Filename matcht NICHT unsere `sessions.id`. Wir
-      // matchen über den encoded-cwd des Eltern-Ordners gegen die `cwd`-Spalte unserer
-      // running/idle-Sessions; Mehrfachtreffer werden durch zeitliche Nähe (started_at
-      // < ts der ersten Message) entschieden.
+      // Schritt 1: TakumiDeck-Session finden, die zu dieser JSONL gehört.
+      //
+      // Sprint 5: encodeCwd-Match gegen running/idle-Sessions für Live-Tracking.
+      // Sprint-6-Hotfix: zusätzlich Backfill-Pfad — claude-codes UUID aus dem
+      // Filename in sessions.claude_session_id schreiben (idempotent, einmal pro
+      // File-Tick), damit Resume nach Migration 0003 für Legacy-Sessions auch
+      // ohne running-Status funktioniert.
+      this.backfillClaudeSessionId(filePath);
+
       const knownSession = this.resolveTakumiSession(filePath);
 
       const prevOffset = this.deps.offsets.get(filePath);
@@ -211,6 +215,37 @@ export class JsonlWatcher {
       if (!best || session.started_at > best.started_at) best = session;
     }
     return best;
+  }
+
+  // Sprint-6-Hotfix: rückwirkend claude_session_id für Sessions ohne UUID setzen.
+  //
+  // Status-agnostisch (running/idle/completed/interrupted/error/archived alle
+  // Kandidaten), damit Legacy-Sessions aus Sprint 2/3 + pre-Hotfix-Sprint-6 nach
+  // Migration 0003 resume-fähig werden, sobald der Watcher ihre JSONL einmal
+  // gesehen hat. Bei mehreren Kandidaten im selben cwd gewinnt die jüngste —
+  // gleiche Heuristik wie resolveTakumiSession (Mehrdeutigkeit ist als Limitation
+  // in TECH_SCHULDEN.md festgehalten).
+  //
+  // Idempotent: setClaudeSessionId überschreibt nicht, daher ist ein erneuter
+  // Aufruf für eine bereits befüllte Session ein No-op.
+  private backfillClaudeSessionId(filePath: string): void {
+    const claudeUuid = claudeUuidFromJsonlPath(filePath);
+    if (!claudeUuid) return;
+    const folderEncoded = encodedCwdFromJsonlPath(filePath);
+    if (!folderEncoded) return;
+    const missing = this.deps.sessions.listMissingClaudeSessionId();
+    let best: SessionRow | null = null;
+    for (const session of missing) {
+      if (encodeCwd(session.cwd) !== folderEncoded) continue;
+      if (!best || session.started_at > best.started_at) best = session;
+    }
+    if (!best) return;
+    const updated = this.deps.sessions.setClaudeSessionId(best.id, claudeUuid);
+    if (updated) {
+      this.deps.log.info(
+        `[jsonl-watcher] claude_session_id backfilled session=${best.id.slice(0, 8)} → ${claudeUuid.slice(0, 8)} (status=${best.status})`,
+      );
+    }
   }
 
   private scheduleGlobalPush(): void {

@@ -9,6 +9,7 @@ import {
 } from '@shared/schemas';
 import type { PtyManager } from '../pty/manager';
 import type { SessionRepository } from '../db/repos/sessions';
+import type { ProjectRepository } from '../db/repos/projects';
 import type { SessionLifecycle } from '../sessions/lifecycle';
 import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
@@ -20,12 +21,13 @@ import { resolveExecutable } from '../pty/binary';
 export function registerPtyIpc(deps: {
   manager: PtyManager;
   sessions: SessionRepository;
+  projects: ProjectRepository;
   lifecycle: SessionLifecycle;
   settings: SettingsStore;
   getWebContents: () => WebContents | null;
   log: Logger;
 }): void {
-  const { manager, sessions, lifecycle, settings, getWebContents, log } = deps;
+  const { manager, sessions, projects, lifecycle, settings, getWebContents, log } = deps;
 
   // Manager-Events ans Renderer durchreichen + bei Exit Session-Status nachziehen.
   manager.setListeners({
@@ -75,11 +77,24 @@ export function registerPtyIpc(deps: {
         return err<never>(msg, 'PTY_CWD_NOT_FOUND');
       }
 
-      // 1. Session-DB-Row anlegen. Wir verwenden die vom Renderer vorgegebene
+      // 1. Sprint 6: Counter atomar allozieren (Q6 Variante B). Nur für 'feature' —
+      //    Bug/Review/Docs-Sync bleiben ohne season_number. Wenn das Project nicht
+      //    existiert (sollte beim Sprint-4-Filter im Renderer nicht passieren, ist
+      //    aber als Defense-in-Depth korrekt), bekommt die Session keine Nummer.
+      let seasonNumber: number | null = null;
+      if (input.type === 'feature') {
+        seasonNumber = projects.allocateSeasonNumber(input.projectId);
+      }
+
+      // 2. Session-DB-Row anlegen. Wir verwenden die vom Renderer vorgegebene
       //    sessionId 1:1, damit pty:data-Events sofort zuordnenbar sind. Sprint 5
       //    nimmt project_id aus dem Input — Sprint-2-Lifeline (DEFAULT_PROJECT_ID
       //    hartcoded) hatte alle Sessions am Default-Bucket hängen lassen, was
       //    Per-Projekt-Token-Aggregate verhindert hat.
+      //
+      //    Sprint-6-Hotfix: claude_session_id = sessionId, weil wir den Spawn unten
+      //    mit --session-id <sessionId> machen. Damit ist die Session ab dem ersten
+      //    Tick resume-fähig (Variante A des Hotfix-Plans).
       const row = sessions.create({
         id: input.sessionId,
         project_id: input.projectId,
@@ -87,14 +102,22 @@ export function registerPtyIpc(deps: {
         type: input.type,
         model: input.model,
         cwd: input.cwd,
+        season_number: seasonNumber,
+        claude_session_id: input.sessionId,
       });
 
-      // 2. PTY spawnen. Wenn das fehlschlägt (Binary nicht gefunden, cwd ungültig),
+      // 3. PTY spawnen. Wenn das fehlschlägt (Binary nicht gefunden, cwd ungültig),
       //    die Session in der DB als 'error' markieren statt als orphaned 'running'.
+      //
+      //    Sprint-6-Hotfix: --session-id <uuid> erzwingt, dass claude-code unsere
+      //    UUID als interne Session-UUID verwendet (statt eine eigene zu erzeugen).
+      //    Damit matcht --resume <sessionId> später 1:1 — ohne dieses Flag schreibt
+      //    claude-code die JSONL unter einer eigenen UUID, und Resume scheitert mit
+      //    "No conversation found with session ID: ...".
       try {
         manager.create(input.sessionId, {
           shell: lookup.resolved,
-          args: ['--model', input.model],
+          args: ['--session-id', input.sessionId, '--model', input.model],
           cwd: input.cwd,
           cols: input.cols,
           rows: input.rows,

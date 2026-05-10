@@ -206,7 +206,7 @@ Sichtbare Bars und Detail-Panel.
 
 Schnelles Erstellen von Standard-Prompts mit Variablen.
 
-### Feature: Template-Reader
+### Feature: Template-Reader ✅
 
 Liest `.md`-Files aus Projekt + globalem Ordner.
 
@@ -214,7 +214,7 @@ Liest `.md`-Files aus Projekt + globalem Ordner.
 - Global: `%APPDATA%\TakumiDeck\templates\*.md`
 - Beide Quellen werden in der Template-Liste kombiniert
 
-### Feature: Variable-Filling
+### Feature: Variable-Filling ✅
 
 Erkennt `{{...}}`-Variablen und befüllt sie.
 
@@ -222,7 +222,7 @@ Erkennt `{{...}}`-Variablen und befüllt sie.
 - Auto-Variablen: `PROJEKT_NAME`, `NEXT_SEASON_NR`, `CURRENT_PHASE_FILE`, `DATUM`
 - User-Variablen via Formular: `FEATURE_NAME`, `AUFGABE`, `HINWEISE`
 
-### Feature: Template-Send
+### Feature: Template-Send ✅
 
 Schickt fertiges Template ans aktive PTY.
 
@@ -235,7 +235,7 @@ Schickt fertiges Template ans aktive PTY.
 
 Nummerierung und Verlauf von Sessions.
 
-### Feature: Season-Nummerierung
+### Feature: Season-Nummerierung ✅
 
 Pro Projekt eigener Zähler.
 
@@ -244,7 +244,7 @@ Pro Projekt eigener Zähler.
 - Bug/Review/Docs-Sync: kein season_number, nur Type-Badge
 - Lücken in der Nummerierung akzeptiert (bei Abbruch)
 
-### Feature: Verlauf-Panel
+### Feature: Verlauf-Panel ✅
 
 Liste aller Sessions des aktiven Projekts.
 

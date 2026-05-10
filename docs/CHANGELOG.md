@@ -17,6 +17,51 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-10 — Season 6: Templates + Season-Tracker
+
+### Was jetzt geht
+
+- **Atomare Season-Nummerierung pro Projekt.** `pty:create` allokiert beim Spawn einer `feature`-Session die nächste Season-Nummer in einer better-sqlite3-Transaktion (Read+Increment in einem Statement) und persistiert sie sofort. Bug/Review/Docs-Sync bleiben ohne Nummer (Architektur 6.6). Lücken bei Spawn-Fehler sind explizit akzeptiert — kein Rollback, weil das Hauptrisiko (nicht-konsumierte Nummer) trivial ist und ein Rollback Race-Conditions öffnen würde. NewSessionModal zeigt im Feature-Pfad die Vorschau „Diese Season wäre #N" aus dem `next_season_number`-Feld der Project-Row.
+- **Verlauf-Panel als Replace-View.** Sidebar-Klick auf einen Verlauf-Eintrag oder den „Verlauf"-Reiter wechselt den Hauptbereich vom Tab-Stack auf eine Tabelle mit allen Sessions des aktiven Projekts. Filter-Bar mit Type-Pills, Status-Pills und Volltext-Suche im Titel; Detail-Pane rechts mit Notizen, Token-Aufschlüsselung (in/out/Messages) und Resume-Button. Sortierung jüngste-zuerst per `started_at DESC`. Token-Aggregate kommen via LEFT-JOIN aus der `messages`-Tabelle (Sprint-5-Persistenz). Tabs laufen im Hintergrund mounted weiter — kein xterm-Buffer-Verlust beim Wechsel.
+- **Resume-Button auf jedem Status, der es erlaubt.** Verlauf-Detail-Pane zeigt den Resume-Button für completed / interrupted / error / idle. Bei bereits offenem Tab wird statt einem zweiten Spawn der existierende Tab fokussiert (Q5 Variante A). Archived bleibt Endzustand und ist explizit blockiert.
+- **Sprint-2/3-Legacy-Bucket sichtbar mit Banner.** Klick auf den Legacy-Bucket öffnet das Verlauf-Panel mit einem Hinweis-Banner („Sessions aus Sprint 2/3, bevor der Workspace-Scanner echte Projekte erkannt hat"). Resume aus dem Verlauf greift dort identisch — der TECH_SCHULDEN-Eintrag „Sprint-2/3-Legacy UI-blind" ist damit aufgelöst.
+- **Templates aus zwei Quellen, on-demand gescannt.** Ctrl+T oder die Templates-Pill in der Action-Bar öffnen das Modal; `fs:list-templates` scannt bei jedem Open frisch den globalen Ordner (`%APPDATA%\TakumiDeck\templates\*.md`), den Per-Projekt-Ordner (`<projekt>\docs\templates\*.md`) und die Legacy-Konvention (`<projekt>\docs\*_TEMPLATE.md`). Beide Quellen erscheinen als separate Listen-Einträge mit Source-Tag (Global/Projekt) — Konflikte bei gleichem Dateinamen werden bewusst nebeneinander angezeigt (Q2 Variante B).
+- **Variable-Filling mit Pflicht-Validation und Live-Preview.** `{{...}}`-Tokens werden anhand des Templates erkannt und nur die genutzten Variablen-Felder im Modal angezeigt. Auto-Variablen (PROJEKT_NAME, NEXT_SEASON_NR, CURRENT_PHASE_FILE, DATUM) sind read-only aus Project-Row + CLAUDE.md-Frontmatter + Datum gefüllt. User-Variablen FEATURE_NAME / AUFGABE sind Pflicht (markiert, blockiert Send), HINWEISE optional (Multiline-Textarea). Live-Preview-Spalte zeigt den ersetzten Text während des Tippens; unbekannte Tokens bleiben als Platzhalter sichtbar mit Warnhinweis.
+- **Send via Bracketed-Paste an die aktive PTY.** Modal feuert ein `td-template-send`-CustomEvent, das der aktive TerminalTab via `terminal.paste(text)` an den PTY-Stream legt — gleiche Mechanik wie Sprint-3.5-Copy/Paste. claude erkennt den \x1b[200~...\x1b[201~-Block und verarbeitet ihn als ein Eingabe-Event, nicht zeilenweise.
+- **× auf einem Tab ist non-destruktiv.** Tab-Schließen killt nur den PTY (falls noch läuft) — der Lifecycle wandert via `pty:exit` auf `completed`, die Session bleibt im Verlauf erreichbar und resume-fähig. Aus Versehen geschlossene Sessions sind kein Datenverlust mehr. Expliziter Archivieren-Schritt läuft jetzt über das Verlauf-Detail-Pane mit Inline-Confirmation („Wirklich? Session ist danach nicht mehr resume-fähig.").
+- **Sidebar im Design-Layout (3 Sektionen).** Stack aus `td-panel`-Sektionen wie im Claude-Design-Handoff: **Projekte** mit ↻-Refresh und + Add Project, **Aktive Sessions** mit Status-Dot + Name + ↻-Resume + ×-Schließen pro Tab + + Neue Session im Footer, **Verlauf** mit kompakter Quickliste (max 10) und Klick = Sprung ins HistoryPane mit Vorauswahl. Modal-State (NewSession/Templates) liegt jetzt im UiStore, damit Sidebar und Tab-Bar denselben Zustand teilen. Der frühere Tabs/Verlauf-Toggle entfällt.
+- **Action-Bar unter dem aktiven Terminal.** Schmale Bar mit `td-pill`-Elementen aus dem Design-Export (`td-term-bar` styles.css 532): Modell-Pill (read-only Indikator), Templates-Pill (primärer Pfad zum Modal, falls Ctrl+T system-weit gebunden ist), Status-Badge rechts (●/○/✓/⏸/✗/◌).
+
+### Umgesetzte Entscheidungen
+
+- **9 Variants vor dem ersten Code, alle Empfehlungen übernommen.** Template-Discovery (B on-demand), Konfliktauflösung (B beide separat), Variablen-Filling-UI (A Form + Preview), Verlauf-Panel-Position (A Replace-View), Resume bei offenem Tab (A fokussieren), Counter-Increment-Zeitpunkt (B atomar im Main), cache_creation/cache_read (B weiter Phase 2), Legacy-Sessions im Verlauf (A sichtbar mit Banner), Implementations-Reihenfolge (A Season-Tracker zuerst).
+- **Sprint-6-Hotfix Variante C: Resume-Bug-Fix kombiniert.** A für neue Sessions (`claude --session-id <takumi-uuid>` beim ersten Spawn) plus B für Legacy (Migration `0003_claude_session_id.sql` mit nullable Spalte, Watcher-Backfill aus dem JSONL-Filename, status-agnostisch). Sprint-5-Annahme „claude-code unterstützt --session-id nicht" war überholt — claude-code liefert das Flag offiziell. Resume-Pfad nutzt jetzt `claude_session_id ?? id`, mit klarer Fehlermeldung `SESSION_NO_CLAUDE_UUID` für Sessions, die nie eine JSONL-Antwort produziert haben.
+- **× non-destruktiv (Variante B aus 4-Wege-Vergleich).** Tab-Schließen und Session-Archivieren sind jetzt zwei getrennte Aktionen mit eigenen IPC-Channels (`session:close` ohne Lifecycle-Patch, neuer `session:archive` mit Lifecycle-Transition zu archived). Confirmation läuft inline im Detail-Pane statt als zusätzliches Modal — ein Klick aktiviert die rote Bestätigung, ein zweiter führt aus.
+- **Sidebar nach Design-Handoff-Layout.** 3-Sektionen-Stack (Projekte / Aktive Sessions / Verlauf) statt Single-Liste mit View-Toggle. Klassen aus `docs/design/claude-export/styles.css` 1:1 übernommen (`td-panel`, `td-list`, `td-pill`, `td-action-btn` etc.).
+
+### Mid-Sprint-Anpassungen
+
+- **Resume war seit Sprint 3 tot.** Erst beim ersten User-Test in Sprint 6 fiel auf, dass `claude --resume <uuid>` mit „No conversation found" scheitert, weil claude-code intern eigene Session-UUIDs vergibt. Sprint 5 hatte den Mismatch nur für den JSONL-Watcher-Mapping-Pfad gefixt (encodeCwd), nicht für den Resume-Pfad. Hotfix Variante C zog die saubere Lösung nach (siehe oben).
+- **× war nach Sprint 3 destruktiv.** Sprint-3-Spec hatte `tab-close → archived` als ein Schritt; das Verlauf-Panel hat den Schmerz erst sichtbar gemacht. UX-Fix Variante B trennt die zwei Aktionen.
+- **Sidebar-View-Toggle „Tabs/Verlauf" entfiel zugunsten 3-Sektionen-Layout.** Erste Implementation hatte einen schmalen Toggle unter dem aktiven Project — das Design-Handoff hat aber von Anfang an drei separate Sektionen vorgesehen. Beim User-Feedback („wie in der Design-Vorlage") komplett umgebaut.
+- **Watcher-Backfill war zunächst nur für running/idle-Sessions gedacht.** Der Backfill-Pass aus dem Hotfix matchte initial nur live-Sessions (Sprint-5-Token-Tracking-Pfad). Damit wären Legacy-completed-Sessions weiter resume-tot geblieben — Variante C hätte ihr Versprechen nicht eingelöst. Erweiterung auf status-agnostischen Backfill via `listMissingClaudeSessionId()`-Repo-Methode + Filename-UUID-Extraktion.
+
+### Bonus-Bugfixes unterwegs
+
+- **claude-code-Session-UUIDs überhaupt.** ENTSCHEIDUNGEN.md aus Sprint 5 sagte „kein --session-id-Flag" — Stand 2026-05-10 ist das überholt. Variante C des Resume-Hotfix nutzt das Flag jetzt offiziell.
+- **Modal-State in TabContainer war nicht zugänglich für die Sidebar.** Sprint-6-UI-Fix verschiebt `showNewSessionModal` und `showTemplatesModal` in den UiStore — beide Quellen (+ in der Tab-Bar, + in der Sidebar) öffnen denselben Zustand.
+- **HistoryPane sortierte Filter unsauber.** Default-Filter blendete `archived` nicht aus, sodass die Liste nach Archivieren mit alten Karteileichen verstopft war. Default ist jetzt explizit `running/idle/completed/interrupted/error` ohne archived; Status-Filter erlaubt das Einblenden.
+
+### Offen geblieben (bewusst verschoben)
+
+- **`cache_creation` / `cache_read` getrennt persistieren** — Q7 B, weiter Phase 2. Verlauf-Detail-Pane zeigt summierte tokens_in/tokens_out, was für Sprint-6-UX reicht.
+- **commit-Pill und ctx-Mini-Bar in der Action-Bar** — Sprint 7 (Pre-Commit-Panel + Trigger-Phrase-Send). Sprint 6 hat nur die Templates-Pill plus Modell- und Status-Anzeige.
+- **Pre-Hotfix-Sessions ohne JSONL-Antwort sind dauerhaft resume-tot.** Sessions, die spawn-error sofort hatten oder vor jeder Antwort geschlossen wurden, haben weder eine vorgegebene noch eine vom Watcher backfillbare claude-UUID. Resume liefert den klaren `SESSION_NO_CLAUDE_UUID`-Fehler. TECH_SCHULDEN-Eintrag dokumentiert das.
+- **Mehrere Legacy-Sessions im selben cwd: nur die jüngste wird gebackfilled.** Wenn der User vor dem Hotfix mehrfach im selben Projekt Sessions ohne JSONL-Antwort gespawnt hat, mappt der Watcher die UUID auf die jüngste — die anderen bleiben null. TECH_SCHULDEN-Eintrag.
+- **Tote `.td-sidebar-*`-CSS-Blöcke** aus dem Pre-3-Sektionen-Layout. Cosmetic, kein Funktionsschaden — beim nächsten Renderer-Touch mit aufräumen.
+
+---
+
 ## 2026-05-10 — Season 5: Token-Dashboard
 
 ### Was jetzt geht

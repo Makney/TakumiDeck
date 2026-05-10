@@ -5,6 +5,7 @@ import { useUiStore } from '../stores/ui';
 import { useProjectStore } from '../stores/projects';
 import { TerminalTab } from './TerminalTab';
 import { NewSessionModal } from '../modals/NewSessionModal';
+import { TemplatesModal } from '../modals/TemplatesModal';
 import { NotesFooter } from '../components/NotesFooter';
 import { displayProjectName } from '../components/displayProjectName';
 
@@ -30,6 +31,10 @@ export function TabContainer({ settings }: Props) {
 
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const activeProjectFrontmatter = useUiStore((s) => s.activeProjectFrontmatter);
+  const showNewSessionModal = useUiStore((s) => s.showNewSessionModal);
+  const setShowNewSessionModal = useUiStore((s) => s.setShowNewSessionModal);
+  const showTemplatesModal = useUiStore((s) => s.showTemplatesModal);
+  const setShowTemplatesModal = useUiStore((s) => s.setShowTemplatesModal);
   const projects = useProjectStore((s) => s.projects);
 
   const activeProject = useMemo(
@@ -52,6 +57,11 @@ export function TabContainer({ settings }: Props) {
     [tabs, activeProjectId],
   );
 
+  const activeTab = useMemo(
+    () => (activeId ? tabs.find((t) => t.sessionId === activeId) ?? null : null),
+    [tabs, activeId],
+  );
+
   // Wenn das aktive Projekt wechselt: aktive Tab-ID auf den ersten Tab des neuen
   // Projekts setzen (oder null, wenn das neue Projekt keine Tabs hat). Sonst
   // sähe der User die Tab-Bar des einen Projekts, aber das Terminal des anderen.
@@ -66,7 +76,8 @@ export function TabContainer({ settings }: Props) {
     setActive(first ? first.sessionId : null);
   }, [activeProjectId, tabsInActiveProject, activeId, setActive]);
 
-  const [showModal, setShowModal] = useState(false);
+  // Sprint-6-UI-Fix: Modal-State liegt im UiStore, weil Sidebar und Tab-Bar
+  // beide auf den gleichen Open-Zustand zugreifen.
   // Tabs, die in dieser Session-Lebensdauer schon gespawnt wurden — verhindert,
   // dass ein erneuter Tab-Mount (z.B. nach React-Tree-Repaint) eine zweite PTY öffnet.
   const [spawnedIds, setSpawnedIds] = useState<Set<string>>(new Set());
@@ -76,19 +87,27 @@ export function TabContainer({ settings }: Props) {
   // events landen am body — Ctrl+C/V wirken erst nach einem Klick auf die Canvas.
   // TerminalTab hört auf 'td-focus-active' und ruft `terminal.focus()` auf.
   useEffect(() => {
-    if (showModal) return;
+    if (showNewSessionModal || showTemplatesModal) return;
     window.dispatchEvent(new Event('td-focus-active'));
-  }, [showModal]);
+  }, [showNewSessionModal, showTemplatesModal]);
 
-  // Globale Keyboard-Shortcuts: Ctrl+N neue Session, Ctrl+Tab / Ctrl+Shift+Tab Wechsel.
-  // Tab-Navigation ist auf das aktive Projekt beschränkt (siehe Sprint-4-Filter).
+  // Globale Keyboard-Shortcuts: Ctrl+N neue Session, Ctrl+T Templates, Ctrl+Tab /
+  // Ctrl+Shift+Tab Wechsel. Tab-Navigation ist auf das aktive Projekt beschränkt
+  // (siehe Sprint-4-Filter).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!e.ctrlKey) return;
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         if (!activeProjectId) return; // ohne Projekt-Auswahl kein +-Modal sinnvoll
-        setShowModal(true);
+        setShowNewSessionModal(true);
+      } else if (e.key === 't' || e.key === 'T') {
+        // Ctrl+Shift+T ist im Browser/Electron oft „Tab-Reopen" — wir wollen nur
+        // das schlanke Ctrl+T (ohne Shift) für Templates.
+        if (e.shiftKey) return;
+        e.preventDefault();
+        if (!activeProjectId) return;
+        setShowTemplatesModal(true);
       } else if (e.key === 'Tab') {
         e.preventDefault();
         if (!activeProjectId) return;
@@ -98,17 +117,16 @@ export function TabContainer({ settings }: Props) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [nextTab, prevTab, activeProjectId]);
+  }, [nextTab, prevTab, activeProjectId, setShowNewSessionModal, setShowTemplatesModal]);
 
   const handleClose = useCallback(
     async (sessionId: string) => {
-      // Erst Server-Lifecycle-Patch (archiviert + killt PTY, falls running),
-      // dann Tab-Eintrag aus dem Store entfernen — sonst würde ein noch laufender
-      // PTY-Output ins Leere schreiben.
+      // Sprint-6-UX-Fix Variante B: × ist non-destruktiv — Server killt nur den
+      // PTY (falls noch läuft), der Lifecycle setzt via pty:exit auf completed.
+      // Die Session bleibt im Verlauf erreichbar; expliziter Archive-Schritt
+      // läuft separat über das Verlauf-Detail-Pane.
       const result = await window.api.sessions.close({ sessionId });
       if (!result.ok) {
-        // Fehlerfall (Session in der DB nicht gefunden): trotzdem aus dem Renderer-State
-        // entfernen, damit der Tab nicht „gespenstisch" hängenbleibt. Im Erfolgsfall identisch.
         console.warn(`[TabContainer] session:close fehlgeschlagen: ${result.error}`);
       }
       closeTab(sessionId);
@@ -157,9 +175,9 @@ export function TabContainer({ settings }: Props) {
         next.add(tab.sessionId);
         return next;
       });
-      setShowModal(false);
+      setShowNewSessionModal(false);
     },
-    [addTab, activeProjectId, activeProject],
+    [addTab, activeProjectId, activeProject, setShowNewSessionModal],
   );
 
   const canAddSession = activeProjectId !== null && activeProject !== null;
@@ -177,7 +195,7 @@ export function TabContainer({ settings }: Props) {
         onSelect={setActive}
         onClose={handleClose}
         onResume={handleResume}
-        onAdd={() => setShowModal(true)}
+        onAdd={() => setShowNewSessionModal(true)}
       />
 
       <div className="td-tab-host">
@@ -190,7 +208,7 @@ export function TabContainer({ settings }: Props) {
                   <button
                     type="button"
                     className="td-tab-empty-cta"
-                    onClick={() => setShowModal(true)}
+                    onClick={() => setShowNewSessionModal(true)}
                   >
                     + Neue Session (Ctrl+N)
                   </button>
@@ -223,13 +241,31 @@ export function TabContainer({ settings }: Props) {
         ))}
       </div>
 
+      {activeTab && (
+        <ActionBar
+          model={activeTab.model}
+          status={activeTab.status}
+          onOpenTemplates={() => setShowTemplatesModal(true)}
+        />
+      )}
+
       {activeId && <NotesFooter sessionId={activeId} />}
 
-      {showModal && canAddSession && (
+      {showNewSessionModal && canAddSession && (
         <NewSessionModal
           defaultModel={effectiveDefaultModel}
-          onCancel={() => setShowModal(false)}
+          nextSeasonPreview={activeProject?.next_season_number ?? null}
+          onCancel={() => setShowNewSessionModal(false)}
           onCreate={handleNewSession}
+        />
+      )}
+
+      {showTemplatesModal && activeProject && (
+        <TemplatesModal
+          project={activeProject}
+          frontmatter={activeProjectFrontmatter}
+          hasActiveTerminal={activeId !== null}
+          onClose={() => setShowTemplatesModal(false)}
         />
       )}
     </div>
@@ -299,4 +335,57 @@ function TabBar({ tabs, canAdd, onSelect, onClose, onResume, onAdd }: TabBarProp
 
 function StatusDot({ status }: { status: SessionStatus }) {
   return <span className={`td-status-dot ${status}`} aria-label={status} />;
+}
+
+// Action-Bar unter dem Terminal — Sprint-6-UI-Fix nach docs/design/claude-export
+// (components.jsx Zeile 179, td-term-bar mit td-pill-Elementen). Templates-Pill
+// ist der primäre Pfad, weil Ctrl+T je nach System von anderen Programmen
+// (Spotify, Browser-Reopen etc.) gefangen wird. Modell-Pill ist read-only —
+// Modell-Wechsel läuft im laufenden Claude-Prozess über `/model`.
+const ACTION_BAR_MODEL_LABELS: Record<string, string> = {
+  'claude-opus-4-7': 'Opus 4.7',
+  'claude-opus-4-6': 'Opus 4.6',
+  'claude-sonnet-4-6': 'Sonnet 4.6',
+  'claude-sonnet-4-5': 'Sonnet 4.5',
+  'claude-haiku-4-5': 'Haiku 4.5',
+};
+
+const STATUS_LABEL: Record<SessionStatus, string> = {
+  running: '● läuft',
+  idle: '○ idle',
+  waiting: '◐ wartet',
+  completed: '✓ abgeschlossen',
+  interrupted: '⏸ unterbrochen',
+  error: '✗ Fehler',
+  archived: '◌ archiviert',
+};
+
+interface ActionBarProps {
+  model: string;
+  status: SessionStatus;
+  onOpenTemplates: () => void;
+}
+
+function ActionBar({ model, status, onOpenTemplates }: ActionBarProps) {
+  const modelLabel = ACTION_BAR_MODEL_LABELS[model] ?? model;
+  return (
+    <div className="td-term-bar">
+      <span
+        className="td-pill td-pill-info"
+        title={`Aktuelles Modell: ${model}`}
+      >
+        <span aria-hidden>●</span> {modelLabel}
+      </span>
+      <button
+        type="button"
+        className="td-pill td-pill-button"
+        onClick={onOpenTemplates}
+        title="Templates (Ctrl+T)"
+      >
+        <span aria-hidden>⌘</span> Templates
+      </button>
+      <div className="td-term-bar-spacer" aria-hidden />
+      <span className="td-term-bar-status">{STATUS_LABEL[status]}</span>
+    </div>
+  );
 }

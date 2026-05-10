@@ -41,6 +41,11 @@ function writePersistedActiveProject(id: string | null): void {
   }
 }
 
+// Sprint 6 (Q4 Variante A): Hauptansicht des Tab-Slots — entweder die laufenden
+// Tabs (Default) oder der Verlauf-Replace-View des aktiven Projekts. Modal-Ansatz
+// hätte die Tabelle gequetscht; Replace-View nutzt die volle Bildschirmbreite.
+export type MainView = 'terminals' | 'history';
+
 interface UiStoreState {
   // null = kein Projekt aktiv (Initial-State, bevor der Store das erste Mal hydriert).
   // Beim ersten Laden der Project-Liste setzt der Renderer das aktive Projekt
@@ -52,8 +57,25 @@ interface UiStoreState {
   activeProjectFrontmatterError: string | null;
   // Sprint 5 öffnet auf Klick einer limit_bar das UsageDetailModal — null = zu.
   dashboardDetailBarId: string | null;
+  // Sprint 6: Hauptansicht-Toggle. Wechsel via setActiveProject('p', 'history')
+  // oder explizit über setMainView. Tabs laufen im Hintergrund weiter (Sprint-3-
+  // Pattern: alle xterm dauerhaft mounted, nur CSS-Toggle), kein Buffer-Verlust.
+  mainView: MainView;
+  // Sprint-6-UI-Fix: Sidebar kann eine bestimmte Verlauf-Session vorauswählen.
+  // Klick auf einen Verlauf-Eintrag in der Sidebar setzt diese ID + mainView=history;
+  // HistoryPane synchronisiert seinen lokalen selectedId-State daraus.
+  historySelectedId: string | null;
+  // Globale Modal-Sichtbarkeit (Sprint-6-Fix): NewSessionModal kann jetzt aus der
+  // Sidebar (+ Neue Session) UND aus dem TabContainer (+ in der Tab-Bar / Ctrl+N)
+  // geöffnet werden — also gehört der Zustand in einen gemeinsamen Store.
+  showNewSessionModal: boolean;
+  showTemplatesModal: boolean;
 
-  setActiveProject: (projectId: string | null) => void;
+  setActiveProject: (projectId: string | null, view?: MainView) => void;
+  setMainView: (view: MainView) => void;
+  setHistorySelected: (sessionId: string | null) => void;
+  setShowNewSessionModal: (show: boolean) => void;
+  setShowTemplatesModal: (show: boolean) => void;
   hydrateFromStorage: () => void;
   loadActiveProjectFrontmatter: (projectId: string) => Promise<void>;
   setDashboardDetailBar: (barId: string | null) => void;
@@ -64,17 +86,52 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
   activeProjectFrontmatter: null,
   activeProjectFrontmatterError: null,
   dashboardDetailBarId: null,
+  mainView: 'terminals',
+  historySelectedId: null,
+  showNewSessionModal: false,
+  showTemplatesModal: false,
 
-  setActiveProject: (projectId) => {
-    if (get().activeProjectId === projectId) return;
+  setActiveProject: (projectId, view) => {
+    const state = get();
+    const sameProject = state.activeProjectId === projectId;
+    const targetView = view ?? state.mainView;
+    if (sameProject && state.mainView === targetView) return;
+    if (sameProject) {
+      set({ mainView: targetView });
+      return;
+    }
     set({
       activeProjectId: projectId,
+      mainView: targetView,
       // Frontmatter wird beim Wechsel ungültig — der Renderer zieht das neue Projekt
       // über loadActiveProjectFrontmatter mit ref-guard nach.
       activeProjectFrontmatter: null,
       activeProjectFrontmatterError: null,
+      // History-Selektion war auf das alte Projekt bezogen — leeren, damit der
+      // HistoryPane beim Project-Wechsel nicht eine fremde Session zeigt.
+      historySelectedId: null,
     });
     writePersistedActiveProject(projectId);
+  },
+
+  setMainView: (view) => {
+    if (get().mainView === view) return;
+    set({ mainView: view });
+  },
+
+  setHistorySelected: (sessionId) => {
+    if (get().historySelectedId === sessionId) return;
+    set({ historySelectedId: sessionId });
+  },
+
+  setShowNewSessionModal: (show) => {
+    if (get().showNewSessionModal === show) return;
+    set({ showNewSessionModal: show });
+  },
+
+  setShowTemplatesModal: (show) => {
+    if (get().showTemplatesModal === show) return;
+    set({ showTemplatesModal: show });
   },
 
   hydrateFromStorage: () => {

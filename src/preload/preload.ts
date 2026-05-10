@@ -3,6 +3,7 @@ import { Channels } from '@shared/ipc-channels';
 import type {
   AppSettings,
   ClaudeMdParseResult,
+  FsListTemplatesInput,
   IpcResult,
   ProjectReadCfgInput,
   ProjectRow,
@@ -13,10 +14,14 @@ import type {
   PtyResizeInput,
   PtyWriteInput,
   RendererApi,
+  SessionArchiveInput,
   SessionCloseInput,
+  SessionHistoryEntry,
+  SessionHistoryInput,
   SessionResumeInput,
   SessionRow,
   SessionUpdateInput,
+  TemplateFile,
   UsageContextInput,
   UsageContextResult,
   UsageHeatmapResult,
@@ -68,6 +73,18 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.SessionClose, input) as Promise<IpcResult<SessionRow>>,
     resume: (input: SessionResumeInput) =>
       ipcRenderer.invoke(Channels.SessionResume, input) as Promise<IpcResult<SessionRow>>,
+    history: (input: SessionHistoryInput) =>
+      ipcRenderer.invoke(Channels.SessionHistory, input) as Promise<
+        IpcResult<SessionHistoryEntry[]>
+      >,
+    archive: (input: SessionArchiveInput) =>
+      ipcRenderer.invoke(Channels.SessionArchive, input) as Promise<IpcResult<SessionRow>>,
+  },
+  fs: {
+    listTemplates: (input: FsListTemplatesInput) =>
+      ipcRenderer.invoke(Channels.FsListTemplates, input) as Promise<
+        IpcResult<TemplateFile[]>
+      >,
   },
   projects: {
     list: () => ipcRenderer.invoke(Channels.ProjectList) as Promise<IpcResult<ProjectRow[]>>,

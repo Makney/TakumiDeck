@@ -30,3 +30,14 @@ export function encodedCwdFromJsonlPath(filePath: string): string | null {
   if (base.length === 0) return null;
   return base;
 }
+
+// Sprint-6-Hotfix: claude-code benamen JSONL-Files mit der eigenen Session-UUID
+// (= das, was --resume erwartet). Der Filename ist `<uuid>.jsonl`. Wir extrahieren
+// den UUID-Stem für den Backfill-Pfad in sessions.claude_session_id. Returnt null,
+// wenn der Filename keine UUID-Form hat.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function claudeUuidFromJsonlPath(filePath: string): string | null {
+  const base = path.basename(filePath);
+  const stem = base.replace(/\.jsonl$/i, '');
+  return UUID_RE.test(stem) ? stem : null;
+}

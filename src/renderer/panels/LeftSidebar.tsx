@@ -1,27 +1,36 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ProjectRow, AppSettings } from '@shared/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  AppSettings,
+  ProjectRow,
+  SessionHistoryEntry,
+  SessionStatus,
+} from '@shared/types';
 import { useProjectStore } from '../stores/projects';
 import { useUiStore } from '../stores/ui';
-import { useSessionStore } from '../stores/sessions';
+import { useSessionStore, type SessionTab } from '../stores/sessions';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
 import { displayProjectName } from '../components/displayProjectName';
 
-// LeftSidebar (Sprint 4 — Architektur 6.0).
+// LeftSidebar — Sprint-6-UI-Fix mit 3-Sektionen-Layout aus dem Design-Handoff
+// (docs/design/UI_DECISIONS.md + claude-export/components.jsx).
 //
-// Layout: 240 px Spalte links (LAYOUT.COL_LEFT_WIDTH). Liste der Projekte aus
-// useProjectStore mit Active-Highlight und #aktive-Sessions-Badge. Default-Project
-// (UUID …0001) wird nur angezeigt, wenn es noch Sessions hat (Legacy-Bucket).
+// Stack der drei `td-panel`-Sektionen:
+//   1. Projekte         — Liste der DB-Projekte mit Active-Highlight + + Add
+//   2. Aktive Sessions  — Tabs des aktiven Projekts (Status-Dot + Name + ×)
+//                         + Footer: + Neue Session (öffnet NewSessionModal)
+//   3. Verlauf          — kompakte Liste der nicht-mehr-aktiven Sessions
+//                         (max ~10 Einträge); Klick öffnet HistoryPane mit
+//                         vorausgewähltem Eintrag.
 //
-// Aktionen:
-// - Klick auf Projekt → setActiveProject (useUiStore).
-// - Refresh-Button (↻) → projects.scanWorkspace() (Re-Scan + DB-Sync).
-// - +-Button → projects.addViaDialog() (Datei-Dialog im Main, CLAUDE.md-Pflicht).
-//
-// Side-Effect-Guard: der Initial-`reload`-Call beim Mount wird über useRef gegen
-// React-StrictMode-Doppel-Mount abgesichert (Memory: StrictMode-Side-Effect-Guard).
-// Auch wenn project:list ein Read-only-IPC ist, würde der Doppel-Call zwei Renders
-// auslösen und die Console mit Warnings füllen, falls später ein Side-Effect-Pfad
-// (z.B. State-Reset) dazukommt — Lieber den Guard von Anfang an drin.
+// Tabs-Bar oben im Hauptbereich bleibt erhalten — die Sidebar-Sektion und die
+// Tab-Bar sind synchronisierte Ansichten der aktiven Sessions.
+
+const HISTORY_QUICKLIST_LIMIT = 10;
+// Welche Status zeigt die Verlauf-Quickliste? Architektur 6.6: Sessions, die
+// nicht mehr live sind, aber nicht archiviert. archived bleibt im Verlauf-
+// Detail-Filter sichtbar, im Sidebar-Snapshot aber ausgeblendet (sonst voller
+// Karteileichen-Stack).
+const HISTORY_STATUSES: SessionStatus[] = ['completed', 'interrupted', 'error'];
 
 interface Props {
   settings: AppSettings;
@@ -37,39 +46,42 @@ export function LeftSidebar({ settings }: Props) {
 
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const setActiveProject = useUiStore((s) => s.setActiveProject);
+  const setMainView = useUiStore((s) => s.setMainView);
+  const setHistorySelected = useUiStore((s) => s.setHistorySelected);
+  const setShowNewSessionModal = useUiStore((s) => s.setShowNewSessionModal);
   const hydrateFromStorage = useUiStore((s) => s.hydrateFromStorage);
   const loadActiveProjectFrontmatter = useUiStore((s) => s.loadActiveProjectFrontmatter);
+
   const tabs = useSessionStore((s) => s.tabs);
+  const activeTabId = useSessionStore((s) => s.activeId);
+  const setActiveTab = useSessionStore((s) => s.setActive);
+  const closeTab = useSessionStore((s) => s.closeTab);
+  const setTabStatus = useSessionStore((s) => s.setStatus);
 
   const initialLoadRef = useRef(false);
   const hydrateRef = useRef(false);
   const frontmatterLoadedFor = useRef<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<SessionHistoryEntry[]>([]);
 
-  // Sprint-5-Hydrate (Variante A): die zuletzt aktive Project-ID aus localStorage
-  // ziehen, sobald der Component mountet — passiert *vor* dem ersten reload(),
-  // damit die Auswahl-Logik unten den persistierten Wert respektiert.
+  // Sprint-5-Hydrate: persistierte Project-ID aus localStorage laden, BEVOR der
+  // erste reload() läuft, damit die Auto-Select-Logik unten den persistierten
+  // Wert respektiert.
   useEffect(() => {
     if (hydrateRef.current) return;
     hydrateRef.current = true;
     hydrateFromStorage();
   }, [hydrateFromStorage]);
 
-  // Initial-Load der Project-Liste beim Mount.
   useEffect(() => {
     if (initialLoadRef.current) return;
     initialLoadRef.current = true;
     void reload();
   }, [reload]);
 
-  // Aktives Projekt wählen, sobald die Liste das erste Mal verfügbar ist.
-  // Sprint 5: respektiert eine persistierte ID, solange sie noch existiert; sonst
-  // bevorzugt das erste echte (nicht-Legacy) Projekt; Fallback auf Default-Project.
   useEffect(() => {
     if (projects.length === 0) return;
     if (activeProjectId !== null) {
-      // Persistierte ID aus localStorage könnte auf ein nicht mehr existierendes
-      // Projekt zeigen (Workspace umbenannt etc.) — dann auf den Heuristik-Pfad.
       const stillExists = projects.some((p) => p.id === activeProjectId);
       if (stillExists) return;
     }
@@ -77,23 +89,37 @@ export function LeftSidebar({ settings }: Props) {
     setActiveProject(firstReal?.id ?? projects[0]?.id ?? null);
   }, [projects, activeProjectId, setActiveProject]);
 
-  // Frontmatter-Cache des aktiven Projekts laden (Memory: StrictMode-Side-Effect-Guard).
-  // Wechsel des activeProjectId triggert einen Re-Load; identische ID wird übersprungen.
-  // Read-only-IPC, aber wir geben dem useEffect einen Ref-Guard, weil StrictMode den
-  // Effect zweimal feuert und der Frontmatter-Cache sonst kurzzeitig flacker-wechselt.
   useEffect(() => {
     if (!activeProjectId) return;
     if (frontmatterLoadedFor.current === activeProjectId) return;
     frontmatterLoadedFor.current = activeProjectId;
-    // Default-Project hat keine eigene CLAUDE.md (workspace_path ist Container) —
-    // skippen, sonst kommt ein CLAUDE_MD_NOT_FOUND-Error in den Store.
     if (activeProjectId === DEFAULT_PROJECT_ID) return;
     void loadActiveProjectFrontmatter(activeProjectId);
   }, [activeProjectId, loadActiveProjectFrontmatter]);
 
-  // Pro Projekt zählen, wie viele LIVE-Tabs running sind. Update, sobald Status
-  // im SessionStore wechselt (z.B. durch pty:exit-Listener). Das ist eine reine
-  // Renderer-Sicht — die historische Zahl der DB-Sessions kommt aus project.session_count.
+  // Verlauf-Quickliste: bei Project-Wechsel oder Tab-Status-Änderung neu laden.
+  // Read-only IPC, kein useRef-Guard nötig (Memory: Guard nur für Mutationen).
+  // Re-Load bei `tabs`-Änderung ist relevant, weil neue Sessions in der Tab-Bar
+  // beim Schließen in den Verlauf wandern und der Snapshot dann veraltet ist.
+  useEffect(() => {
+    if (!activeProjectId) {
+      setHistoryEntries([]);
+      return;
+    }
+    let cancelled = false;
+    void window.api.sessions
+      .history({ projectId: activeProjectId, statuses: HISTORY_STATUSES })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok) setHistoryEntries(result.data);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // tabs.length triggert Re-Load nach Tab-Schließen; wir brauchen kein deep-equal,
+    // weil Status-Änderungen ohnehin den Tab nicht aus dem Store entfernen.
+  }, [activeProjectId, tabs.length]);
+
   const runningCountByProject = useMemo(() => {
     const map = new Map<string, number>();
     for (const t of tabs) {
@@ -103,13 +129,23 @@ export function LeftSidebar({ settings }: Props) {
     return map;
   }, [tabs]);
 
-  // Default-Bucket nur sichtbar, solange noch Sessions am __default__ hängen
-  // (DB-Count via project.session_count aus dem Sprint-4-Repo-LEFT-JOIN).
-  // Sobald der cwd-Remap alles umgehängt hat, verschwindet der Bucket sauber.
   const visibleProjects = projects.filter((p) => {
     if (p.id !== DEFAULT_PROJECT_ID) return true;
     return p.session_count > 0;
   });
+
+  const tabsInActiveProject = useMemo(
+    () => (activeProjectId ? tabs.filter((t) => t.projectId === activeProjectId) : []),
+    [tabs, activeProjectId],
+  );
+
+  // Verlauf-Liste exklusive Sessions, die schon als Tab offen sind — sonst doppelt.
+  const historySnapshot = useMemo(() => {
+    const tabIds = new Set(tabsInActiveProject.map((t) => t.sessionId));
+    return historyEntries
+      .filter((e) => !tabIds.has(e.id))
+      .slice(0, HISTORY_QUICKLIST_LIMIT);
+  }, [historyEntries, tabsInActiveProject]);
 
   const handleAdd = async () => {
     setAdding(true);
@@ -121,113 +157,312 @@ export function LeftSidebar({ settings }: Props) {
     }
   };
 
+  const handleCloseTab = useCallback(
+    async (sessionId: string) => {
+      // Sprint-6-UX-Fix Variante B: × ist non-destruktiv — der Server killt nur
+      // den PTY (falls noch läuft), Status wandert via pty:exit auf completed.
+      // Resume bleibt aus dem Verlauf möglich.
+      const result = await window.api.sessions.close({ sessionId });
+      if (!result.ok) {
+        console.warn(`[LeftSidebar] session:close fehlgeschlagen: ${result.error}`);
+      }
+      closeTab(sessionId);
+    },
+    [closeTab],
+  );
+
+  const handleResumeFromTabs = useCallback(
+    async (sessionId: string) => {
+      const result = await window.api.sessions.resume({ sessionId, cols: 80, rows: 24 });
+      if (!result.ok) {
+        console.warn(`[LeftSidebar] session:resume fehlgeschlagen: ${result.error}`);
+        return;
+      }
+      setTabStatus(sessionId, 'running');
+      setActiveTab(sessionId);
+    },
+    [setTabStatus, setActiveTab],
+  );
+
   const workspaceMissing = !settings.workspace_path || settings.workspace_path.trim() === '';
 
   return (
     <aside className="td-sidebar">
-      <div className="td-sidebar-header">
-        <span className="td-sidebar-title">Projekte</span>
-        <div className="td-sidebar-actions">
-          <button
-            type="button"
-            className="td-sidebar-icon-btn"
-            title="Workspace neu scannen"
-            onClick={() => void scanWorkspace()}
-            disabled={loading}
-          >
-            ↻
-          </button>
-          <button
-            type="button"
-            className="td-sidebar-icon-btn"
-            title="Projekt-Ordner hinzufügen"
-            onClick={() => void handleAdd()}
-            disabled={adding}
-          >
-            +
-          </button>
-        </div>
-      </div>
+      {/* === Projekte ============================================================ */}
+      <ProjectsPanel
+        projects={visibleProjects}
+        activeId={activeProjectId}
+        loading={loading}
+        adding={adding}
+        error={error}
+        workspaceMissing={workspaceMissing}
+        onPick={(id) => setActiveProject(id, 'terminals')}
+        onAdd={() => void handleAdd()}
+        onRefresh={() => void scanWorkspace()}
+        runningCountByProject={runningCountByProject}
+      />
 
-      {error && <div className="td-sidebar-error">{error}</div>}
+      {/* === Aktive Sessions ===================================================== */}
+      <ActiveSessionsPanel
+        tabs={tabsInActiveProject}
+        activeTabId={activeTabId}
+        canAdd={activeProjectId !== null}
+        onPick={(sessionId) => {
+          setActiveTab(sessionId);
+          setMainView('terminals');
+        }}
+        onClose={(sessionId) => void handleCloseTab(sessionId)}
+        onResume={(sessionId) => void handleResumeFromTabs(sessionId)}
+        onNew={() => setShowNewSessionModal(true)}
+      />
 
-      {workspaceMissing && (
-        <div className="td-sidebar-empty">
-          Kein Workspace-Pfad konfiguriert. Setze <code>workspace_path</code> in{' '}
-          <code>settings.json</code>.
-        </div>
-      )}
-
-      {!workspaceMissing && visibleProjects.length === 0 && !loading && (
-        <div className="td-sidebar-empty">
-          Keine Projekte erkannt. Lege im Workspace-Ordner ein Projekt mit{' '}
-          <code>CLAUDE.md</code> an oder nutze den +-Button.
-        </div>
-      )}
-
-      <ul className="td-sidebar-list">
-        {visibleProjects.map((p) => (
-          <ProjectItem
-            key={p.id}
-            project={p}
-            isActive={p.id === activeProjectId}
-            runningCount={runningCountByProject.get(p.id) ?? 0}
-            totalCount={p.session_count}
-            onSelect={() => setActiveProject(p.id)}
-          />
-        ))}
-      </ul>
+      {/* === Verlauf ============================================================= */}
+      <HistoryPanel
+        entries={historySnapshot}
+        onPick={(sessionId) => {
+          setHistorySelected(sessionId);
+          setMainView('history');
+        }}
+      />
     </aside>
   );
 }
 
-interface ProjectItemProps {
-  project: ProjectRow;
-  isActive: boolean;
-  runningCount: number;
-  totalCount: number;
-  onSelect: () => void;
+// ============================================================ Projects-Panel
+
+interface ProjectsPanelProps {
+  projects: ProjectRow[];
+  activeId: string | null;
+  loading: boolean;
+  adding: boolean;
+  error: string | null;
+  workspaceMissing: boolean;
+  runningCountByProject: Map<string, number>;
+  onPick: (id: string) => void;
+  onAdd: () => void;
+  onRefresh: () => void;
 }
 
-function ProjectItem({
-  project,
-  isActive,
-  runningCount,
-  totalCount,
-  onSelect,
-}: ProjectItemProps) {
-  const isLegacy = project.id === DEFAULT_PROJECT_ID;
+function ProjectsPanel({
+  projects,
+  activeId,
+  loading,
+  adding,
+  error,
+  workspaceMissing,
+  runningCountByProject,
+  onPick,
+  onAdd,
+  onRefresh,
+}: ProjectsPanelProps) {
   return (
-    <li
-      className={`td-sidebar-item ${isActive ? 'active' : ''} ${isLegacy ? 'legacy' : ''}`}
-      onClick={onSelect}
-    >
-      <div className="td-sidebar-item-row">
-        <span className="td-sidebar-item-name">
-          {displayProjectName(project)}
-        </span>
-        {runningCount > 0 && (
-          <span
-            className="td-sidebar-badge running"
-            title={`${runningCount} aktive Session${runningCount === 1 ? '' : 's'}`}
+    <div className="td-panel">
+      <div className="td-panel-head">
+        <div className="td-panel-title">Projekte</div>
+        <div className="td-panel-actions">
+          <button
+            type="button"
+            className="td-icon-btn"
+            title="Workspace neu scannen"
+            onClick={onRefresh}
+            disabled={loading}
           >
-            {runningCount}
-          </span>
-        )}
-        {runningCount === 0 && totalCount > 0 && (
-          <span
-            className="td-sidebar-badge"
-            title={`${totalCount} Session${totalCount === 1 ? '' : 's'}`}
-          >
-            {totalCount}
-          </span>
-        )}
-      </div>
-      {!isLegacy && (
-        <div className="td-sidebar-item-path" title={project.path}>
-          {project.path}
+            ↻
+          </button>
         </div>
-      )}
-    </li>
+      </div>
+      <div className="td-panel-body">
+        {error && <div className="td-sidebar-error">{error}</div>}
+        {workspaceMissing && (
+          <div className="td-sidebar-empty">
+            Kein Workspace-Pfad konfiguriert. Setze <code>workspace_path</code> in{' '}
+            <code>settings.json</code>.
+          </div>
+        )}
+        {!workspaceMissing && projects.length === 0 && !loading && (
+          <div className="td-sidebar-empty">
+            Keine Projekte erkannt. Lege im Workspace einen Ordner mit{' '}
+            <code>CLAUDE.md</code> an oder nutze + Add.
+          </div>
+        )}
+        <div className="td-list">
+          {projects.map((p) => {
+            const isLegacy = p.id === DEFAULT_PROJECT_ID;
+            const runningCount = runningCountByProject.get(p.id) ?? 0;
+            return (
+              <div
+                key={p.id}
+                className={`td-list-item${activeId === p.id ? ' active' : ''}${isLegacy ? ' legacy' : ''}`}
+                onClick={() => onPick(p.id)}
+                title={p.path}
+              >
+                <span className="td-folder">▸</span>
+                <span className="td-name">{displayProjectName(p)}</span>
+                {runningCount > 0 ? (
+                  <span className="td-badge running">{runningCount}</span>
+                ) : (
+                  p.session_count > 0 && <span className="td-badge">{p.session_count}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="td-panel-foot">
+        <button
+          type="button"
+          className="td-action-btn"
+          onClick={onAdd}
+          disabled={adding}
+        >
+          + Add Project
+        </button>
+      </div>
+    </div>
   );
+}
+
+// ============================================================ Active-Sessions-Panel
+
+interface ActiveSessionsPanelProps {
+  tabs: SessionTab[];
+  activeTabId: string | null;
+  canAdd: boolean;
+  onPick: (sessionId: string) => void;
+  onClose: (sessionId: string) => void;
+  onResume: (sessionId: string) => void;
+  onNew: () => void;
+}
+
+function ActiveSessionsPanel({
+  tabs,
+  activeTabId,
+  canAdd,
+  onPick,
+  onClose,
+  onResume,
+  onNew,
+}: ActiveSessionsPanelProps) {
+  return (
+    <div className="td-panel">
+      <div className="td-panel-head">
+        <div className="td-panel-title">Aktive Sessions</div>
+      </div>
+      <div className="td-panel-body">
+        {tabs.length === 0 && (
+          <div className="td-sidebar-empty-soft">
+            Keine aktiven Sessions in diesem Projekt.
+          </div>
+        )}
+        <div className="td-list">
+          {tabs.map((tab) => {
+            const isActive = tab.sessionId === activeTabId;
+            const canResume =
+              tab.status === 'completed' ||
+              tab.status === 'interrupted' ||
+              tab.status === 'error';
+            return (
+              <div
+                key={tab.sessionId}
+                className={`td-list-item${isActive ? ' active' : ''}`}
+                onClick={() => onPick(tab.sessionId)}
+                title={tab.title}
+              >
+                <span className={`td-status-dot ${tab.status}`} />
+                <span className="td-name">{tab.title}</span>
+                {canResume && (
+                  <button
+                    type="button"
+                    className="td-row-action"
+                    title="Resume"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onResume(tab.sessionId);
+                    }}
+                  >
+                    ↻
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="td-row-x"
+                  title="Tab schließen (Session bleibt im Verlauf)"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose(tab.sessionId);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="td-panel-foot">
+        <button
+          type="button"
+          className="td-action-btn primary"
+          onClick={onNew}
+          disabled={!canAdd}
+        >
+          + Neue Session
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================ History-Panel
+
+interface HistoryPanelProps {
+  entries: SessionHistoryEntry[];
+  onPick: (sessionId: string) => void;
+}
+
+function HistoryPanel({ entries, onPick }: HistoryPanelProps) {
+  return (
+    <div className="td-panel td-panel-history">
+      <div className="td-panel-head">
+        <div className="td-panel-title">Verlauf</div>
+      </div>
+      <div className="td-panel-body">
+        {entries.length === 0 && (
+          <div className="td-sidebar-empty-soft">
+            Noch keine abgeschlossenen Sessions.
+          </div>
+        )}
+        <div className="td-list td-history-quicklist">
+          {entries.map((entry) => (
+            <div
+              key={entry.id}
+              className={`td-hist-row ${entry.status}`}
+              onClick={() => onPick(entry.id)}
+              title={entry.title}
+            >
+              <span className="td-hist-tick">{statusGlyph(entry.status)}</span>
+              <div className="td-hist-rows">
+                <div className="td-hist-name">{entry.title}</div>
+                <div className="td-hist-meta">
+                  {entry.season_number !== null
+                    ? `S${entry.season_number}`
+                    : entry.type.toUpperCase()}{' '}
+                  · {entry.current_model ?? '—'}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function statusGlyph(status: SessionStatus): string {
+  if (status === 'completed') return '✓';
+  if (status === 'interrupted') return '…';
+  if (status === 'error') return '✗';
+  if (status === 'archived') return '✓';
+  if (status === 'running') return '●';
+  return '·';
 }

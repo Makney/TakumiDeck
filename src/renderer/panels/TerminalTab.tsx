@@ -190,6 +190,23 @@ export function TerminalTab({
     terminal?.focus();
   }, [isActive]);
 
+  // Sprint 6: TemplatesModal sendet einen 'td-template-send'-CustomEvent, der
+  // vom AKTIVEN Tab konsumiert wird. terminal.paste() wickelt automatisch die
+  // Bracketed-Paste-Sequenz \x1b[200~...\x1b[201~ um den Text — claude-code
+  // erkennt das und verarbeitet den Block als ein Eingabe-Event (genau wie der
+  // Copy/Paste-Pfad aus Sprint 3.5). Listener mit unsubscribe-Cleanup, kein
+  // useRef-Guard nötig (Memory: Guard nur für Server-Mutationen).
+  useEffect(() => {
+    if (!isActive) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ text: string }>).detail;
+      if (!detail || typeof detail.text !== 'string') return;
+      terminalRef.current?.paste(detail.text);
+    };
+    window.addEventListener('td-template-send', handler);
+    return () => window.removeEventListener('td-template-send', handler);
+  }, [isActive]);
+
   // Hot-Update der Schriftart, wenn der User die Settings ändert.
   useEffect(() => {
     const terminal = terminalRef.current;

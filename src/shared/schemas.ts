@@ -115,6 +115,29 @@ export const SessionResumeInputSchema = z.object({
   rows: z.number().int().positive(),
 });
 
+// Sprint 6: Verlauf-Panel-Filter laut Architektur 6.6 (Typ, Status, Volltext-Suche).
+// Leere Listen → kein Filter; query "" → kein Volltext-Filter.
+export const SessionHistoryInputSchema = z.object({
+  projectId: z.string().min(1),
+  types: z.array(SessionTypeSchema).optional(),
+  statuses: z.array(SessionStatusSchema).optional(),
+  query: z.string().optional(),
+});
+
+// Sprint-6-UX-Fix: explizites Archivieren via Verlauf-Panel-Detail-Pane.
+// Lifecycle-Transition zu archived; kein PTY-Kill (Session ist beim Archive
+// ohnehin nicht mehr running — sonst würde der archived-Übergang die Live-PTY
+// hinterlassen, was die State-Machine in Sprint 3 gerade verhindern soll).
+export const SessionArchiveInputSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+// Sprint 6: fs:list-templates läuft on-demand beim Modal-Open. projectId wird
+// gegen die DB aufgelöst, um den Per-Projekt-Pfad zu finden.
+export const FsListTemplatesInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
 // --- Workspace / Projects (Sprint 4) ---------------------------------
 
 // CLAUDE.md-YAML-Frontmatter laut Architektur Kapitel 5.

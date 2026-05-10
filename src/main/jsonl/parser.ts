@@ -116,6 +116,9 @@ function extractMessage(
     cacheReadInputTokens: cacheRead,
     totalTokens,
     rawLine,
+    // Sprint-6-Hotfix: claude-codes Session-UUID weiterreichen für den
+    // Watcher-Backfill von sessions.claude_session_id.
+    sessionId: data.sessionId ?? null,
   };
 }
 

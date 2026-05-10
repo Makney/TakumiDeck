@@ -33,6 +33,10 @@ beforeEach(() => {
     activeProjectFrontmatter: null,
     activeProjectFrontmatterError: null,
     dashboardDetailBarId: null,
+    mainView: 'terminals',
+    historySelectedId: null,
+    showNewSessionModal: false,
+    showTemplatesModal: false,
   });
 });
 
@@ -128,5 +132,95 @@ describe('useUiStore — Dashboard-Detail-Modal', () => {
     useUiStore.getState().setDashboardDetailBar('5h');
     useUiStore.getState().setDashboardDetailBar(null);
     expect(useUiStore.getState().dashboardDetailBarId).toBeNull();
+  });
+});
+
+describe('useUiStore — Sprint-6-MainView-Toggle', () => {
+  it('initial mainView=terminals', () => {
+    expect(useUiStore.getState().mainView).toBe('terminals');
+  });
+
+  it('setMainView wechselt zur History-View und zurück', () => {
+    useUiStore.getState().setMainView('history');
+    expect(useUiStore.getState().mainView).toBe('history');
+    useUiStore.getState().setMainView('terminals');
+    expect(useUiStore.getState().mainView).toBe('terminals');
+  });
+
+  it('setActiveProject(id, "history") wechselt Projekt UND View', () => {
+    useUiStore.getState().setActiveProject('proj-1', 'history');
+    expect(useUiStore.getState().activeProjectId).toBe('proj-1');
+    expect(useUiStore.getState().mainView).toBe('history');
+  });
+
+  it('setActiveProject(id, "terminals") setzt View zurück auf Tabs', () => {
+    useUiStore.getState().setActiveProject('proj-1', 'history');
+    useUiStore.getState().setActiveProject('proj-1', 'terminals');
+    expect(useUiStore.getState().mainView).toBe('terminals');
+  });
+
+  it('setActiveProject(sameId, sameView) ist No-op (Frontmatter bleibt)', () => {
+    useUiStore.setState({
+      activeProjectId: 'proj-1',
+      mainView: 'history',
+      activeProjectFrontmatter: {
+        workbench: {
+          trigger_phrases: { docs_update: 'X', commit: 'Y' },
+          default_model: 'claude-opus-4-7',
+        },
+      },
+    });
+    useUiStore.getState().setActiveProject('proj-1', 'history');
+    expect(useUiStore.getState().activeProjectFrontmatter).not.toBeNull();
+  });
+
+  it('setActiveProject(sameId, otherView) wechselt nur die View, behält Frontmatter', () => {
+    useUiStore.setState({
+      activeProjectId: 'proj-1',
+      mainView: 'terminals',
+      activeProjectFrontmatter: {
+        workbench: {
+          trigger_phrases: { docs_update: 'X', commit: 'Y' },
+        },
+      },
+    });
+    useUiStore.getState().setActiveProject('proj-1', 'history');
+    expect(useUiStore.getState().mainView).toBe('history');
+    // Same project: Frontmatter darf NICHT geleert werden — sonst flackert die UI
+    // beim Hin-und-Her-Wechseln zwischen Tabs und Verlauf.
+    expect(useUiStore.getState().activeProjectFrontmatter).not.toBeNull();
+  });
+});
+
+describe('useUiStore — Sprint-6-UI-Fix Sidebar-State', () => {
+  it('setHistorySelected speichert die Session-ID', () => {
+    useUiStore.getState().setHistorySelected('sess-42');
+    expect(useUiStore.getState().historySelectedId).toBe('sess-42');
+  });
+
+  it('setHistorySelected(null) räumt auf', () => {
+    useUiStore.getState().setHistorySelected('sess-42');
+    useUiStore.getState().setHistorySelected(null);
+    expect(useUiStore.getState().historySelectedId).toBeNull();
+  });
+
+  it('setActiveProject auf neues Projekt leert historySelectedId', () => {
+    useUiStore.setState({ activeProjectId: 'proj-A', historySelectedId: 'sess-old' });
+    useUiStore.getState().setActiveProject('proj-B');
+    expect(useUiStore.getState().historySelectedId).toBeNull();
+  });
+
+  it('setShowNewSessionModal toggelt das Modal', () => {
+    expect(useUiStore.getState().showNewSessionModal).toBe(false);
+    useUiStore.getState().setShowNewSessionModal(true);
+    expect(useUiStore.getState().showNewSessionModal).toBe(true);
+    useUiStore.getState().setShowNewSessionModal(false);
+    expect(useUiStore.getState().showNewSessionModal).toBe(false);
+  });
+
+  it('setShowTemplatesModal toggelt das Modal unabhängig vom NewSession', () => {
+    useUiStore.getState().setShowTemplatesModal(true);
+    expect(useUiStore.getState().showTemplatesModal).toBe(true);
+    expect(useUiStore.getState().showNewSessionModal).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ import { registerPtyIpc } from './ipc/pty';
 import { registerSessionIpc } from './ipc/session';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
 import { registerUsageIpc } from './ipc/usage';
+import { registerFsIpc, templatesDirFromUserData } from './ipc/fs';
 import { PtyManager } from './pty/manager';
 import { realPtySpawn } from './pty/spawn';
 import { SessionRepository, SqliteSessionDriver } from './db/repos/sessions';
@@ -150,6 +151,7 @@ app.whenReady().then(async () => {
     registerPtyIpc({
       manager: ptyManager,
       sessions,
+      projects: projectRepo,
       lifecycle,
       settings,
       getWebContents: () => mainWindow?.webContents ?? null,
@@ -166,6 +168,11 @@ app.whenReady().then(async () => {
       messages: messageRepo,
       sessions,
       settings,
+      log: logger,
+    });
+    registerFsIpc({
+      projects: projectRepo,
+      templatesDir: templatesDirFromUserData(getDataDir()),
       log: logger,
     });
 

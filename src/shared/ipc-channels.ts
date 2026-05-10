@@ -7,12 +7,15 @@ export const Channels = {
   ProjectScan: 'project:scan-workspace',
   ProjectReadCfg: 'project:read-claude-md',
 
-  // Session-Management (Sprint 2: open/update; Sprint 3: close/resume/history)
+  // Session-Management (Sprint 2: open/update; Sprint 3: close/resume; Sprint 6: history/archive)
   SessionOpen: 'session:open',
   SessionClose: 'session:close',
   SessionResume: 'session:resume',
   SessionUpdate: 'session:update',
   SessionHistory: 'session:history',
+  // Sprint-6-UX-Fix (Variante B): expliziter Archive-Schritt, getrennt vom × auf
+  // dem Tab. session:close killt nur den PTY, session:archive setzt den Lifecycle.
+  SessionArchive: 'session:archive',
 
   // PTY (Sprint 2)
   PtyCreate: 'pty:create',

@@ -66,9 +66,9 @@ Schnelles Erstellen von Standard-Prompts.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Template-Reader`               | ⛔      |           |
-| `Variable-Filling`              | ⛔      |           |
-| `Template-Send`                 | ⛔      |           |
+| `Template-Reader`               | ✅      | 2026-05-10 — on-demand-Scan via `fs:list-templates` (Variante B), Globaler + Per-Projekt + Legacy-Konvention `_TEMPLATE.md`, beide Quellen mit Source-Tag separat (Variante B) |
+| `Variable-Filling`              | ✅      | 2026-05-10 — Pure-Logik-Util mit Auto-Variablen (PROJEKT_NAME/NEXT_SEASON_NR/CURRENT_PHASE_FILE/DATUM) + User-Variablen (FEATURE_NAME/AUFGABE Pflicht, HINWEISE optional), Live-Preview |
+| `Template-Send`                 | ✅      | 2026-05-10 — Bracketed-Paste via `td-template-send`-CustomEvent → `terminal.paste(text)`; nutzt Sprint-3.5-Mechanik wieder, Ctrl+T plus Templates-Pill in der Action-Bar |
 
 ## Season-Tracker (Sprint 6)
 
@@ -76,8 +76,8 @@ Nummerierung und Verlauf von Sessions.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Season-Nummerierung`           | ⛔      |           |
-| `Verlauf-Panel`                 | ⛔      |           |
+| `Season-Nummerierung`           | ✅      | 2026-05-10 — atomar im Main-Handler via better-sqlite3-Transaction (Variante B); nur für `feature`-Sessions, Lücken bei Spawn-Fehler akzeptiert; Vorschau im NewSessionModal |
+| `Verlauf-Panel`                 | ✅      | 2026-05-10 — Replace-View (Variante A) mit Filter (Typ/Status/Volltext) + Detail-Pane mit Resume + Archive (Inline-Confirmation); Legacy-Bucket sichtbar mit Hinweis-Banner (Variante A) |
 
 ## Editor + Git (Sprint 7)
 

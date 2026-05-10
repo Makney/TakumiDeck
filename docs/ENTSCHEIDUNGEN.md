@@ -24,6 +24,115 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Sidebar-Layout: 3 Sektionen statt View-Toggle
+
+**Entscheidung:** Die LeftSidebar rendert drei vertikal gestapelte `td-panel`-Sektionen (Projekte / Aktive Sessions / Verlauf) wie im Claude-Design-Handoff (`docs/design/claude-export/components.jsx`). Klick auf ein aktives Tab-Item wechselt zur Terminals-Hauptansicht und aktiviert den Tab; Klick auf einen Verlauf-Eintrag wechselt zur Replace-View des HistoryPane mit dem Item vorausgewählt. Modal-State (NewSession/Templates) liegt im `useUiStore`, weil sowohl die Sidebar als auch die Tab-Bar Buttons besitzen, die dieselben Modale öffnen.
+
+**Varianten:**
+
+- **A** Projekt-Liste + View-Toggle „Tabs / Verlauf" pro aktivem Projekt (Sprint-6-Initial-Implementation)
+- **B** 3 Sektionen wie im Design-Handoff (gewählt)
+- **C** Sidebar nur für Projekte; Tabs und Verlauf ausschließlich oben/im Replace-View
+
+**Grund:** Variante A war der pragmatische Erstwurf für den Replace-View-Pattern (Q4 Variante A), aber der User-Feedback-Hinweis war eindeutig: das Design-Handoff hat von Anfang an drei Sektionen geplant, und die volle Sichtbarkeit ist für Daily-Driver-UX wertvoll — Aktive Sessions in der Sidebar erlauben Multi-Tab-Übersicht ohne Tab-Bar-Scrolling, und der Verlauf-Quick-Access (10 jüngste pro Projekt) macht den Schritt ins HistoryPane optional. Variante C verschenkt diesen Komfort komplett.
+
+**Konsequenz:** Tab-Bar oben im Hauptbereich BLEIBT — Sidebar und Tab-Bar sind synchronisierte Ansichten. Doppelte UI-Pfade sind hier Feature, nicht Bug: in der Praxis nutzt der User die Sidebar zum Multi-Tab-Überblick und die Tab-Bar zum Schnellwechsel beim Schreiben. Tote `.td-sidebar-*`-CSS-Blöcke aus dem Pre-3-Sektionen-Layout sind als TECH_SCHULDEN-Eintrag markiert.
+
+**Implementierungsdetail:** Verlauf-Quickliste in der Sidebar filtert Tabs aus, die schon offen sind — sonst würde derselbe Eintrag als „aktive Session" UND als „letzter Verlaufs-Eintrag" doppelt erscheinen. Das volle HistoryPane mit Filter und Tabelle bleibt für die Suche, die Sidebar-Quickliste ist nur Quick-Access für die jüngsten 10 Einträge.
+
+---
+
+## × auf Tab ist non-destruktiv, Archive ist explizit
+
+**Entscheidung:** Sprint 3 hatte `× = archive + PTY-Kill` als ein Schritt; Sprint-6-UX-Fix trennt das in zwei Aktionen. `session:close` killt nur den PTY (falls running) und überlässt den Lifecycle-Übergang dem `pty:exit`-Handler (running/idle → completed). Der neue `session:archive`-Channel macht die explizite Lifecycle-Transition zu archived und ist nur über den Verlauf-Detail-Pane mit Inline-Confirmation erreichbar.
+
+**Varianten:**
+
+- **A** × schließt nur den Tab, kein Archive (= aktuelle Variante B-Logik), kein UI-Pfad zum Archivieren
+- **B** A + Archive-Button im Verlauf-Detail-Pane mit Confirmation (gewählt)
+- **C** × öffnet Confirmation-Modal („schließen / archivieren / abbrechen")
+- **D** × wie Sprint 3 archiviert direkt, aber `archived → running` in der State-Machine erlauben
+
+**Grund:** Editor- und Browser-Konventionen sehen × konsistent als „Tab weg, Datei/Inhalt bleibt" — Sprint-3-Spec brach das mentale Modell. Variante D weicht den `archived`-Endzustand der State-Machine auf, was die Sprint-3-Truth-Table-Tests entwertet und den semantischen Unterschied zwischen completed und archived verschwimmen lässt. Variante C zwingt Modal-Overhead pro × auf den 95-%-Fall (= „Tab weg") nur um den 5-%-Fall (= „wirklich loswerden") abzudecken. Variante A allein versteckt den Archive-Pfad komplett — Sessions stapeln sich ohne UI-Weg zum Aufräumen. B ist die einzige Variante, die beide Fälle sauber trennt: häufiger Pfad ist non-destruktiv, seltener Pfad hat einen klaren Knopf an der erwarteten Stelle.
+
+**Konsequenz:** Sprint-3-Lifecycle-State-Machine bleibt **unverändert** — `archived` ist weiter Endzustand, alle Truth-Table-Tests grün. Die Trennung lebt rein in den IPC-Handlern und der UI: × → `session:close`, Archivieren-Button → `session:archive`. Default-Filter im HistoryPane blendet `archived` aus, damit die Liste nicht mit Karteileichen verstopft.
+
+**Implementierungsdetail:** Inline-Confirmation statt Modal. Erster Klick auf „Archivieren" zeigt einen roten Banner mit „Wirklich? Session ist danach nicht mehr resume-fähig" plus Abbrechen + „Ja, archivieren". Zweiter Klick führt aus. Wenn der User den selektierten Eintrag wechselt, wird der Confirm-Marker automatisch abgeräumt — der Bestätigungs-Zustand klebt nicht auf der falschen Zeile.
+
+---
+
+## Resume-Bug-Fix: claude --session-id beim Spawn + Watcher-Backfill (Variante C)
+
+**Entscheidung:** TakumiDeck spawnt neue Sessions mit `claude --session-id <takumi-uuid>`, sodass claude-codes interne Session-UUID identisch mit unserer `sessions.id` ist und `--resume <takumi-uuid>` nahtlos matcht. Für Legacy-Sessions (Sprint 2/3 + pre-Hotfix Sprint 6, gespawnt ohne `--session-id`) befüllt der JSONL-Watcher rückwirkend eine neue Spalte `sessions.claude_session_id` aus der UUID des JSONL-Filenamens. Resume nutzt `claude_session_id ?? id` und gibt `SESSION_NO_CLAUDE_UUID` zurück, wenn beides null ist.
+
+**Varianten:**
+
+- **A** Nur `--session-id` beim Spawn (neue Sessions sofort resume-fähig, Legacy-Sessions bleiben tot)
+- **B** Nur Watcher-Backfill (Legacy-Sessions werden lebensfähig, neue Sessions haben Race-Window von ~100 ms-2 s nach Spawn)
+- **C** Beide kombiniert (gewählt)
+
+**Grund:** Sprint-5-ENTSCHEIDUNGEN.md („Sessions-Mapping über encodeCwd statt UUID") hatte angenommen, claude-code akzeptiere kein `--session-id`-Flag — Stand 2026-05-10 ist das überholt (siehe `claude --help`). Variante A war der saubere Weg für neue Sessions, hätte aber alle bestehenden Test-Sessions des Users dauerhaft als „nicht resume-fähig" zementiert (~19 Legacy-Sessions plus die in Sprint 6 erstellten). Variante B brachte für neue Sessions ein Race-Window — beim ersten Resume-Versuch direkt nach Spawn könnte die UUID noch nicht backfilled sein. C kombiniert die jeweiligen Stärken: Spawn-Pfad ist race-frei (UUID ist beim DB-Insert schon bekannt), Backfill-Pfad heilt den Altbestand sobald der Watcher die JSONL einmal gesehen hat.
+
+**Konsequenz:** Migration `0003_claude_session_id.sql` mit nullable Spalte; alle bestehenden Rows bekommen `NULL`. `setClaudeSessionId(sessionId, claudeUuid)` ist idempotent (UPDATE WHERE id = ? AND claude_session_id IS NULL → atomarer Check-and-Set), kann pro JSONL-Tick aufgerufen werden, ohne vorher zu prüfen. Watcher-Backfill ist status-agnostisch (`listMissingClaudeSessionId()` liefert running/idle/completed/interrupted/error/archived), damit auch Legacy-completed-Sessions geheilt werden — Sprint-5-Live-Pfad (`resolveTakumiSession`) bleibt auf running/idle, weil dort Token-Inserts stattfinden und Doppelzählung bei completed unerwünscht wäre.
+
+**Implementierungsdetail:** UUID-Extraktion erfolgt aus dem JSONL-Filename (`<uuid>.jsonl`), nicht aus der `sessionId`-Spalte der einzelnen Zeilen — pro File schreibt claude-code GENAU eine UUID, der Filename ist die einzige Quelle der Wahrheit. Bei mehreren Backfill-Kandidaten im selben encoded-cwd-Folder (mehrere TakumiDeck-Sessions ohne UUID, alle im selben Projekt) gewinnt die jüngste — gleiche Heuristik wie Sprint-5-`resolveTakumiSession`. Die Mehrdeutigkeit ist als TECH_SCHULDEN-Eintrag dokumentiert.
+
+---
+
+## Atomare Season-Counter-Allocation im Main
+
+**Entscheidung:** `pty:create`-Handler ruft `projects.allocateSeasonNumber(projectId)` in einer better-sqlite3-Transaction (SELECT + UPDATE) auf, bevor die Session-Row geschrieben wird. Das returnt die Vorgänger-Nummer als Season-Wert; `next_season_number` ist danach um 1 höher persistiert. Nur für `type='feature'` — Bug/Review/Docs-Sync bekommen `null` (Architektur 6.6).
+
+**Varianten:**
+
+- **A** Renderer liest `next_season_number` aus dem Project-Store, vergibt sie im Modal, schickt sie als Teil des `pty:create`-Payloads
+- **B** Atomar im Main-Handler in einer Transaction (gewählt)
+
+**Grund:** Renderer-Increment ist die natürliche Quelle künstlicher Lücken: bei Modal-Abbruch wäre die Nummer schon vergeben, beim Spawn-Fehler ebenso, und zwei parallel geöffnete Modals könnten dieselbe Nummer ziehen. Variante B macht die Allocation race-frei — better-sqlite3-Transaktionen sind synchron + lokales File, der einzige verbleibende Lücken-Fall ist ein Hard-Crash zwischen Increment und sessions.create-Insert (Mikrosekunden-Fenster). Architektur 6.6 akzeptiert Lücken explizit, also kein Rollback-Aufwand nötig.
+
+**Konsequenz:** Modal-Vorschau ist eine separate read-only-Berechnung (`activeProject.next_season_number` direkt aus dem Store), nicht durch einen IPC-Roundtrip. Wenn der User schnell zwei Sessions hintereinander öffnet, kann die zweite Modal-Vorschau einen veralteten Wert zeigen — der echte atomare Increment im Main vergibt aber die korrekte nächste Nummer. Akzeptable Drift, weil die Vorschau Komfort, nicht Wahrheit ist.
+
+**Implementierungsdetail:** Driver-Methode `allocateSeasonNumber(projectId): number | null` mit Transaction in `SqliteProjectDriver`; Test-Driver simuliert das durch ein einfaches Read-Modify-Write im Map. Returnt null, wenn das Projekt nicht existiert — Defense-in-Depth, weil der Renderer-Filter im Sprint-4-Layout das eigentlich nicht zulässt.
+
+---
+
+## Verlauf-Panel als Replace-View statt Modal
+
+**Entscheidung:** Die Verlauf-Liste mit Filter und Detail-Pane lebt im Hauptbereich des Layouts (= Tab-Slot wird bei `mainView === 'history'` durch das `HistoryPane` ersetzt), nicht in einem Modal-Overlay. TabContainer und HistoryPane werden BEIDE im DOM gerendert — der Wechsel ist nur ein CSS-`display`-Toggle, damit die xterm-Buffer der laufenden Tabs nicht disposed werden (Sprint-3-Pattern: alle Terminals dauerhaft mounted).
+
+**Varianten:**
+
+- **A** Replace-View (gewählt)
+- **B** Modal-Overlay (analog UsageDetailModal)
+- **C** Sidebar-Sub-Sektion mit Detail-Inline
+
+**Grund:** Tabelle mit 6 Spalten + Filter-Bar + Detail-Pane braucht horizontalen Platz — ein Modal wäre dafür gequetscht (max 540 px Standard / 820 px wide), die Sidebar mit 240 px komplett unzureichend. Replace-View nutzt die volle Bildschirmbreite, und das Pattern ist konsistent zum Workspace-Sprint (Sidebar-Klick ändert Hauptansicht). Variante B würde zudem den TabContainer beim Modal-Open verdecken, der User verliert die laufenden Sessions aus dem Sichtfeld.
+
+**Konsequenz:** App.tsx rendert beide Views (`<TabContainer>` + `<HistoryPane>`) parallel, mit `display: none/flex` je nach `mainView`. xterm-Lifecycle bleibt intakt, kein Buffer-Verlust beim Wechsel. HistoryPane registriert seine eigenen useEffect-Cleanups beim Unmount — also kein Memory-Leak, falls der User das Projekt komplett wechselt.
+
+**Implementierungsdetail:** Klick auf einen Verlauf-Eintrag in der Sidebar setzt `historySelectedId` im UiStore + wechselt `mainView` auf `history`. HistoryPane synchronisiert seinen lokalen `selectedId` aus dem Store — der lokale State erlaubt Klicks IM HistoryPane, ohne dass jeder Klick durch Zustand-Cycle rendern muss.
+
+---
+
+## Templates: on-demand-Discovery und beide Quellen separat
+
+**Entscheidung:** `fs:list-templates` läuft on-demand bei jedem Modal-Open, ohne chokidar-Watcher. Globaler Ordner (`%APPDATA%\TakumiDeck\templates`) und Per-Projekt-Ordner (`<projekt>\docs\templates`) plus Legacy-Konvention (`<projekt>\docs\*_TEMPLATE.md`) werden gescannt; jedes Template trägt einen `source`-Tag (`'global'` oder `'project'`). Konflikte bei gleichem Dateinamen werden NICHT aufgelöst — beide Einträge erscheinen nebeneinander.
+
+**Varianten:**
+
+- **A** Initial-Scan beim App-Start mit Cache, manueller Re-Scan-Button
+- **B** On-Demand beim Modal-Open (gewählt)
+- **C** Live-Watcher analog Sprint-5-JSONL-Watcher
+- Konflikt-Auflösung: Per-Projekt-Override / **beide separat** (gewählt) / Hard Error
+
+**Grund:** Templates ändern sich selten und sind klein (typisch <10 Files pro Projekt). Variante A spart ~50 ms beim ersten Modal-Open, zwingt aber zu einem Re-Scan-Knopf für den Edge-Case „User hat gerade ein Template angelegt". Variante C baut eine ganze Watcher-Infrastruktur für ein gelöstes Problem — der Initial-Scan-Code aus Sprint 5 (chokidar v5 + ignored-Predicate) ist nicht trivial, und Templates rechtfertigen den Aufwand nicht. B ist die einfachste Variante, die alle Cases abdeckt.
+
+Für die Konflikt-Auflösung: Per-Projekt-Override hat den klassischen „warum geht mein globales Template hier nicht?"-Stolperstein und verlangt eine Einstellung zum Aushebeln. Hard-Error blockt einen seltenen Edge-Case mit einem UX-Bremsklotz. „Beide separat mit Source-Tag" macht den Konflikt sichtbar (kleiner Badge „Global" / „Projekt") und überlässt dem User die Wahl.
+
+**Konsequenz:** TemplatesModal lädt bei jedem Open via `fs:list-templates`. Die Listen-Sortierung ist fix: globale zuerst (alphabetisch), dann Per-Projekt (alphabetisch). Variable-Filling-UI rendert nur die Felder, die das gewählte Template tatsächlich braucht — `findVariablesInTemplate` liefert die Tokens, die UI zeigt nur dazu passende Inputs.
+
+---
+
 ## Sessions-Mapping über encodeCwd statt UUID
 
 **Entscheidung:** TakumiDeck-Sessions matchen ihre claude-code-JSONL-Datei NICHT über die UUID im Filename, sondern über den encoded-cwd-Anteil im Eltern-Ordnernamen. claude-code vergibt seine eigene Session-UUID intern; unsere `sessions.id` ist davon entkoppelt. Der Watcher encoded den `cwd` jeder running/idle-Session nach demselben Schema (`:/\\` → `-`) und vergleicht mit `path.basename(path.dirname(filePath))`. Bei mehreren Sessions im gleichen Projekt-Ordner gewinnt die jüngste (höchstes `started_at`).

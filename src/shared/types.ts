@@ -67,6 +67,11 @@ export interface SessionRow {
   cwd: string;
   started_at: number;
   ended_at: number | null;
+  // Sprint-6-Hotfix: claude-codes eigene Session-UUID (= das, was --resume erwartet).
+  // Ab Sprint-6-Hotfix gleich `id`, weil beim Spawn `--session-id <id>` vorgegeben wird.
+  // Für Legacy-Sessions (Sprint 2/3 + pre-fix Sprint 6) null, bis der JSONL-Watcher
+  // sie aus der ersten Zeile rückwirkend befüllt.
+  claude_session_id: string | null;
 }
 
 // PTY-IPC-Payloads (Renderer → Main).
@@ -128,10 +133,49 @@ export interface SessionCloseInput {
   sessionId: string;
 }
 
+// Sprint-6-UX-Fix: Archive-Aktion aus dem Verlauf-Detail-Pane.
+export interface SessionArchiveInput {
+  sessionId: string;
+}
+
 export interface SessionResumeInput {
   sessionId: string;
   cols: number;
   rows: number;
+}
+
+// --- Session-Verlauf (Sprint 6) -------------------------------------
+
+// Filter-Set MVP laut Architektur 6.6: Typ, Status, Volltext-Suche im Titel.
+// Modell-Filter ist Phase 2 — bewusst NICHT mitgenommen.
+// Leere Listen bedeuten "kein Filter aktiv" (= alle Werte erlaubt).
+export interface SessionHistoryInput {
+  projectId: string;
+  types?: SessionType[];
+  statuses?: SessionStatus[];
+  query?: string;
+}
+
+// Ergebnis-Eintrag fürs Verlauf-Panel.
+// Felder laut Architektur 6.6: Season-Nr/Typ, Name, Status, Modell, Datum, Notizen-Count
+// plus Token-Total (für Detail-Pane). notes_md kommt mit, damit das Detail-Pane den
+// vollen Text rendern kann ohne zusätzlichen Roundtrip — typische Notes sind <2 KB.
+export interface SessionHistoryEntry {
+  id: string;
+  project_id: string;
+  title: string;
+  type: SessionType;
+  season_number: number | null;
+  status: SessionStatus;
+  current_model: string | null;
+  cwd: string;
+  notes_md: string;
+  started_at: number;
+  ended_at: number | null;
+  // Aus messages aggregiert: Summen + Anzahl. Sessions ohne Messages haben 0/0/0.
+  tokens_in: number;
+  tokens_out: number;
+  message_count: number;
 }
 
 // --- Workspace / Projects (Sprint 4) --------------------------------
@@ -193,6 +237,24 @@ export interface ProjectReadCfgInput {
   projectId: string;
 }
 
+// --- Templates (Sprint 6) --------------------------------------------
+
+// Q1 + Q2 (B/B): on-demand-Discovery + beide Quellen separat mit source-Tag.
+// `name` ist nur der Dateiname (z.B. "season_prompt.md"), `path` der absolute Pfad
+// für Hover-Anzeige, `content` der rohe Markdown-Inhalt mit {{...}}-Variablen.
+export interface TemplateFile {
+  source: 'global' | 'project';
+  name: string;
+  path: string;
+  content: string;
+}
+
+export interface FsListTemplatesInput {
+  // projectId muss in der DB existieren. Bei DEFAULT_PROJECT_ID werden NUR globale
+  // Templates geliefert (Default-Project hat keinen eigenen docs-Ordner).
+  projectId: string;
+}
+
 // --- Token-Tracking (Sprint 5) ---------------------------------------
 
 // Geparste JSONL-Zeile, gefiltert auf das, was wir tatsächlich brauchen.
@@ -209,6 +271,10 @@ export interface ParsedJsonlMessage {
   // Roh-Zeilen-Inhalt für messages.content (kein Parsing-Aufwand für die Anzeige
   // im Verlauf-Panel, Sprint 6 entscheidet das endgültige Format).
   rawLine: string;
+  // Sprint-6-Hotfix: claude-codes eigene Session-UUID, sofern in der JSONL-Zeile
+  // angegeben. Wird vom Watcher genutzt, um Legacy-Sessions rückwirkend in
+  // sessions.claude_session_id zu mappen (Resume-Bug-Fix Variante C).
+  sessionId: string | null;
 }
 
 // Repository-Insert für eine messages-Row.
@@ -309,6 +375,11 @@ export interface RendererApi {
     update: (input: SessionUpdateInput) => Promise<IpcResult<SessionRow>>;
     close: (input: SessionCloseInput) => Promise<IpcResult<SessionRow>>;
     resume: (input: SessionResumeInput) => Promise<IpcResult<SessionRow>>;
+    history: (input: SessionHistoryInput) => Promise<IpcResult<SessionHistoryEntry[]>>;
+    archive: (input: SessionArchiveInput) => Promise<IpcResult<SessionRow>>;
+  };
+  fs: {
+    listTemplates: (input: FsListTemplatesInput) => Promise<IpcResult<TemplateFile[]>>;
   };
   projects: {
     list: () => Promise<IpcResult<ProjectRow[]>>;

@@ -1,0 +1,17 @@
+-- Sprint-6-Hotfix: Resume nutzt claude-codes eigene Session-UUID.
+--
+-- Hintergrund: claude-code akzeptiert seit einigen Versionen --session-id <uuid>
+-- beim ersten Spawn — wir können also unsere TakumiDeck-UUID vorgeben. Bestehende
+-- Sessions (Sprint 2/3 + pre-fix Sprint 6) haben aber keine vorgegebene UUID;
+-- claude-code hat dort intern eine eigene erzeugt, die in der JSONL-Filename
+-- steckt und von der Resume-Logik gebraucht wird (`claude --resume <uuid>`).
+--
+-- Diese Spalte wird:
+-- 1. Beim Spawn AB Sprint-6-Hotfix sofort gleich `sessions.id` gesetzt (= unsere
+--    UUID, die wir per --session-id vorgegeben haben).
+-- 2. Für Legacy-Sessions vom JSONL-Watcher rückwirkend befüllt, sobald er die
+--    erste Zeile der JSONL liest (sessionId-Feld aus claude-codes Format).
+--
+-- Resume-Pfad nutzt `claude_session_id ?? id` — fällt auf die alte Logik zurück,
+-- solange das Backfill noch nicht passiert ist (Race-Window von ~100 ms).
+ALTER TABLE sessions ADD COLUMN claude_session_id TEXT;

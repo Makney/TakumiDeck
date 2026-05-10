@@ -28,11 +28,16 @@ const MODEL_OPTIONS: Array<{ id: string; label: string }> = [
 
 interface Props {
   defaultModel: string;
+  // Sprint 6 (Q6 Variante B): Vorschau der nächsten Season-Nummer für das aktive Projekt.
+  // Kommt aus useProjectStore (project.next_season_number) — im Modal nur für die
+  // Anzeige, der echte Increment passiert atomar im Main beim pty:create. Lücken
+  // (Modal abgebrochen, Spawn-Fehler) sind explizit akzeptiert (Architektur 6.6).
+  nextSeasonPreview: number | null;
   onCancel: () => void;
   onCreate: (input: { title: string; type: SessionType; model: string }) => void;
 }
 
-export function NewSessionModal({ defaultModel, onCancel, onCreate }: Props) {
+export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onCreate }: Props) {
   const [title, setTitle] = useState('');
   const [type, setType] = useState<SessionType>('feature');
   const [model, setModel] = useState(defaultModel);
@@ -117,6 +122,15 @@ export function NewSessionModal({ defaultModel, onCancel, onCreate }: Props) {
               ))}
             </div>
           </div>
+
+          {type === 'feature' && nextSeasonPreview !== null && (
+            <div className="td-form-row td-form-hint">
+              <span className="td-form-label" />
+              <span className="td-form-meta">
+                Diese Season wäre <strong>#{nextSeasonPreview}</strong>.
+              </span>
+            </div>
+          )}
 
           <label className="td-form-row">
             <span className="td-form-label">Modell</span>
