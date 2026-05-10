@@ -24,6 +24,92 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Sessions-Mapping über encodeCwd statt UUID
+
+**Entscheidung:** TakumiDeck-Sessions matchen ihre claude-code-JSONL-Datei NICHT über die UUID im Filename, sondern über den encoded-cwd-Anteil im Eltern-Ordnernamen. claude-code vergibt seine eigene Session-UUID intern; unsere `sessions.id` ist davon entkoppelt. Der Watcher encoded den `cwd` jeder running/idle-Session nach demselben Schema (`:/\\` → `-`) und vergleicht mit `path.basename(path.dirname(filePath))`. Bei mehreren Sessions im gleichen Projekt-Ordner gewinnt die jüngste (höchstes `started_at`).
+
+**Varianten:**
+
+- **A** UUID-Filename ↔ `sessions.id` matchen (Sprint-5-Briefing-Annahme — beim Smoke-Test sofort als falsch erkannt)
+- **B** encodeCwd-Match mit jüngster Session als Tiebreaker (gewählt)
+- **C** Beim PTY-Spawn die JSONL-UUID aus der ersten Zeile des frischen Files lesen und ein Mapping persistieren
+
+**Grund:** Architektur-Kapitel 4 hatte den Pact „sessions.id matched zu Claude Codes session-uuid" angenommen — claude-code liefert das aber nicht ab, weil es seine UUID intern vergibt und keinen `--session-id`-Flag entgegennimmt. Variante A scheiterte beim ersten Smoke-Test in Sprint 5 (alle JSONLs landeten als „extern" markiert, messages-Tabelle blieb für die aktive Session leer). Variante C wäre der robusteste Weg (1:1-Mapping in einer eigenen Tabelle), kostet aber: Race zwischen Spawn-Zeitpunkt und JSONL-Anlage, Watcher-First-Read-Logik um die Mapping-Zeile zu erkennen, plus Sprint-2-Schema-Erweiterung. Für 2-5 parallele Tabs reicht Variante B mit dem „jüngste gewinnt"-Tiebreaker — bei Bedarf später ohne Datenverlust nach C migrierbar.
+
+**Konsequenz:** `messages.session_id` ist weiterhin unsere TakumiDeck-Session-ID, nicht die claude-UUID. Der Filename der JSONL-Datei wird nirgends gespeichert (außer in `jsonl_offsets.file_path` als Lookup-Key). Wenn der User parallel im selben Projekt zwei Tabs offen hat und in beiden gleichzeitig prompted, kann der jüngere Tab fälschlich Tokens des älteren zugewiesen bekommen — Limitation in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md), für 2-5-Tab-Realität tolerabel.
+
+**Implementierungsdetail:** `encodeCwd(cwd)` ist verlustbehaftet (mehrere `cwd`-Werte können denselben encoded-cwd erzeugen, wenn ein Pfadsegment selbst `-` enthält). Aktuelle Heuristik akzeptiert das, weil claude-code die Konvention konsistent benutzt — solange wir gegen denselben Encoder matchen, geht nichts verloren.
+
+---
+
+## Token-Persistenz: messages + usage_buckets parallel
+
+**Entscheidung:** Pro JSONL-Zeile mit `usage`-Feld schreibt der Watcher zwei Stellen: einen Insert in `messages` (Per-Session-Detail) und einen Upsert in `usage_buckets` (Hourly-Aggregat pro Modell). Beide Tabellen waren in Architektur Kapitel 4 vorgesehen; Sprint 5 ist der erste Sprint, der sie befüllt.
+
+**Varianten:**
+
+- **A** Beide Tabellen wie Architektur 4 vorsieht (gewählt)
+- **B** Nur `usage_buckets`, Per-Session-Detail bei Bedarf aus dem JSONL-File on-demand tailen
+- **C** Nur `messages`, Aggregate zur Lesezeit per `GROUP BY` berechnen
+
+**Grund:** A ist die einzige Variante, die gleichzeitig schnelle Plannutzungs-Bars (= Aggregat-Reads aus `usage_buckets`) und Sprint-6-Verlauf-Panel (= Per-Session-Token-Zahlen aus `messages`) bedient. C wird bei wachsendem Datenvolumen merklich langsam — der 5h-Bar müsste bei jedem Push tausende Messages gruppieren. B verschiebt die Komplexität in den Sprint-6-Pfad, der dann erneut den JSONL-Tail brauchen würde — duplizierter Lesepfad, der schon vom Sprint-5-Watcher abgedeckt ist.
+
+**Konsequenz:** Schreib-Aufwand pro Zeile verdoppelt sich (zwei Inserts), aber better-sqlite3 ist synchron und schnell genug, um mit dem 100-ms-`awaitWriteFinish`-Cadence Schritt zu halten. Sprint 6 (Verlauf-Panel) und Phase 2 (Heatmap) lesen jeweils aus der passenden Tabelle, ohne JSONL-Tail. Externe claude-Sessions (ohne TakumiDeck-Spawn) tragen weiter zu `usage_buckets` bei (für die globalen 5h/weekly-Bars), landen aber NICHT in `messages` — sie haben keine TakumiDeck-Session-Zuordnung.
+
+**Implementierungsdetail:** `messages.tokens_in` summiert `input_tokens + cache_creation + cache_read` (statt nur `input_tokens`). Damit fallen Cache-Treffer in den Per-Session-Kontext-Wert mit ein, was claude-codes eigenem `/context` näher kommt. Cache-Anteile getrennt zu persistieren wäre Sprint-6-Schema-Erweiterung, falls das Verlauf-Panel das braucht.
+
+---
+
+## JSONL-Watcher-Scope: globaler chokidar mit Initial-Scan
+
+**Entscheidung:** chokidar-Watch über das gesamte `~/.claude/projects/`-Verzeichnis ab App-Start, mit `ignoreInitial: false` für den vollständigen Initial-Scan aller existierenden JSONL-Dateien. Filterung auf `.jsonl`-Endung über das `ignored`-Predicate (chokidar v5 hat den Glob-Support entfernt). Pro Datei persistierter Byte-Offset in der `jsonl_offsets`-Tabelle (Migration `0002`); Re-Reads beim nächsten App-Start kosten 0 Bytes pro unveränderter Datei.
+
+**Varianten:**
+
+- **A** Globaler Glob mit Initial-Scan, persistierte byte-offsets (gewählt)
+- **B** Nur JSONLs aktuell laufender Sessions (Target-Watch on demand), keine Historie
+- **C** Lazy: chokidar-Watch nur auf Verzeichnis, Add-Events triggern pro neuer Datei
+
+**Grund:** Variante B verfehlt den eigentlichen Sprint-5-Zweck — die globalen 5h/weekly-Bars brauchen historische Daten als P90-Datenbasis (192-h-Fenster). Ohne Initial-Scan zeigen sie wochenlang Fallback-Werte, nicht die echten Limits. Variante C addiert eine Discovery-Schicht über fs.readdir, die nichts gegenüber chokidars eingebauter Recursive-Walk gewinnt. A skaliert mit ~7 JSONLs pro Projekt × ~10 Projekten beim User in unter 2 Sekunden — vertretbarer Cold-Start.
+
+**Konsequenz:** chokidar v5 unterstützt keine Glob-Pattern mehr (Mid-Sprint-Discovery). Statt `.../**/*.jsonl` watchen wir den Root und filtern Non-JSONL-Files via `ignored`-Predicate. `awaitWriteFinish: 100 ms` schützt gegen partielle Writes, kostet aber Latenz: bei aktiv schreibenden Files (laufende claude-Antwort) kommt der Update-Event erst, wenn das File für 100 ms ruht — siehe [TECH_SCHULDEN.md](./TECH_SCHULDEN.md). `ready`-Event mit Info-Log als Diagnose, damit Initial-Scan-Probleme im `main.log` sichtbar sind.
+
+**Implementierungsdetail:** Anti-Reentrancy pro Datei: chokidar kann `change`-Events sehr schnell hintereinander auslösen, aber unsere `handleFile`-Logik ist async (file-IO + DB). Eine `Map<filePath, Promise>` serialisiert das, damit der zweite Event nicht denselben Bytes-Bereich nochmal liest.
+
+---
+
+## Recharts-Strategie: CSS-Bars top-level, Recharts nur im Detail-Modal
+
+**Entscheidung:** Die Top-Level-Plannutzungs-Bars (5h, weekly_*, Per-Session-Kontext) sind reine CSS-Bars (`<div>` mit `width: <percent>%` plus Schwellen-Farb-Klassen). Recharts kommt erst im `UsageDetailModal` zum Einsatz — dort als Linien-Diagramm für die Per-Modell-Burn-Rate.
+
+**Varianten:**
+
+- **A** CSS-Bars top-level + Recharts im Detail-Modal (gewählt)
+- **B** Pure Recharts überall — Bars + Tooltips aus `BarChart`
+- **C** Dünner Wrapper um Recharts mit `td-*`-Token-Vorbelegung
+
+**Grund:** Recharts hat keine Theme-API; das Anpassen an `tokens.css`-Variablen (`--td-accent`, `--td-warn`, etc.) erfordert Inline-Style-Overrides für jede SVG-Komponente. Für 5 Top-Level-Bars ist das mehr Wrestling als Mehrwert — eine CSS-Bar ist 30-40 Zeilen Markup + Style, perfekt token-konform und mit vollem Hover/Click-Verhalten. Recharts dort einsetzen, wo es Mehrwert hat: Detail-Modal mit echter Zeitreihe / Per-Modell-Aufschlüsselung. Variante B wäre Engineering-Lärm, Variante C ein Wrapper, der aktuell nur an einer einzigen Stelle gebraucht würde.
+
+**Konsequenz:** Recharts ist als Dependency installiert (Architektur 2 hat sie ohnehin vorgesehen) und wird im `UsageDetailModal` direkt benutzt — kein eigener Theme-Layer. Wenn Phase 2 mehr Recharts-Stellen braucht (Heatmap-Variante etc.), kann ein Token-Wrapper später nachgerüstet werden, wenn der Bedarf klar ist.
+
+---
+
+## State-Detection-Heuristik: rein Last-Event-Timestamp
+
+**Entscheidung:** Die Sprint-5-State-Detection klassifiziert running/idle ausschließlich über den Timestamp der letzten JSONL-Zeile pro Session: jünger als 3 Sekunden = `running`, sonst `idle`. Alle 2 Sekunden läuft eine Loop im Main-Prozess, die für jede Session im Status `running` oder `idle` die Klassifikation neu ermittelt und ggf. via `SessionLifecycle.transition` umschreibt.
+
+**Varianten:**
+
+- **A** Last-Event-Timestamp wie Architektur 6.2 (gewählt)
+- **B** Typ-bewusst (bestimmte JSONL-Message-Types als „aktiv", andere ignorieren)
+- **C** PTY-Stdout-Activity-Bursts als zweite Quelle parallel zu JSONL
+
+**Grund:** Architektur 6.2 spezifiziert Variante A wörtlich („last line <3 s ago"), und sie ist trivial gegen Driver-Injection testbar (Pure-Logik mit Fixed-Clock + InMemory-Repo). Variante B (Permission-Prompt-Recognition, `waiting`-Status) ist explizit Phase-2-Material in Architektur 8 — drift-anfällig gegen Claude-Code-Format-Änderungen, kein Sprint-5-Bedarf. Variante C löst ein Problem, das wir noch nicht haben (JSONL-Latenz reicht in der Praxis).
+
+**Konsequenz:** Lifecycle-State-Machine erweitert um `running ↔ idle`. `running → waiting` bleibt explizit verboten — Phase 2 wird das durch eine bewusste ALLOWED-Map-Änderung freischalten, nicht versehentlich. Sessions ohne Messages (frisch gespawnt, claude tippt noch nicht) werden NICHT auf `idle` gesetzt — sonst würde ein neuer Tab sofort grau erscheinen, bevor der erste Output kommt.
+
+---
+
 ## Workspace-Scan: Async-Walk mit Konkurrenz-Limit
 
 **Entscheidung:** Der Workspace-Scanner läuft als async-rekursiver Walk auf `fs.promises.readdir`, mit einem schmalen Promise-Pool (Konkurrenz-Default 4). Stop-Marker pro Subordner: `CLAUDE.md` (= Projekt erkannt, Recurse stoppt) oder `.git/` ohne `CLAUDE.md` (Stop ohne Erkennung). Versteckte Verzeichnisse und `node_modules` werden übersprungen. Max-Depth 5.

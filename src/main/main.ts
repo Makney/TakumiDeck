@@ -10,6 +10,7 @@ import { registerAppIpc } from './ipc/app';
 import { registerPtyIpc } from './ipc/pty';
 import { registerSessionIpc } from './ipc/session';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
+import { registerUsageIpc } from './ipc/usage';
 import { PtyManager } from './pty/manager';
 import { realPtySpawn } from './pty/spawn';
 import { SessionRepository, SqliteSessionDriver } from './db/repos/sessions';
@@ -19,8 +20,19 @@ import {
   SqliteProjectDriver,
   DEFAULT_PROJECT_ID,
 } from './db/repos/projects';
+import { MessageRepository, SqliteMessageDriver } from './db/repos/messages';
+import { UsageRepository, SqliteUsageDriver } from './db/repos/usage';
+import {
+  JsonlOffsetRepository,
+  SqliteJsonlOffsetDriver,
+} from './db/repos/jsonl-offsets';
 import { SessionLifecycle } from './sessions/lifecycle';
+import { StateDetectionLoop } from './sessions/state-detection-loop';
+import { JsonlWatcher, defaultClaudeProjectsPath } from './jsonl/watcher';
+import { realJsonlReadDriver } from './jsonl/parser';
 import { scanWorkspace, realFsDriver } from './workspace/scanner';
+import { Channels } from '@shared/ipc-channels';
+import type { UsageUpdateEvent } from '@shared/types';
 
 // Squirrel-Installer: bei Setup/Update-Events sofort beenden, bevor BrowserWindow erstellt wird.
 if (started) {
@@ -43,6 +55,8 @@ process.on('unhandledRejection', (reason) => {
 
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
+let jsonlWatcher: JsonlWatcher | null = null;
+let stateLoop: StateDetectionLoop | null = null;
 
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
@@ -101,6 +115,9 @@ app.whenReady().then(async () => {
     const projectRepo = new ProjectRepository(new SqliteProjectDriver(db));
     const sessions = new SessionRepository(new SqliteSessionDriver(db));
     const lifecycle = new SessionLifecycle(sessions);
+    const messageRepo = new MessageRepository(new SqliteMessageDriver(db));
+    const usageRepo = new UsageRepository(new SqliteUsageDriver(db));
+    const jsonlOffsetRepo = new JsonlOffsetRepository(new SqliteJsonlOffsetDriver(db));
     ptyManager = new PtyManager(realPtySpawn);
 
     // Sprint-4-Initial-Pass: workspace_path scannen, neue Projekte einfügen,
@@ -144,6 +161,42 @@ app.whenReady().then(async () => {
       log: logger,
       getMainWindow: () => mainWindow,
     });
+    registerUsageIpc({
+      usage: usageRepo,
+      messages: messageRepo,
+      sessions,
+      settings,
+      log: logger,
+    });
+
+    // Sprint-5-JSONL-Watcher startet die globale Token-Aggregation. Initial-Scan
+    // (ignoreInitial:false) zieht historische Sessions in messages/usage_buckets
+    // nach; persistierte Byte-Offsets verhindern, dass derselbe Bytes-Bereich beim
+    // nächsten Start nochmal gelesen wird.
+    jsonlWatcher = new JsonlWatcher({
+      watchPath: defaultClaudeProjectsPath(),
+      reader: realJsonlReadDriver,
+      offsets: jsonlOffsetRepo,
+      messages: messageRepo,
+      usage: usageRepo,
+      sessions,
+      log: logger,
+      push: (event: UsageUpdateEvent) => {
+        mainWindow?.webContents.send(Channels.UsageUpdate, event);
+      },
+    });
+    void jsonlWatcher.start();
+
+    // State-Detection-Loop (Architektur 6.2): alle 2 s laufen running/idle-Übergänge
+    // basierend auf der letzten messages.ts-Zeile. running-Sessions ohne Activity
+    // werden nach 3 s als idle markiert; eintreffende JSONL-Lines re-aktivieren sie.
+    stateLoop = new StateDetectionLoop({
+      sessions,
+      messages: messageRepo,
+      lifecycle,
+      log: logger,
+    });
+    stateLoop.start();
 
     logger.info('TakumiDeck startet', {
       version: app.getVersion(),
@@ -158,8 +211,14 @@ app.whenReady().then(async () => {
     app.on('before-quit', () => {
       lifecycle.markShuttingDown();
       try {
-        const runningSessions = sessions.listByStatus('running');
-        for (const session of runningSessions) {
+        // Sprint 5: idle-Sessions zählen wie running-Sessions als „der claude-Prozess
+        // läuft noch", deshalb beide Status zu interrupted. Einen idle → interrupted-
+        // Übergang erlaubt die State-Machine seit Sprint 5 explizit.
+        const liveSessions = [
+          ...sessions.listByStatus('running'),
+          ...sessions.listByStatus('idle'),
+        ];
+        for (const session of liveSessions) {
           const result = lifecycle.transition(session.id, 'interrupted', 'app-quit');
           if (!result.ok) {
             logger.warn(
@@ -171,9 +230,22 @@ app.whenReady().then(async () => {
         logger.warn('Session-Status-Patches beim Quit fehlgeschlagen', e);
       }
       try {
+        stateLoop?.stop();
+      } catch (e) {
+        logger.warn('State-Detection-Loop-Stop fehlgeschlagen', e);
+      }
+      try {
         ptyManager?.killAll();
       } catch (e) {
         logger.warn('PTY-Kill-All fehlgeschlagen', e);
+      }
+      // Watcher stop ist async — wir feuern und vergessen, der Process killt sich
+      // gleich ohnehin. Wichtig ist nur, dass kein neuer Read mehr inflight ist
+      // wenn die DB schließt.
+      try {
+        void jsonlWatcher?.stop();
+      } catch (e) {
+        logger.warn('JSONL-Watcher-Stop fehlgeschlagen', e);
       }
       try {
         db.close();

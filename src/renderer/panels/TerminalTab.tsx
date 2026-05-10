@@ -25,6 +25,10 @@ import { createCopyPasteKeyHandler } from '../components/clipboardKeyHandler';
 
 interface Props {
   sessionId: string;
+  // Sprint-5: Renderer schickt projectId beim pty:create mit, damit die DB-Session
+  // am echten Projekt hängt (statt am Sprint-2-Default-Lifeline). Token-Aggregate
+  // pro Projekt brauchen das Mapping korrekt.
+  projectId: string;
   title: string;
   type: 'feature' | 'bug' | 'review' | 'docs-sync';
   model: string;
@@ -40,6 +44,7 @@ interface Props {
 
 export function TerminalTab({
   sessionId,
+  projectId,
   title,
   type,
   model,
@@ -140,6 +145,7 @@ export function TerminalTab({
       void (async () => {
         const result = await window.api.pty.create({
           sessionId,
+          projectId,
           title,
           type,
           model,

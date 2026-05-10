@@ -72,6 +72,9 @@ export interface SessionRow {
 // PTY-IPC-Payloads (Renderer → Main).
 export interface PtyCreateInput {
   sessionId: string;
+  // Sprint-5-Fix: Renderer schickt jetzt das aktive Projekt mit, damit die DB-
+  // Session am echten Projekt hängt (statt am Default-Project-Lifeline aus Sprint 2).
+  projectId: string;
   title: string;
   type: SessionType;
   model: string;
@@ -190,6 +193,99 @@ export interface ProjectReadCfgInput {
   projectId: string;
 }
 
+// --- Token-Tracking (Sprint 5) ---------------------------------------
+
+// Geparste JSONL-Zeile, gefiltert auf das, was wir tatsächlich brauchen.
+// timestamp wird vom Parser zu epoch-ms normalisiert (ISO-String → Date.parse).
+export interface ParsedJsonlMessage {
+  ts: number;
+  model: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  // Summe input + cache_creation + cache_read — der Sprint-5-Konsum-Wert.
+  totalTokens: number;
+  // Roh-Zeilen-Inhalt für messages.content (kein Parsing-Aufwand für die Anzeige
+  // im Verlauf-Panel, Sprint 6 entscheidet das endgültige Format).
+  rawLine: string;
+}
+
+// Repository-Insert für eine messages-Row.
+export interface MessageInsert {
+  session_id: string;
+  project_id: string | null;
+  role: string;
+  content: string;
+  tokens_in: number;
+  tokens_out: number;
+  ts: number;
+}
+
+// Repository-Insert/Upsert für einen usage_buckets-Row.
+// PRIMARY KEY ist (bucket_start, model) → Upsert mit `tokens = tokens + excluded.tokens`.
+export interface UsageBucketUpsert {
+  bucket_start: number; // epoch-Stunde (= floor(ts_ms / 3_600_000))
+  model: string;
+  tokens: number;
+}
+
+// Persistierter Lese-Offset pro JSONL-Datei.
+export interface JsonlOffsetRow {
+  file_path: string;
+  offset_bytes: number;
+  last_seen_at: number;
+}
+
+// IPC-Output von usage:window. Renderer rendert eine UsageBar pro Bar-Definition.
+export interface UsageWindowResult {
+  barId: string;
+  label: string;
+  tokens: number;
+  limit: number;
+  percent: number; // 0..100+ (kann >100 sein, wenn das Limit gerissen ist)
+  // Wie wurde das Limit ermittelt? 'p90' (geschätzt aus den letzten N Stunden),
+  // 'fixed' (fester Wert aus settings.fixed_limit), 'fallback' (model_limits-Default,
+  // wenn der P90-Datensatz zu klein ist).
+  limitSource: 'p90' | 'fixed' | 'fallback';
+  windowHours: number;
+  // Per-Modell-Aufschlüsselung (für Tooltips + Detail-Modal).
+  perModel: Array<{ model: string; tokens: number }>;
+  generatedAt: number;
+}
+
+// IPC-Output von usage:context. Per-Session-Kontext der zuletzt aktiven Message,
+// vergleicht den letzten Stand gegen das Per-Modell-Limit.
+export interface UsageContextResult {
+  sessionId: string;
+  model: string | null;
+  tokens: {
+    input: number;
+    cache_creation: number;
+    cache_read: number;
+    total: number; // = input + cache_creation + cache_read
+  };
+  limit: number;
+  percent: number;
+  // epoch-ms der letzten message.usage-Zeile in der Session.
+  lastEventAt: number | null;
+}
+
+// Phase-2-Stub für die Heatmap. Sprint 5 reserviert nur den Channel.
+export interface UsageHeatmapResult {
+  stub: true;
+  message: string;
+}
+
+export interface UsageWindowInput {
+  barId: string;
+  asOf?: number;
+}
+
+export interface UsageContextInput {
+  sessionId: string;
+}
+
 // Bridge-API-Shape, die der Renderer über window.api erhält.
 export interface RendererApi {
   settings: {
@@ -227,6 +323,29 @@ export interface RendererApi {
     scanWorkspace: () => Promise<IpcResult<ProjectRow[]>>;
     readClaudeMd: (input: ProjectReadCfgInput) => Promise<IpcResult<ClaudeMdParseResult>>;
   };
+  usage: {
+    // 5h / weekly_all / weekly_design / weekly_sonnet etc. — eine Bar pro Aufruf.
+    window: (input: UsageWindowInput) => Promise<IpcResult<UsageWindowResult>>;
+    // Per-Session-Kontext-Bar.
+    context: (input: UsageContextInput) => Promise<IpcResult<UsageContextResult>>;
+    // Phase-2-Stub.
+    heatmap: () => Promise<IpcResult<UsageHeatmapResult>>;
+    // Renderer wird über neue Tokens benachrichtigt: 'global' = bestimmte limit_bar
+    // wurde aktualisiert, 'context' = Per-Session-Kontext-Bar wurde aktualisiert.
+    onUpdate: (handler: (event: UsageUpdateEvent) => void) => () => void;
+  };
+}
+
+// Event-Push aus dem Watcher → Renderer. Architektur 4 trennt Live-Push (Per-Session
+// sofort) vs. Debounced (globale Bars max 2/Sek). Der Renderer reagiert pro Kanal:
+// `context` re-fetcht die Per-Session-Kontext-Bar, `global` re-fetcht alle limit_bars
+// (oder gezielt die im scope angegebenen).
+export interface UsageUpdateEvent {
+  kind: 'global' | 'context';
+  // Optional: betroffene Session (kind === 'context') oder Liste von Bar-IDs
+  // (kind === 'global', leer = alle).
+  sessionId?: string;
+  barIds?: string[];
 }
 
 declare global {

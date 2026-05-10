@@ -8,6 +8,9 @@ export const LAYOUT = {
   TITLEBAR_HEIGHT: 36,
   COL_LEFT_WIDTH: 240,
   COL_RIGHT_WIDTH: 232,
+  // Sprint-5-Bottom-Row: PlanPane (limit-bars) + StatsPane (Übersicht/Modelle).
+  // Architektur 4 (LAYOUT.ROW_BOTTOM_HEIGHT) gibt 300 px verbindlich vor.
+  ROW_BOTTOM_HEIGHT: 300,
   TAB_BAR_HEIGHT: 28,
   TERMINAL_FOOTER_HEIGHT: 24,
   RADIUS_PILL: 2,

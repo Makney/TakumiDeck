@@ -17,6 +17,12 @@ import type {
   SessionResumeInput,
   SessionRow,
   SessionUpdateInput,
+  UsageContextInput,
+  UsageContextResult,
+  UsageHeatmapResult,
+  UsageUpdateEvent,
+  UsageWindowInput,
+  UsageWindowResult,
 } from '@shared/types';
 
 // Whitelist-API. Renderer hat keinen direkten Node/Electron-Zugriff (contextIsolation: true,
@@ -73,6 +79,25 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.ProjectReadCfg, input) as Promise<
         IpcResult<ClaudeMdParseResult>
       >,
+  },
+  usage: {
+    window: (input: UsageWindowInput) =>
+      ipcRenderer.invoke(Channels.UsageWindow, input) as Promise<
+        IpcResult<UsageWindowResult>
+      >,
+    context: (input: UsageContextInput) =>
+      ipcRenderer.invoke(Channels.UsageContext, input) as Promise<
+        IpcResult<UsageContextResult>
+      >,
+    heatmap: () =>
+      ipcRenderer.invoke(Channels.UsageHeatmap, {}) as Promise<
+        IpcResult<UsageHeatmapResult>
+      >,
+    onUpdate: (handler: (event: UsageUpdateEvent) => void) => {
+      const wrapped = (_evt: IpcRendererEvent, payload: UsageUpdateEvent) => handler(payload);
+      ipcRenderer.on(Channels.UsageUpdate, wrapped);
+      return () => ipcRenderer.removeListener(Channels.UsageUpdate, wrapped);
+    },
   },
 };
 

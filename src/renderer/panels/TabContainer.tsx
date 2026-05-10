@@ -6,6 +6,7 @@ import { useProjectStore } from '../stores/projects';
 import { TerminalTab } from './TerminalTab';
 import { NewSessionModal } from '../modals/NewSessionModal';
 import { NotesFooter } from '../components/NotesFooter';
+import { displayProjectName } from '../components/displayProjectName';
 
 // Sprint-3-Tab-Container, in Sprint 4 erweitert um Per-Projekt-Filter:
 // - Tab-Bar zeigt nur Tabs des aktiven Projekts (Variante A: Renderer-Filter).
@@ -28,12 +29,19 @@ export function TabContainer({ settings }: Props) {
   const setStatus = useSessionStore((s) => s.setStatus);
 
   const activeProjectId = useUiStore((s) => s.activeProjectId);
+  const activeProjectFrontmatter = useUiStore((s) => s.activeProjectFrontmatter);
   const projects = useProjectStore((s) => s.projects);
 
   const activeProject = useMemo(
     () => (activeProjectId ? projects.find((p) => p.id === activeProjectId) ?? null : null),
     [projects, activeProjectId],
   );
+
+  // Sprint-5: Per-Projekt-Modell-Default aus dem CLAUDE.md-Frontmatter ziehen, mit
+  // Fallback auf settings.default_model. Architektur 6.2 verlangt Per-Projekt > Global.
+  // Der Frontmatter-Cache wird vom LeftSidebar beim Project-Wechsel nachgeladen.
+  const effectiveDefaultModel =
+    activeProjectFrontmatter?.workbench.default_model ?? settings.default_model;
 
   // Per-Projekt-Filter (Sprint-4-Variante A): die Tab-Bar zeigt nur Tabs, die zum
   // aktiven Projekt gehören. Der Multi-Terminal-Stack rendert weiterhin alle Tabs
@@ -177,7 +185,7 @@ export function TabContainer({ settings }: Props) {
           <div className="td-tab-empty">
             {activeProject ? (
               <>
-                <p>Keine Sessions in „{activeProject.name}".</p>
+                <p>Keine Sessions in „{displayProjectName(activeProject)}".</p>
                 <p>
                   <button
                     type="button"
@@ -201,6 +209,7 @@ export function TabContainer({ settings }: Props) {
           >
             <TerminalTab
               sessionId={tab.sessionId}
+              projectId={tab.projectId}
               title={tab.title}
               type={tab.type}
               model={tab.model}
@@ -218,7 +227,7 @@ export function TabContainer({ settings }: Props) {
 
       {showModal && canAddSession && (
         <NewSessionModal
-          defaultModel={settings.default_model}
+          defaultModel={effectiveDefaultModel}
           onCancel={() => setShowModal(false)}
           onCreate={handleNewSession}
         />

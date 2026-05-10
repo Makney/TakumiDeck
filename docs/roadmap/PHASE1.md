@@ -113,7 +113,7 @@ Beim Session-Start.
 - Human-readable Labels ("Opus 4.7"), Model-IDs intern
 - Default-Hierarchie: Per-Projekt (CLAUDE.md YAML) > Global (settings.json)
 
-### Feature: State-Detection (reduziert)
+### Feature: State-Detection (reduziert) ✅
 
 "Running vs. nicht-running" via JSONL-Event-Frequenz.
 
@@ -166,7 +166,7 @@ Liest YAML-Frontmatter und Markdown-Body.
 
 Live-Tracking von Token-Verbrauch.
 
-### Feature: JSONL-Watcher
+### Feature: JSONL-Watcher ✅
 
 chokidar-basiertes File-Watching.
 
@@ -174,7 +174,7 @@ chokidar-basiertes File-Watching.
 - 500ms Debounce
 - Tail-Read neuer Zeilen, Parse als NDJSON
 
-### Feature: Token-Aggregation
+### Feature: Token-Aggregation ✅
 
 Aggregiert Verbrauch nach Zeitfenstern.
 
@@ -183,7 +183,7 @@ Aggregiert Verbrauch nach Zeitfenstern.
 - Globale Wochen-Aggregation
 - Per-Modell-Aufschlüsselung
 
-### Feature: P90-Detection
+### Feature: P90-Detection ✅
 
 Schätzt Limits aus historischem Verbrauch.
 
@@ -191,7 +191,7 @@ Schätzt Limits aus historischem Verbrauch.
 - 90. Perzentil als Limit-Schätzung
 - Tooltip "geschätzt aus letzten 8 Tagen"
 
-### Feature: Dashboard-UI
+### Feature: Dashboard-UI ✅
 
 Sichtbare Bars und Detail-Panel.
 
@@ -370,7 +370,7 @@ Liste der Files im aktiven Projekt.
 
 Platz für die spätere Stats/Heatmap-Erweiterung — im MVP nur Platzhalter.
 
-### Feature: Übersicht/Modelle-Toggle (Skeleton)
+### Feature: Übersicht/Modelle-Toggle (Skeleton) ✅
 
 Toggle-Buttons unter dem Terminal-Bereich.
 

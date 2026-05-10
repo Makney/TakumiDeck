@@ -4,6 +4,7 @@ import { useProjectStore } from '../stores/projects';
 import { useUiStore } from '../stores/ui';
 import { useSessionStore } from '../stores/sessions';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
+import { displayProjectName } from '../components/displayProjectName';
 
 // LeftSidebar (Sprint 4 — Architektur 6.0).
 //
@@ -36,10 +37,23 @@ export function LeftSidebar({ settings }: Props) {
 
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const setActiveProject = useUiStore((s) => s.setActiveProject);
+  const hydrateFromStorage = useUiStore((s) => s.hydrateFromStorage);
+  const loadActiveProjectFrontmatter = useUiStore((s) => s.loadActiveProjectFrontmatter);
   const tabs = useSessionStore((s) => s.tabs);
 
   const initialLoadRef = useRef(false);
+  const hydrateRef = useRef(false);
+  const frontmatterLoadedFor = useRef<string | null>(null);
   const [adding, setAdding] = useState(false);
+
+  // Sprint-5-Hydrate (Variante A): die zuletzt aktive Project-ID aus localStorage
+  // ziehen, sobald der Component mountet — passiert *vor* dem ersten reload(),
+  // damit die Auswahl-Logik unten den persistierten Wert respektiert.
+  useEffect(() => {
+    if (hydrateRef.current) return;
+    hydrateRef.current = true;
+    hydrateFromStorage();
+  }, [hydrateFromStorage]);
 
   // Initial-Load der Project-Liste beim Mount.
   useEffect(() => {
@@ -49,13 +63,33 @@ export function LeftSidebar({ settings }: Props) {
   }, [reload]);
 
   // Aktives Projekt wählen, sobald die Liste das erste Mal verfügbar ist.
-  // Bevorzugt das erste echte (nicht-Legacy) Projekt; Fallback auf Default-Project.
+  // Sprint 5: respektiert eine persistierte ID, solange sie noch existiert; sonst
+  // bevorzugt das erste echte (nicht-Legacy) Projekt; Fallback auf Default-Project.
   useEffect(() => {
-    if (activeProjectId !== null) return;
     if (projects.length === 0) return;
+    if (activeProjectId !== null) {
+      // Persistierte ID aus localStorage könnte auf ein nicht mehr existierendes
+      // Projekt zeigen (Workspace umbenannt etc.) — dann auf den Heuristik-Pfad.
+      const stillExists = projects.some((p) => p.id === activeProjectId);
+      if (stillExists) return;
+    }
     const firstReal = projects.find((p) => p.id !== DEFAULT_PROJECT_ID);
     setActiveProject(firstReal?.id ?? projects[0]?.id ?? null);
   }, [projects, activeProjectId, setActiveProject]);
+
+  // Frontmatter-Cache des aktiven Projekts laden (Memory: StrictMode-Side-Effect-Guard).
+  // Wechsel des activeProjectId triggert einen Re-Load; identische ID wird übersprungen.
+  // Read-only-IPC, aber wir geben dem useEffect einen Ref-Guard, weil StrictMode den
+  // Effect zweimal feuert und der Frontmatter-Cache sonst kurzzeitig flacker-wechselt.
+  useEffect(() => {
+    if (!activeProjectId) return;
+    if (frontmatterLoadedFor.current === activeProjectId) return;
+    frontmatterLoadedFor.current = activeProjectId;
+    // Default-Project hat keine eigene CLAUDE.md (workspace_path ist Container) —
+    // skippen, sonst kommt ein CLAUDE_MD_NOT_FOUND-Error in den Store.
+    if (activeProjectId === DEFAULT_PROJECT_ID) return;
+    void loadActiveProjectFrontmatter(activeProjectId);
+  }, [activeProjectId, loadActiveProjectFrontmatter]);
 
   // Pro Projekt zählen, wie viele LIVE-Tabs running sind. Update, sobald Status
   // im SessionStore wechselt (z.B. durch pty:exit-Listener). Das ist eine reine
@@ -170,7 +204,7 @@ function ProjectItem({
     >
       <div className="td-sidebar-item-row">
         <span className="td-sidebar-item-name">
-          {isLegacy ? 'Sprint-2/3-Legacy' : project.name}
+          {displayProjectName(project)}
         </span>
         {runningCount > 0 && (
           <span

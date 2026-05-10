@@ -47,6 +47,10 @@ export interface ProjectDbDriver {
   // Wird vom Sprint-4-Migrationspass genutzt: hängt eine Session von einem Project
   // an ein anderes um. Returnt die Anzahl der tatsächlich umgehängten Rows.
   reassignSession(sessionId: string, newProjectId: string): number;
+  // Sprint 5: messages tragen denormalisiertes project_id (für Per-Projekt-Aggregate).
+  // Beim Remap muss das mitgezogen werden, sonst zeigen die Per-Projekt-Bars
+  // weiterhin die alte Zuordnung. Returnt die Anzahl umgehängter messages.
+  reassignSessionMessages(sessionId: string, newProjectId: string): number;
   // Wird beim Remap-Pass gebraucht: liefert die Sessions, die noch am Default-Project hängen.
   // Nur die Felder, die der Remap-Algorithmus liest (id + cwd) — kein Volltext-Join.
   listSessionsForProject(projectId: string): Array<{ id: string; cwd: string }>;
@@ -133,7 +137,12 @@ export class ProjectRepository {
       const match = filteredCandidates.find((p) => isPathInsideProject(session.cwd, p.path));
       if (!match) continue;
       const updated = this.driver.reassignSession(session.id, match.id);
-      if (updated > 0) moved += 1;
+      if (updated > 0) {
+        moved += 1;
+        // Sprint-5-Erweiterung: messages.project_id mitziehen, sonst zeigen
+        // Per-Projekt-Token-Aggregate weiter den alten Default-Bucket.
+        this.driver.reassignSessionMessages(session.id, match.id);
+      }
     }
     return moved;
   }
@@ -147,6 +156,7 @@ export class SqliteProjectDriver implements ProjectDbDriver {
   private readonly findByPathStmt: Database.Statement<[string], ProjectRow>;
   private readonly listAllStmt: Database.Statement<[], ProjectRow>;
   private readonly reassignStmt: Database.Statement;
+  private readonly reassignMessagesStmt: Database.Statement;
   private readonly listSessionsStmt: Database.Statement<
     [string],
     { id: string; cwd: string }
@@ -184,6 +194,9 @@ export class SqliteProjectDriver implements ProjectDbDriver {
     this.reassignStmt = db.prepare(
       'UPDATE sessions SET project_id = @newProjectId WHERE id = @sessionId',
     );
+    this.reassignMessagesStmt = db.prepare(
+      'UPDATE messages SET project_id = @newProjectId WHERE session_id = @sessionId',
+    );
     this.listSessionsStmt = db.prepare<[string], { id: string; cwd: string }>(
       'SELECT id, cwd FROM sessions WHERE project_id = ?',
     );
@@ -207,6 +220,11 @@ export class SqliteProjectDriver implements ProjectDbDriver {
 
   reassignSession(sessionId: string, newProjectId: string): number {
     const result = this.reassignStmt.run({ sessionId, newProjectId });
+    return Number(result.changes);
+  }
+
+  reassignSessionMessages(sessionId: string, newProjectId: string): number {
+    const result = this.reassignMessagesStmt.run({ sessionId, newProjectId });
     return Number(result.changes);
   }
 
@@ -285,6 +303,12 @@ export class InMemoryProjectDriver implements ProjectDbDriver {
     if (!session) return 0;
     session.project_id = newProjectId;
     return 1;
+  }
+
+  reassignSessionMessages(_sessionId: string, _newProjectId: string): number {
+    // InMemory-Tests nutzen den MessageRepository getrennt — wir tracken hier
+    // nur das Interface, damit der Driver-Vertrag vollständig ist.
+    return 0;
   }
 
   listSessionsForProject(projectId: string): Array<{ id: string; cwd: string }> {

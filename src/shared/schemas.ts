@@ -59,6 +59,10 @@ export const SessionStatusSchema = z.enum([
 
 export const PtyCreateInputSchema = z.object({
   sessionId: z.string().uuid(),
+  // Sprint-5-Fix: Renderer schickt jetzt das aktive Projekt mit, statt im Main
+  // hart auf DEFAULT_PROJECT_ID zu fallen (Sprint-2-Lifeline). Damit hängen
+  // Sessions am echten Projekt, was Per-Projekt-Aggregate korrekt macht.
+  projectId: z.string().min(1),
   title: z.string().min(1),
   type: SessionTypeSchema,
   model: z.string().min(1),
@@ -159,3 +163,56 @@ export const ProjectAddInputSchema = z.object({
 export const ProjectReadCfgInputSchema = z.object({
   projectId: z.string().min(1),
 });
+
+// --- JSONL-Watcher (Sprint 5) ----------------------------------------
+
+// Schema für das, was claude-code in `~/.claude/projects/<encoded-cwd>/<sid>.jsonl`
+// schreibt. Wir validieren nur die Felder, die wir konsumieren — alles andere bleibt
+// per .passthrough() durch, damit zukünftige Claude-Code-API-Erweiterungen keine
+// Parse-Errors auslösen. Token-Felder müssen, sobald `usage` da ist, nicht-negativ
+// sein; eine Zeile ohne `message.usage` wird vom Parser still gedroppt.
+export const JsonlUsageSchema = z
+  .object({
+    input_tokens: z.number().int().nonnegative(),
+    output_tokens: z.number().int().nonnegative().optional(),
+    cache_creation_input_tokens: z.number().int().nonnegative().optional(),
+    cache_read_input_tokens: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+export const JsonlMessageSchema = z
+  .object({
+    // claude-code schreibt timestamp als ISO-String; ältere Versionen evtl. epoch-ms.
+    timestamp: z.union([z.string(), z.number()]).optional(),
+    type: z.string().optional(),
+    sessionId: z.string().optional(),
+    message: z
+      .object({
+        model: z.string().optional(),
+        usage: JsonlUsageSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+// --- Token-Tracking IPC (Sprint 5) -----------------------------------
+
+// usage:window — eine einzelne limit_bar (5h, weekly_all, ...) berechnet auf Basis
+// der usage_buckets-Tabelle. Renderer schickt die Bar-ID, der Main löst sie gegen
+// settings.limit_bars auf und liefert das aggregierte Tokens-Total + p90/fixed-Limit.
+export const UsageWindowInputSchema = z.object({
+  barId: z.string().min(1),
+  // Optional: einen Stichzeitpunkt für die Window-Berechnung (Tests). Default = now.
+  asOf: z.number().int().positive().optional(),
+});
+
+// usage:context — Per-Session-Kontext-Bar. Sprint 5 liest den letzten message.usage-
+// Stand der Session aus der messages-Tabelle und liefert ihn als „aktueller Kontext".
+export const UsageContextInputSchema = z.object({
+  sessionId: z.string().min(1),
+});
+
+// usage:heatmap — Phase-2-Stub. Sprint 5 returnt nur `{ ok: true, data: { stub: true } }`,
+// damit der IPC-Channel reserviert ist und Phase 2 ihn nahtlos befüllen kann.
+export const UsageHeatmapInputSchema = z.object({}).passthrough();

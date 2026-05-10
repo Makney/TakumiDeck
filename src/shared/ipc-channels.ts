@@ -31,6 +31,9 @@ export const Channels = {
   UsageWindow: 'usage:window',
   UsageHeatmap: 'usage:heatmap',
   UsageContext: 'usage:context',
+  // Push-Channel: Watcher → Renderer, wenn neue Token-Daten reingekommen sind.
+  // Renderer entscheidet anhand des kind-Felds, was er re-fetcht.
+  UsageUpdate: 'usage:update',
 
   // Filesystem (Sprint 6/7)
   FsRead: 'fs:read',

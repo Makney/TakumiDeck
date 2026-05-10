@@ -8,8 +8,9 @@ import { ok, err } from '@shared/result';
 // Alle Status-Übergänge laufen durch transition() — disallowed-Übergänge werden hier
 // abgewiesen, statt jedem IPC-Handler die Vor-/Nach-Bedingungen einzeln aufzubürden.
 // Sprint-3-Scope: running, completed, archived, interrupted, error + Resume zurück
-// auf running. waiting/idle sind im Schema vorhanden (Sprint 5: State-Detection),
-// werden hier aber nur als „akzeptiert" durchgewinkt — kein Sprint-3-Pfad schreibt sie.
+// auf running. Sprint-5-Erweiterung: running ↔ idle via JSONL-State-Detection
+// (Architektur 6.2). waiting bleibt im Schema, wird aber bewusst NICHT geschrieben —
+// Permission-Prompt-Recognition ist Phase 2 (Architektur 8).
 //
 // Driver-Injection-Pattern wie Sprint-1-Migration und Sprint-2-PtyManager:
 // die Klasse kennt nur SessionRepository, keine konkrete DB-Verbindung — Tests fahren
@@ -28,13 +29,16 @@ export type Clock = () => number;
 // Erlaubte Übergänge: from → Set(to). Was nicht hier steht, wird abgelehnt.
 // Schreibweise als 2D-Map, damit Truth-Table-Tests trivial darauf greifen können.
 const ALLOWED: Record<SessionStatus, ReadonlySet<SessionStatus>> = {
-  running: new Set<SessionStatus>(['completed', 'interrupted', 'error', 'archived']),
+  // Sprint-5: running ↔ idle via JSONL-Detection. waiting bleibt absichtlich raus
+  // (Phase 2: Permission-Prompt-Recognition); idle bleibt der einzig „weichere"
+  // Übergang, alles andere weiterhin Sprint-3-konform.
+  running: new Set<SessionStatus>(['idle', 'completed', 'interrupted', 'error', 'archived']),
   completed: new Set<SessionStatus>(['running', 'archived']),
   interrupted: new Set<SessionStatus>(['running', 'archived']),
   error: new Set<SessionStatus>(['running', 'archived']),
   archived: new Set<SessionStatus>(),
-  // Sprint-5-Stati: Sprint 3 schreibt sie nicht, akzeptiert sie aber als gültige
-  // Quelle für die spätere State-Detection.
+  // waiting wird Sprint 5 NICHT geschrieben, aber als Source weiterhin akzeptiert,
+  // falls eine externe Komponente (Tests, künftige Phase-2-Detection) ihn setzt.
   waiting: new Set<SessionStatus>(['running', 'completed', 'interrupted', 'error', 'archived']),
   idle: new Set<SessionStatus>(['running', 'completed', 'interrupted', 'error', 'archived']),
 };

@@ -12,7 +12,6 @@ import type { SessionRepository } from '../db/repos/sessions';
 import type { SessionLifecycle } from '../sessions/lifecycle';
 import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
-import { DEFAULT_PROJECT_ID } from '../db/repos/projects';
 import fs from 'node:fs';
 import { resolveExecutable } from '../pty/binary';
 
@@ -77,10 +76,13 @@ export function registerPtyIpc(deps: {
       }
 
       // 1. Session-DB-Row anlegen. Wir verwenden die vom Renderer vorgegebene
-      //    sessionId 1:1, damit pty:data-Events sofort zuordnenbar sind.
+      //    sessionId 1:1, damit pty:data-Events sofort zuordnenbar sind. Sprint 5
+      //    nimmt project_id aus dem Input — Sprint-2-Lifeline (DEFAULT_PROJECT_ID
+      //    hartcoded) hatte alle Sessions am Default-Bucket hängen lassen, was
+      //    Per-Projekt-Token-Aggregate verhindert hat.
       const row = sessions.create({
         id: input.sessionId,
-        project_id: DEFAULT_PROJECT_ID,
+        project_id: input.projectId,
         title: input.title,
         type: input.type,
         model: input.model,

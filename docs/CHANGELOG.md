@@ -17,6 +17,49 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-10 — Season 5: Token-Dashboard
+
+### Was jetzt geht
+
+- **Token-Dashboard immer sichtbar.** Untere Zeile (300 px) mit einer Bar pro `settings.limit_bars`-Eintrag (5h, weekly_all, weekly_design, weekly_sonnet) plus Per-Session-Kontext-Bar für den aktiven Tab. Schwellen-Farben aus `settings.token_warning_thresholds` (gelb 70 %, orange 85 %, rot 95 %, darüber rot mit diagonalen Streifen). Klick auf eine Bar öffnet das `UsageDetailModal` mit Per-Modell-Tabelle und einem Recharts-Linien-Diagramm — Top-Level-Bars sind reines CSS, Recharts kommt nur dort zum Einsatz, wo eine echte Zeit-/Modell-Reihe Mehrwert bringt.
+- **JSONL-Watcher liest historische und live Sessions ein.** chokidar mit `awaitWriteFinish` (100 ms Stability-Threshold) auf `~/.claude/projects/`, Initial-Scan zieht alle existierenden JSONL-Files an, persistierter Byte-Offset pro Datei (neue `jsonl_offsets`-Tabelle, Migration `0002`). Pro neuer Zeile: NDJSON-Parse über zod-Schema mit `.passthrough()` für unbekannte Felder, Drop kaputter Zeilen mit Logging. Pro `usage`-Zeile: Insert in `messages` (für Sessions, die TakumiDeck kennt) plus Upsert in `usage_buckets` (Hourly-Aggregat pro Modell).
+- **TakumiDeck-Sessions matchen ihre JSONL-Datei über `encodeCwd`.** claude-code vergibt eigene UUIDs; der Filename matcht NICHT unsere `sessions.id`. Watcher liest den Eltern-Ordnernamen, encoded den `cwd` jeder running/idle-Session nach demselben Schema (`:/\\` → `-`) und matched. Bei mehreren Treffern (mehrere Sessions im selben Projekt) gewinnt die jüngste.
+- **P90-Limit-Schätzung mit Fallback.** Rolling 192-h-Fenster über die Hourly-Buckets, gefiltert auf das gleiche Modell-Set wie die Bar selbst. Bei <24 Buckets (= <1 Tag Daten) Fallback auf `settings.model_limits[default_model]` mit `limitSource = 'fallback'`. Tooltip auf der Bar zeigt die Quelle. Custom-Bars dürfen ein `model_pattern` als SQL-LIKE-Glob mitgeben.
+- **State-Detection running ↔ idle.** Alle 2 s prüft eine Loop für jede running/idle-Session den letzten `messages.ts`-Eintrag. Jünger als 3 s → `running`, sonst `idle`. Sessions ohne jegliche Messages (frisch gespawnt) bleiben unverändert, damit ein neuer Tab nicht sofort als idle erscheint, bevor claude überhaupt etwas geschrieben hat. Sidebar-Status-Dot reagiert (Pulse bei running, statisch grau bei idle). Lifecycle-State-Machine erweitert um `running ↔ idle`; `running → waiting` bleibt explizit verboten (Permission-Prompt-Recognition ist Phase 2).
+- **Stats-Pane Übersicht/Modelle-Toggle.** Zwei-Tab-Skeleton unter dem Terminal-Bereich. „Übersicht" liefert drei Mini-Karten (aktuelle Session, letzte 5 h, letzte 168 h), die direkt aus dem Token-Dashboard-Store kommen. „Modelle" ist Phase-2-Stub mit Hinweispille.
+- **Per-Projekt-Default-Modell aus CLAUDE.md (Sprint-4-Carry-over).** `NewSessionModal` zieht den Default jetzt aus `activeProject.frontmatter.workbench.default_model` mit Fallback auf `settings.default_model`. `useUiStore` cached die Frontmatter beim Project-Select über `project:read-claude-md` mit StrictMode-Side-Effect-Guard.
+- **Aktives Projekt persistiert über App-Restart.** `useUiStore` hydriert `activeProjectId` aus `localStorage` beim Mount, schreibt zurück bei jedem `setActiveProject`. Tote Referenzen (Projekt zwischenzeitlich umbenannt) fallen sauber auf den heuristischen Default zurück.
+- **Drive-by `displayProjectName(p)`.** TECH_SCHULDEN-Empty-State-Fix: Sidebar und TabContainer-Empty-State teilen sich jetzt einen Helper, der den DB-Rohnamen `__default__` auf „Sprint-2/3-Legacy" mappt.
+- **Sprint-2-Lifeline `pty:create → DEFAULT_PROJECT_ID` endgültig aufgelöst.** Der Handler nimmt jetzt `projectId` aus dem IPC-Input statt hartcoded auf den Default zu zeigen. Sprint-4-Remap zieht beim App-Start auch `messages.project_id` der umgehängten Sessions mit — Per-Projekt-Aggregate (Sprint 6+) zeigen damit den richtigen Bucket.
+
+### Umgesetzte Entscheidungen
+
+- **Variante A überall** (siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)). 10 Vorab-Variants für Sprint-5-Architektur (Watcher-Scope, Token-Persistenz, State-Detection-Heuristik, Push-Cadence, P90-Window, Layout-Position, Recharts-Strategie, Modell-Cache, Offset-Persistenz, Active-Project-Hydrate) wurden vor dem ersten Code mit Effort-Tabelle + Empfehlung geliefert; User hat alle 10 Empfehlungen direkt übernommen.
+- **Sessions-Mapping über `encodeCwd` statt UUID** (siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)). claude-code vergibt eigene Session-UUIDs, die NICHT mit unseren matchen. Variante A war ursprünglich „UUID match" — beim ersten Smoke-Test fiel sofort auf, dass das nicht trägt. Mid-Sprint-Pivot auf cwd-Encoding-Match.
+
+### Mid-Sprint-Anpassungen
+
+- **chokidar v5 unterstützt keine Glob-Patterns mehr.** Mein erster Wurf (`watchPath + '**/*.jsonl'`) wurde als wörtlicher Pfad interpretiert — Watcher hat schlicht nichts gewatcht, kein einziger Log-Eintrag. Fix: Root-Pfad watchen plus `ignored`-Predicate, das alle Non-`.jsonl`-Files ausschließt. Plus `ready`-Event mit Info-Log als Diagnose.
+- **`session_count`-Bedarf-Pendant für Sprint 5.** Sprint 4 hatte den `session_count`-Aggregat erst nach erstem Smoke-Test gebraucht; Sprint 5 hat zwei vergleichbare Spät-Erkenntnisse: (1) `pty:create` war seit Sprint 2 hartcoded auf `DEFAULT_PROJECT_ID` — Sprint 4 hatte den Renderer per-Projekt umgebaut, aber den Main-Handler nicht mit-fixed; (2) Sprint-4-Remap zieht jetzt auch `messages.project_id` mit, sonst hängen Per-Projekt-Aggregate weiter am alten Bucket.
+
+### Bonus-Bugfixes unterwegs
+
+- **chokidar v5 Glob-Support entfernt** — siehe Mid-Sprint-Anpassung. Diagnose über fehlende `[jsonl-watcher]`-Log-Einträge nach Initial-Scan.
+- **TakumiDeck-Session-UUID ≠ JSONL-UUID** — Mapping-Pivot auf `encodeCwd`-Match. Bei mehreren Sessions im selben cwd gewinnt die jüngste; Limitation in TECH_SCHULDEN.md.
+- **`pty:create` hat seit Sprint 2 `DEFAULT_PROJECT_ID` hartcoded.** Schwelte unbemerkt, weil Sprint-4-Per-Projekt-Filter über den Renderer-Tab-State lief, nicht über die DB. Sprint 5 räumt mit `messages.project_id` aus der DB → der Bug fiel erst hier auf. Schema-Erweiterung: `PtyCreateInputSchema.projectId` Pflicht-Feld.
+- **StrictMode-Listener-Guard-Falle.** Im PlanPane war ein `useRef`-Guard um den `usage:update`-Listener gewickelt. StrictMode mountet zweimal mit Cleanup dazwischen → Mount 1 register, Cleanup unsubscribe, Mount 2 GUARD blockt re-register → Listener für immer tot. Fix: Guard entfernt — Memory-Konvention sagt Guard nur für Server-Side-Effect-IPCs (pty:create, fs:write, git:commit), Listener-Setup ist read-only und muss bei jedem Mount frisch.
+
+### Offen geblieben (bewusst verschoben)
+
+- **Modell-Limits-Defaults auf realistische 200k-Werte umstellen** — siehe [TECH_SCHULDEN.md](./TECH_SCHULDEN.md). Aktuell zeigt die Per-Session-Kontext-Bar bei Sonnet 4.6 ~8 % statt der echten Kontext-Auslastung, weil das Limit auf 1 M (extended context) statt 200 k steht. Quick-Fix: User editiert `settings.json` direkt; saubere Lösung mit Sprint 8 (Settings-Dialog).
+- **awaitWriteFinish-Latenz von 100 ms** für aktive JSONL-Files. Bei laufenden Antworten kommt der Watcher-Push erst, wenn claude für 100 ms nicht mehr schreibt. Im Sprint-5-Smoke-Test war das spürbar, aber tolerabel — Phase-2-Optimierung wäre ein zweiter „Polling-Ring" mit kürzerer Frequenz für aktive Files.
+- **`cache_creation` / `cache_read` getrennt persistieren.** Aktuell summiert in `tokens_in`. Fürs Detail-Modal in Sprint 5 ausreichend; Verlauf-Panel in Sprint 6 entscheidet, ob die getrennte Spalten-Persistenz nötig wird.
+- **Volle State-Detection mit `waiting` (Permission-Prompts)** — Phase 2. Sprint 5 schreibt nur `running ↔ idle`; `waiting` bleibt im Schema, wird aber nicht aktiv beschrieben.
+- **Heatmap-View in StatsPane** — Phase 2. Sprint 5 reserviert nur den `usage:heatmap`-Channel als Stub.
+- **Per-Bucket-Burn-Rate im UsageDetailModal** — Sprint 5 zeigt einen Per-Modell-Linien-Plot als Vereinfachung. Per-Bucket über die Window-Größe würde einen weiteren IPC-Roundtrip kosten und ist Phase-2-Material.
+
+---
+
 ## 2026-05-09 — Season 4: Workspace
 
 ### Was jetzt geht

@@ -92,6 +92,30 @@ body,
   background: var(--td-bg);
 }
 
+/* Sprint-5-Layout: Sidebar + Content-Spalte (Top-Row Tabs/Terminal, Bottom-Row Stats/Plannutzung). */
+.td-app-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.td-app-row-top {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.td-app-row-bottom {
+  height: 300px; /* LAYOUT.ROW_BOTTOM_HEIGHT */
+  display: flex;
+  flex-direction: row;
+  border-top: 1px solid var(--td-line);
+  background: var(--td-panel-2);
+  flex-shrink: 0;
+}
+
 /* Sprint-4-Sidebar (Architektur 6.0, LAYOUT.COL_LEFT_WIDTH=240). */
 .td-sidebar {
   width: 240px;
@@ -696,4 +720,315 @@ body,
 
 .td-btn-ghost {
   background: transparent;
+}
+
+/* ----- Sprint 5: PlanPane + UsageBar (Architektur 6.4) ----- */
+
+.td-plan-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--td-line);
+  background: var(--td-panel);
+}
+
+.td-plan-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--td-line);
+  flex-shrink: 0;
+}
+
+.td-plan-pane-title {
+  font-family: var(--td-display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-plan-pane-meta {
+  font-size: 11px;
+  color: var(--td-text-mute);
+  letter-spacing: 0.04em;
+}
+
+.td-plan-pane-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.td-usage-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--td-bg-3);
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  text-align: left;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--td-text);
+  cursor: default;
+  transition: border-color .12s, color .12s;
+  width: 100%;
+}
+
+.td-usage-bar.clickable {
+  cursor: pointer;
+}
+
+.td-usage-bar.clickable:hover {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-usage-bar-skeleton {
+  opacity: 0.6;
+}
+
+.td-usage-bar-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.td-usage-bar-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--td-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-usage-bar-value {
+  font-size: 11px;
+  color: var(--td-text);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.td-usage-bar-percent {
+  color: var(--td-text-mute);
+  margin-left: 4px;
+}
+
+.td-usage-bar-track {
+  position: relative;
+  height: 8px;
+  background: var(--td-bg);
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.td-usage-bar-fill {
+  height: 100%;
+  background: var(--td-accent);
+  transition: width .25s ease-out, background-color .25s;
+}
+
+.td-usage-bar.green .td-usage-bar-fill {
+  background: var(--td-accent);
+}
+
+.td-usage-bar.yellow .td-usage-bar-fill {
+  background: var(--td-warn);
+}
+
+.td-usage-bar.orange .td-usage-bar-fill {
+  background: var(--td-orange);
+}
+
+.td-usage-bar.red .td-usage-bar-fill {
+  background: var(--td-red);
+}
+
+.td-usage-bar-overflow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--td-red) 0,
+    var(--td-red) 4px,
+    var(--td-rem) 4px,
+    var(--td-rem) 8px
+  );
+  pointer-events: none;
+}
+
+/* ----- Sprint 5: StatsPane Skeleton ----- */
+
+.td-stats-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--td-panel-2);
+}
+
+.td-stats-pane-header {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--td-line);
+  flex-shrink: 0;
+}
+
+.td-stats-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.td-stats-pane-body {
+  flex: 1;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.td-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.td-stats-card {
+  background: var(--td-bg-3);
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.td-stats-card-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-stats-card-value {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text);
+}
+
+.td-stats-card-sub {
+  font-size: 11px;
+  color: var(--td-text-dim);
+}
+
+.td-stats-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  color: var(--td-text-mute);
+  font-size: 12px;
+  border: 1px dashed var(--td-line);
+  border-radius: 2px;
+}
+
+.td-stats-placeholder-meta {
+  font-size: 11px;
+  color: var(--td-text-mute);
+  text-align: center;
+}
+
+/* ----- Sprint 5: UsageDetailModal ----- */
+
+.td-modal.td-modal-wide {
+  max-width: 720px;
+}
+
+.td-modal-loading {
+  color: var(--td-text-mute);
+  text-align: center;
+  padding: 16px;
+}
+
+.td-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--td-line);
+}
+
+.td-detail-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.td-detail-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-detail-value {
+  font-size: 13px;
+  color: var(--td-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-detail-section-title {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.td-detail-table th,
+.td-detail-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--td-line);
+}
+
+.td-detail-table th {
+  color: var(--td-text-mute);
+  font-weight: normal;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.td-detail-table td {
+  color: var(--td-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-detail-chart {
+  margin-top: 4px;
+}
+
+.td-detail-empty {
+  color: var(--td-text-mute);
+  font-size: 11px;
+  padding: 16px 0;
+  text-align: center;
 }
