@@ -419,6 +419,59 @@ Production-Builds via Electron Forge.
 
 ---
 
+## Bereich: Pre-Release-QA (Sprint 9)
+
+Letzter Schliff vor dem MVP-Release. Sprint 8 hat den Code fertig — Sprint 9
+prüft die Qualität gegen die Design-Vorlage und räumt Code-Schulden auf,
+die bei den schnellen Sprint-Iterationen liegen geblieben sind.
+
+### Feature: UI-Vergleich gegen Design-Vorlage ⛔
+
+Systematischer Pass durch jede sichtbare Komponente und Abgleich gegen
+die Design-Handoff-Spec in `docs/design/claude-export/`.
+
+- Komponenten-Inventar erstellen (TitleBar, LeftSidebar, TabContainer, ActionBar,
+  HistoryPane, EditorPane, RightStack, FilesPanel, NotesPanel, StatsPane,
+  PlanPane, alle Modale)
+- Pro Komponente: Screenshot der laufenden App vs. `claude-export/prototype.html`
+  bzw. `app.jsx` + `styles.css` + `components.jsx` als Referenz
+- Abweichungen kategorisieren: kritisch (Layout/Lesbarkeit), kosmetisch
+  (Spacing/Color-Drift), Spec-Erweiterung (Feature in Vorlage, das wir
+  bewusst weggelassen haben)
+- Findings-Liste mit Priorisierung; kritische Befunde direkt fixen,
+  kosmetische ggf. Phase 2 verschieben
+- Hover-Pattern, Status-Indikatoren, Modal-Backdrops, Pill-Styles, Status-Dots
+  systematisch durchgehen (Architektur 6.0.3 / 6.0.4)
+- Kanji-/Display-Font-Konsistenz prüfen (`var(--td-display)` vs.
+  `var(--td-mono)` in den richtigen Slots)
+
+### Feature: Code-Review + Debugging ⛔
+
+Fokussierter Review-Pass über den Sprint-1- bis Sprint-8-Code, plus
+gezielte Debugging-Session für UI- und IPC-Pfade, die in den Tests
+nicht abgedeckt sind.
+
+- Inventar der UI-Pfade, die nicht in den 396 Vitest-Tests laufen
+  (xterm-Lifecycle, CodeMirror-Mount/Unmount, Modal-Focus-Trap,
+  Drag/Drop, Window-Controls)
+- Manueller Click-Through für die in `docs/CHANGELOG.md` (Sprint 8)
+  aufgelisteten UI-Tests, plus die in den Season-Logs „Für nächste
+  Season"-Hinweise
+- Konsole-Lärm-Audit: alle `console.warn` / `console.error` aus dem
+  laufenden Dev-Mode katalogisieren, harmlose von echten Issues trennen
+- TECH_SCHULDEN-Review: jeden offenen Eintrag noch einmal gegen den
+  aktuellen Code abgleichen, ggf. Status aktualisieren oder als
+  „in Production-Build kein Issue" markieren
+- Performance-Sanity: Memory-Footprint nach 1 h Multi-Tab-Lauf,
+  PTY-Output-Throttling-Verhalten bei großen Outputs (z.B.
+  `find / -type f`-Test), Token-Dashboard-Update-Frequenz
+- xterm-StrictMode-Race-Workaround prüfen (TECH_SCHULDEN-Eintrag) —
+  ist er in Production-Builds wirklich weg, wie der Eintrag verspricht?
+- Dependency-Audit: `npm audit` durchgehen, kritische CVEs adressieren
+  (aktuell 34 Vulnerabilities laut letztem `npm install`-Output)
+
+---
+
 ## Allgemeine Bugfixes & Performance
 
 Laufend, keine eigene Season nötig. Werden direkt behoben und im [CHANGELOG.md](../CHANGELOG.md) erfasst.

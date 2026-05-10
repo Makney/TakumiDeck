@@ -130,6 +130,15 @@ Abschluss-Schliff vor MVP-Release.
 | `Dark-Theme`                    | ✅      | 2026-05-10 — Im MVP einheitlich Dark via `tokens.css` (CSS Custom Properties aus dem Design-Handoff). Keine Light-Variante (Phase 2). |
 | `Build + Distribution`          | ✅      | 2026-05-10 — `npm run make` produziert Squirrel-Setup + Portable-ZIP parallel (V6-B). Manuelle GitHub-Release-Anleitung in `docs/DEV_SETUP.md`. Kein Code-Signing, kein Auto-Update (Phase 5+). |
 
+## Pre-Release-QA (Sprint 9)
+
+Letzter Schliff vor MVP-Release.
+
+| Feature                         | Status | Bemerkung |
+| ------------------------------- | ------ | --------- |
+| `UI-Vergleich gegen Design-Vorlage` | ⛔  |           |
+| `Code-Review + Debugging`           | ⛔  |           |
+
 ---
 
 ## Hinweise zur Pflege
