@@ -17,6 +17,19 @@ export interface LimitBar {
   limit_method: 'p90' | 'fixed';
   model_pattern?: string;
   fixed_limit?: number;
+  // Sprint 9 — UI-Slot: Reset-Zeitpunkt für wöchentliche Limits (z.B.
+  // Anthropic's Account-weiter Reset jeden Montag 00:00 UTC). UsageBar
+  // zeigt den Wert im Tooltip; die Token-Aggregation respektiert ihn
+  // erst in Phase 2 — bis dahin bleibt das `window_hours`-Rolling-Window
+  // gültig.
+  //   day_of_week: 0=Sonntag, 1=Montag, ..., 6=Samstag
+  //   hour:        0–23
+  //   minute:      0–59
+  reset_schedule?: {
+    day_of_week: number;
+    hour: number;
+    minute: number;
+  };
 }
 
 // Vollständige Settings-Shape laut Architektur Kapitel 4.
@@ -317,6 +330,11 @@ export interface GitFileChange {
   // Index-Status: was ist schon mit `git add` markiert. Beide getrennt, damit das
   // Pre-Commit-Panel staged vs. unstaged differenzieren kann.
   indexStatus: GitFileStatus;
+  // Sprint 9 — Line-Counts pro File (aus `git diff --numstat`). Untracked
+  // Files liefern keine Counts (Git kennt sie noch nicht), Binary-Files
+  // ebenfalls nicht — daher `null` als legitimer Wert für „nicht messbar".
+  insertions: number | null;
+  deletions: number | null;
 }
 
 export interface GitStatusResult {

@@ -139,44 +139,48 @@ export function SettingsModal({
           </button>
         </div>
 
-        <div className="td-settings-tabs">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className={`td-settings-tab${tab === t.key ? ' active' : ''}`}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="td-modal-body td-settings-body">
-          {tab === 'general' && (
-            <GeneralTab settings={settings} setField={setField} />
-          )}
-          {tab === 'workspace' && (
-            <WorkspaceTab
-              settings={settings}
-              setField={setField}
-              onApplyRawSensitive={(parsed) => applySensitivePatterns(parsed, setField)}
-            />
-          )}
-          {tab === 'models' && (
-            <ModelsTab settings={settings} setField={setField} />
-          )}
-          {tab === 'usage' && (
-            <UsageTab
-              settings={settings}
-              setField={setField}
-              onApplyLimitBars={(parsed) => applyLimitBars(parsed, setField)}
-            />
-          )}
-          {tab === 'terminal' && (
-            <TerminalTab settings={settings} setField={setField} />
-          )}
-          {tab === 'about' && <AboutTab version={appVersion} />}
+        {/* Sprint 9 (D5) — 2-Spalten-Layout nach Vorlage (app.jsx 422-431).
+            Linke Sidebar mit td-list-item-Klassen (Konsistenz zur App-
+            Sidebar), rechter Content-Bereich mit dem aktiven Tab. */}
+        <div className="td-modal-body td-settings-body td-settings-body-2col">
+          <nav className="td-settings-sidenav" aria-label="Settings-Bereiche">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={`td-list-item${tab === t.key ? ' active' : ''}`}
+                onClick={() => setTab(t.key)}
+              >
+                <span className="td-name">{t.label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="td-settings-content">
+            {tab === 'general' && (
+              <GeneralTab settings={settings} setField={setField} />
+            )}
+            {tab === 'workspace' && (
+              <WorkspaceTab
+                settings={settings}
+                setField={setField}
+                onApplyRawSensitive={(parsed) => applySensitivePatterns(parsed, setField)}
+              />
+            )}
+            {tab === 'models' && (
+              <ModelsTab settings={settings} setField={setField} />
+            )}
+            {tab === 'usage' && (
+              <UsageTab
+                settings={settings}
+                setField={setField}
+                onApplyLimitBars={(parsed) => applyLimitBars(parsed, setField)}
+              />
+            )}
+            {tab === 'terminal' && (
+              <TerminalTab settings={settings} setField={setField} />
+            )}
+            {tab === 'about' && <AboutTab version={appVersion} />}
+          </div>
         </div>
 
         <div className="td-modal-footer td-settings-footer">
@@ -528,7 +532,12 @@ function UsageTab({
 
       <Field
         label="Plannutzungs-Bars (Raw JSON)"
-        hint="Komplexe Settings mit RegEx-Filtern; live-validiert gegen das Schema. Apply nur möglich, wenn das JSON valide ist."
+        hint={
+          'Komplexe Settings mit RegEx-Filtern; live-validiert gegen das Schema. ' +
+          'Apply nur möglich, wenn das JSON valide ist. ' +
+          'Optional pro Bar: "reset_schedule": { "day_of_week": 1, "hour": 0, "minute": 0 } ' +
+          '— Wochentag 0=Sonntag bis 6=Samstag (UI-Slot, Reset-Berechnung kommt mit Phase 2).'
+        }
       >
         <JsonRawEditor
           key={limitBarsJson}

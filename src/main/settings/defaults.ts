@@ -41,11 +41,18 @@ export function buildDefaultSettings(): AppSettings {
     // 'credentials\\.json$', 'vault\\.ya?ml$').
     sensitive_file_patterns: [],
 
+    // Sprint 9 — Default-Bars trimmt:
+    //   - 5-Stunden-Limit (alle Modelle)
+    //   - Wöchentlich · alle Modelle
+    //   - Wöchentlich · Nur Sonnet
+    // „Wöchentlich · Claude Design" ist raus — das Design-Limit wird durch die
+    // Claude-Design-Webapp selbst befüllt, nicht durch die lokale JSONL-
+    // Aggregation. User mit Bestands-Settings können den Eintrag im Settings-
+    // Dialog selber entfernen.
     limit_bars: [
       { id: '5h', label: '5-Stunden-Limit', window_hours: 5, filter: 'all', limit_method: 'p90' },
       { id: 'weekly_all', label: 'Wöchentlich · alle Modelle', window_hours: 168, filter: 'all', limit_method: 'p90' },
-      { id: 'weekly_design', label: 'Wöchentlich · Claude Design', window_hours: 168, filter: 'top_tier', limit_method: 'p90' },
-      { id: 'weekly_sonnet', label: 'Nur Sonnet', window_hours: 168, filter: 'sonnet', limit_method: 'p90' },
+      { id: 'weekly_sonnet', label: 'Wöchentlich · Nur Sonnet', window_hours: 168, filter: 'sonnet', limit_method: 'p90' },
     ],
 
     p90_window_hours: 192,

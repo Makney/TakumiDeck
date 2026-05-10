@@ -3,11 +3,14 @@ import type { AppSettings, SessionStatus } from '@shared/types';
 import { useSessionStore, selectTabsForProject } from '../stores/sessions';
 import { useUiStore } from '../stores/ui';
 import { useProjectStore } from '../stores/projects';
+import { useUsageStore } from '../stores/usage';
 import { TerminalTab } from './TerminalTab';
 import { NewSessionModal } from '../modals/NewSessionModal';
 import { TemplatesModal } from '../modals/TemplatesModal';
 import { PreCommitModal } from '../modals/PreCommitModal';
 import { displayProjectName } from '../components/displayProjectName';
+import { fmtTokens } from '../components/fmtTokens';
+import { estimateTerminalCols } from '../components/estimateTerminalCols';
 // Sprint 7 (Q8 Variante A): NotesFooter ist hier weg — Notes leben jetzt im
 // RightPane (panels/RightPane.tsx → components/NotesPanel.tsx). Ein klarer Ort
 // statt zwei (sonst Sync-Bugs + Konflikt mit der commit-Pill in der Action-Bar).
@@ -143,13 +146,15 @@ export function TabContainer({ settings }: Props) {
     async (sessionId: string) => {
       const tab = useSessionStore.getState().tabs.find((t) => t.sessionId === sessionId);
       if (!tab) return;
-      // Bei Resume bestimmen wir cols/rows pragmatisch über typische Defaults — der
-      // erste fit()-Tick beim Aktivieren des Tabs sendet eine korrekte Resize-Nachricht
-      // an die PTY nach. 80×24 ist die universelle ConPTY-Default-Größe.
+      // Sprint 9 — cols/rows aus der aktuellen Mid-Column-Größe schätzen
+      // statt 80×24 hardcoded. Sonst formatiert claude seinen Resume-
+      // Welcome mit zu vielen Spalten und der Output wird rechts
+      // abgeschnitten (xterm reflowt den Buffer nicht beim späteren fit()).
+      const { cols, rows } = estimateTerminalCols(settings.terminal_font_size);
       const result = await window.api.sessions.resume({
         sessionId,
-        cols: 80,
-        rows: 24,
+        cols,
+        rows,
       });
       if (!result.ok) {
         console.warn(`[TabContainer] session:resume fehlgeschlagen: ${result.error}`);
@@ -248,14 +253,19 @@ export function TabContainer({ settings }: Props) {
 
       {activeTab && (
         <>
+          {/* Sprint 9 — Reihenfolge an Vorlage angeglichen: Hints sitzen als
+              Footer direkt unterm xterm (analog td-term-hint im td-term-input-
+              wrap), ActionBar darunter mit ihrem border-top als Trenner. */}
+          <KeyboardHints />
           <ActionBar
+            sessionId={activeTab.sessionId}
             model={activeTab.model}
             status={activeTab.status}
+            warnThresholds={settings.token_warning_thresholds}
             canCommit={activeProject !== null}
             onOpenTemplates={() => setShowTemplatesModal(true)}
             onOpenPreCommit={() => setShowPreCommitModal(true)}
           />
-          <KeyboardHints />
         </>
       )}
 
@@ -403,8 +413,10 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
 };
 
 interface ActionBarProps {
+  sessionId: string;
   model: string;
   status: SessionStatus;
+  warnThresholds: AppSettings['token_warning_thresholds'];
   // false → commit-Pill ist disabled (kein aktives Projekt → kein Trigger sinnvoll).
   canCommit: boolean;
   onOpenTemplates: () => void;
@@ -412,8 +424,10 @@ interface ActionBarProps {
 }
 
 function ActionBar({
+  sessionId,
   model,
   status,
+  warnThresholds,
   canCommit,
   onOpenTemplates,
   onOpenPreCommit,
@@ -452,8 +466,76 @@ function ActionBar({
       >
         <span aria-hidden>⎇</span> commit
       </button>
-      <div className="td-term-bar-spacer" aria-hidden />
+      {/* Sprint 9 (C1) — Per-Session-Kontext-„Glance"-Slot zwischen Pillen
+          und Status (Vorlage components.jsx 183-189). PlanPane behält die
+          ausführliche Kontext-Bar; hier nur die kompakte Inline-Variante. */}
+      <ContextSlot sessionId={sessionId} thresholds={warnThresholds} />
       <span className="td-term-bar-status">{STATUS_LABEL[status]}</span>
     </div>
   );
 }
+
+interface ContextSlotProps {
+  sessionId: string;
+  thresholds: AppSettings['token_warning_thresholds'];
+}
+
+// Sprint 9 (C1) — kompakter Per-Session-Context-Slot in der Action-Bar.
+// Liest direkt aus useUsageStore.contextBySession; bei fehlenden Daten
+// rendert der Slot einen dezenten Placeholder, damit das Layout konstant
+// bleibt (kein Spring beim ersten Push).
+//
+// Initial-Refresh pro sessionId: PlanPane hat den context-Listener, aber
+// kein per-session-Initial-Fetch mehr (war an die alte ContextBar in der
+// PlanPane gekoppelt). Wir ziehen den first-load hier nach — read-only
+// IPC, kein useRef-Guard nötig (Memory: Guard nur für Server-Mutationen).
+function ContextSlot({ sessionId, thresholds }: ContextSlotProps) {
+  const session = useUsageStore((s) => s.contextBySession[sessionId] ?? null);
+  const refreshContext = useUsageStore((s) => s.refreshContext);
+  useEffect(() => {
+    if (session !== null) return;
+    void refreshContext(sessionId);
+  }, [sessionId, session, refreshContext]);
+  // Sprint 9 (L4) — Empty-State erkennt sowohl „noch keine Daten" als auch
+  // „0 Tokens nach Spawn", damit der Slot dezent bleibt, bis echte Werte
+  // einlaufen.
+  const isEmpty = !session || session.tokens.total === 0;
+  if (!session) {
+    return (
+      <div className="td-ctx empty" aria-label="Kontext-Auslastung">
+        <span className="td-ctx-label">ctx</span>
+        <div className="td-ctx-bar">
+          <div className="td-ctx-fill" style={{ width: '0%' }} />
+        </div>
+        <span className="td-ctx-value empty">—</span>
+      </div>
+    );
+  }
+  const percent = Math.max(0, session.percent);
+  const clamped = Math.min(percent, 100);
+  const tone =
+    percent >= thresholds.red
+      ? 'red'
+      : percent >= thresholds.orange
+        ? 'orange'
+        : percent >= thresholds.yellow
+          ? 'warn'
+          : '';
+  const used = fmtTokens(session.tokens.total);
+  const limit = fmtTokens(session.limit);
+  return (
+    <div
+      className={`td-ctx${isEmpty ? ' empty' : ''}`}
+      title={`${Math.round(session.tokens.total).toLocaleString()} / ${Math.round(session.limit).toLocaleString()} Tokens · ${percent.toFixed(0)} %`}
+    >
+      <span className="td-ctx-label">ctx</span>
+      <div className="td-ctx-bar">
+        <div className={`td-ctx-fill ${tone}`} style={{ width: `${clamped}%` }} />
+      </div>
+      <span className={`td-ctx-value${isEmpty ? ' empty' : ''}`}>{used} / {limit}</span>
+    </div>
+  );
+}
+
+/* Sprint 9 (L5) — `fmtTokens` ist in components/fmtTokens.ts gewandert,
+   damit StatsPane und Action-Bar denselben Helper nutzen. */

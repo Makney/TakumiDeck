@@ -100,10 +100,10 @@ export function DiffViewer({ projectId, status, loading, loadError, hasGit }: Pr
         <span className="arr">›</span>
         <span className="crumb">{showableFiles.length} Files</span>
         <div className="meta">
-          <span className="add">+{adds}</span>
-          <span style={{ color: 'var(--td-warn)' }}>~{mods}</span>
-          <span className="rem">−{rems}</span>
-          <span style={{ color: 'var(--td-text-mute)' }}>simple-git · merge</span>
+          <span className="add" title={`${adds} neue Datei(en)`}>+{adds}</span>
+          <span className="modify" title={`${mods} geänderte Datei(en)`}>~{mods}</span>
+          <span className="rem" title={`${rems} gelöschte Datei(en)`}>−{rems}</span>
+          <span className="source-hint">simple-git · merge</span>
         </div>
       </div>
       {showableFiles.length === 0 ? (
@@ -113,19 +113,38 @@ export function DiffViewer({ projectId, status, loading, loadError, hasGit }: Pr
       ) : (
         <div className="td-diff-body-split">
           <div className="td-diff-files">
-            {showableFiles.map((f) => (
-              <div
-                key={f.path}
-                className={`td-diff-file${activeFile === f.path ? ' active' : ''} ${f.worktreeStatus}`}
-                onClick={() => setActiveFile(f.path)}
-                title={f.path}
-              >
-                <span className="td-diff-file-mark">
-                  {markFor(f.worktreeStatus, f.indexStatus)}
-                </span>
-                <span className="td-diff-file-path">{f.path}</span>
-              </div>
-            ))}
+            {showableFiles.map((f) => {
+              const lastSlash = Math.max(f.path.lastIndexOf('/'), f.path.lastIndexOf('\\'));
+              const dir = lastSlash >= 0 ? f.path.slice(0, lastSlash + 1) : '';
+              const name = lastSlash >= 0 ? f.path.slice(lastSlash + 1) : f.path;
+              const showCounts = f.insertions !== null || f.deletions !== null;
+              return (
+                <div
+                  key={f.path}
+                  className={`td-diff-file${activeFile === f.path ? ' active' : ''} ${f.worktreeStatus}`}
+                  onClick={() => setActiveFile(f.path)}
+                  title={f.path}
+                >
+                  <span className="td-diff-file-mark">
+                    {markFor(f.worktreeStatus, f.indexStatus)}
+                  </span>
+                  <span className="td-diff-file-path">
+                    {dir && <span className="td-diff-file-dir">{dir}</span>}
+                    <span className="td-diff-file-name">{name}</span>
+                  </span>
+                  {showCounts && (
+                    <span className="td-diff-file-counts">
+                      {f.insertions !== null && f.insertions > 0 && (
+                        <span className="td-diff-file-add">+{f.insertions}</span>
+                      )}
+                      {f.deletions !== null && f.deletions > 0 && (
+                        <span className="td-diff-file-rem">−{f.deletions}</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="td-diff-content">
             {activeFile ? (

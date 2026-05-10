@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useUsageStore } from '../stores/usage';
 import { useSessionStore } from '../stores/sessions';
+import { fmtTokens } from '../components/fmtTokens';
 
 // StatsPane (Sprint 5 Skeleton, Architektur Roadmap PHASE1.md).
 //
@@ -8,32 +9,60 @@ import { useSessionStore } from '../stores/sessions';
 // - „Übersicht": 3-4 Mini-Token-Stats — aktuelle Session, heute, diese Woche.
 // - „Modelle": Hinweis-Pille „In Phase 2 verfügbar".
 // Volle Heatmap und Per-Modell-Stats-Cards folgen mit Phase 2.
+//
+// Sprint 9 (C4): Range-Toggle „Alle / 30d / 7d" als UI-Slot vorbereitet
+// (components.jsx 330-334). Lokaler State `range` ist da, aber die Mini-Stats
+// filtern noch nicht — in Phase 2 wird der `range`-Wert an die Token-
+// Aggregation durchgereicht (heatmap.ts + usage:bucket-Filter).
 
 type View = 'overview' | 'models';
+type Range = 'all' | '30d' | '7d';
+
+const RANGE_LABELS: Record<Range, string> = {
+  all: 'Alle',
+  '30d': '30d',
+  '7d': '7d',
+};
 
 export function StatsPane() {
   const [view, setView] = useState<View>('overview');
+  const [range, setRange] = useState<Range>('all');
   return (
-    <section className="td-stats-pane" aria-label="Statistik">
-      <header className="td-stats-pane-header">
-        <div className="td-stats-toggle">
+    <section className="td-dash-pane" aria-label="Statistik">
+      <header className="td-dash-head">
+        <div className="td-dash-tabs">
           <button
             type="button"
-            className={`td-pill ${view === 'overview' ? 'active' : ''}`}
+            className={`td-dash-tab ${view === 'overview' ? 'active' : ''}`}
             onClick={() => setView('overview')}
           >
             Übersicht
           </button>
           <button
             type="button"
-            className={`td-pill ${view === 'models' ? 'active' : ''}`}
+            className={`td-dash-tab ${view === 'models' ? 'active' : ''}`}
             onClick={() => setView('models')}
           >
             Modelle
           </button>
         </div>
+        {/* Sprint 9 (C4) — Range-Toggle, statisch im MVP. Phase 2 reicht
+            den Wert an die Token-Aggregation durch. */}
+        <div className="td-dash-range" role="group" aria-label="Zeitraum">
+          {(Object.keys(RANGE_LABELS) as Range[]).map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={range === r ? 'active' : ''}
+              onClick={() => setRange(r)}
+              title="Filter ist Phase-2-Slot"
+            >
+              {RANGE_LABELS[r]}
+            </button>
+          ))}
+        </div>
       </header>
-      <div className="td-stats-pane-body">
+      <div className="td-dash-body">
         {view === 'overview' ? <OverviewView /> : <ModelsPlaceholder />}
       </div>
     </section>
@@ -52,24 +81,23 @@ function OverviewView() {
   const weekly = bars['weekly_all'] ?? null;
 
   return (
-    <div className="td-stats-grid">
+    <div className="td-ueb-stats">
+      {/* Sprint 9 (L5) — Werte mit `fmtTokens` (k/M/G), Vorlage-Code
+          components.jsx 13-17. Vermeidet 9-stellige Zahlen, die das
+          Card-Layout pressen. */}
       <Stat
         label="Aktuelle Session"
-        value={
-          activeContext
-            ? `${Math.round(activeContext.tokens.total).toLocaleString()} Tokens`
-            : '—'
-        }
+        value={activeContext ? `${fmtTokens(activeContext.tokens.total)} Tokens` : '—'}
         sub={activeContext?.model ?? null}
       />
       <Stat
         label="Letzte 5 h"
-        value={fiveHour ? `${Math.round(fiveHour.tokens).toLocaleString()} Tokens` : '—'}
+        value={fiveHour ? `${fmtTokens(fiveHour.tokens)} Tokens` : '—'}
         sub={fiveHour ? `${fiveHour.percent.toFixed(0)} % Limit` : null}
       />
       <Stat
         label="Letzte 168 h"
-        value={weekly ? `${Math.round(weekly.tokens).toLocaleString()} Tokens` : '—'}
+        value={weekly ? `${fmtTokens(weekly.tokens)} Tokens` : '—'}
         sub={weekly ? `${weekly.percent.toFixed(0)} % Limit` : null}
       />
     </div>
@@ -89,10 +117,10 @@ function ModelsPlaceholder() {
 
 function Stat({ label, value, sub }: { label: string; value: string; sub: string | null }) {
   return (
-    <div className="td-stats-card">
-      <div className="td-stats-card-label">{label}</div>
-      <div className="td-stats-card-value">{value}</div>
-      {sub && <div className="td-stats-card-sub">{sub}</div>}
+    <div className="td-stat">
+      <div className="lbl">{label}</div>
+      <div className="val">{value}</div>
+      {sub && <div className="sub">{sub}</div>}
     </div>
   );
 }

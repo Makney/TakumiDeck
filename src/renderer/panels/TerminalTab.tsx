@@ -132,17 +132,44 @@ export function TerminalTab({
       void window.api.pty.resize({ sessionId, cols, rows });
     });
 
-    const ro = new ResizeObserver(() => safeFit(fit));
+    // Sprint 9 — Resize-Pipeline robuster:
+    //   - ResizeObserver feuert bei Container-Größen-Änderungen, aber der
+    //     Callback kommt manchmal vor dem finalen Layout-Tick → fit() liest
+    //     dann stale `clientWidth`-Werte. requestAnimationFrame verschiebt
+    //     das fit() in den nächsten Paint, wenn der DOM-Layout final ist.
+    //   - Zusätzlich window.resize als Backup: ResizeObserver fängt zwar
+    //     Container-Changes, aber bei einigen Browser-Edge-Cases (z.B.
+    //     Display-Scaling-Wechsel) feuert nur das Window-Event.
+    //   - rafScheduled-Guard, damit ein einzelner Resize-Burst nicht
+    //     mehrere fit()-Calls absetzt.
+    let rafScheduled = false;
+    const scheduleFit = () => {
+      if (rafScheduled) return;
+      rafScheduled = true;
+      requestAnimationFrame(() => {
+        rafScheduled = false;
+        safeFit(fit);
+      });
+    };
+    const ro = new ResizeObserver(scheduleFit);
     ro.observe(container);
+    window.addEventListener('resize', scheduleFit);
 
     // Spawn nur, wenn der Tab gerade frisch im Store entstanden ist (NewSessionModal-Pfad).
     // Resume spawnt seine PTY über session:resume — der TerminalTab-Mount wird dann
     // ausgelöst, ohne dass ein zweiter pty:create losgeht.
     // Zusätzlich Ref-Guard: StrictMode-Dev mountet den Effect zweimal; die zweite
     // Mount-Iteration darf KEIN zweites pty:create lostreten (UNIQUE-Constraint).
+    //
+    // Sprint 9 — Spawn nach RAF: das initiale `safeFit` direkt nach
+    // `terminal.open` läuft manchmal vor dem finalen Layout-Tick → terminal.cols
+    // ist dann auf 80 (Default) statt der echten Container-Breite. claude-code
+    // formatiert seinen Welcome-Output mit den falschen cols → Output wird
+    // rechts abgeschnitten. RAF stellt sicher, dass das Layout final ist,
+    // bevor wir die cols an die PTY schicken.
     if (needsSpawn && !spawnDispatchedRef.current) {
       spawnDispatchedRef.current = true;
-      void (async () => {
+      const doSpawn = async () => {
         const result = await window.api.pty.create({
           sessionId,
           projectId,
@@ -165,13 +192,18 @@ export function TerminalTab({
         } else if (isActive) {
           terminal.focus();
         }
-      })();
+      };
+      requestAnimationFrame(() => {
+        safeFit(fit);
+        void doSpawn();
+      });
     }
 
     return () => {
       offData();
       offExit();
       ro.disconnect();
+      window.removeEventListener('resize', scheduleFit);
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;
@@ -186,12 +218,16 @@ export function TerminalTab({
   // Wenn der Tab aktiv wird, fit() neu laufen lassen + Fokus setzen. Ohne diesen
   // Effect bliebe das Terminal nach einem Tab-Wechsel auf der alten 0×0-Größe stehen,
   // weil ResizeObserver erst beim nächsten Container-Resize feuert.
+  // Sprint 9 — RAF um den Aktiv-Switch-Fit, weil das CSS-Toggle (display:flex
+  // ↔ display:none) erst im nächsten Paint die finale Container-Größe gibt.
   useEffect(() => {
     if (!isActive) return;
-    const fit = fitRef.current;
     const terminal = terminalRef.current;
-    safeFit(fit);
-    terminal?.focus();
+    const handle = requestAnimationFrame(() => {
+      safeFit(fitRef.current);
+      terminal?.focus();
+    });
+    return () => cancelAnimationFrame(handle);
   }, [isActive]);
 
   // Sprint 6: TemplatesModal sendet einen 'td-template-send'-CustomEvent, der

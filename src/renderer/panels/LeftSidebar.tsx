@@ -47,7 +47,9 @@ export function LeftSidebar({ settings }: Props) {
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const setActiveProject = useUiStore((s) => s.setActiveProject);
   const setMainView = useUiStore((s) => s.setMainView);
-  const setHistorySelected = useUiStore((s) => s.setHistorySelected);
+  // Sprint 9 — Sidebar-Verlauf-Klick öffnet jetzt das HistoryActionModal
+  // statt direkt den setHistorySelected/mainView-Wechsel auszulösen.
+  const setHistoryActionEntry = useUiStore((s) => s.setHistoryActionEntry);
   const setShowNewSessionModal = useUiStore((s) => s.setShowNewSessionModal);
   const hydrateFromStorage = useUiStore((s) => s.hydrateFromStorage);
   const loadActiveProjectFrontmatter = useUiStore((s) => s.loadActiveProjectFrontmatter);
@@ -219,10 +221,8 @@ export function LeftSidebar({ settings }: Props) {
       {/* === Verlauf ============================================================= */}
       <HistoryPanel
         entries={historySnapshot}
-        onPick={(sessionId) => {
-          setHistorySelected(sessionId);
-          setMainView('history');
-        }}
+        onPick={(entry) => setHistoryActionEntry(entry)}
+        onOpenAll={() => setMainView('history')}
       />
     </aside>
   );
@@ -417,10 +417,11 @@ function ActiveSessionsPanel({
 
 interface HistoryPanelProps {
   entries: SessionHistoryEntry[];
-  onPick: (sessionId: string) => void;
+  onPick: (entry: SessionHistoryEntry) => void;
+  onOpenAll: () => void;
 }
 
-function HistoryPanel({ entries, onPick }: HistoryPanelProps) {
+function HistoryPanel({ entries, onPick, onOpenAll }: HistoryPanelProps) {
   return (
     <div className="td-panel td-panel-history">
       <div className="td-panel-head">
@@ -437,8 +438,8 @@ function HistoryPanel({ entries, onPick }: HistoryPanelProps) {
             <div
               key={entry.id}
               className={`td-hist-row ${entry.status}`}
-              onClick={() => onPick(entry.id)}
-              title={entry.title}
+              onClick={() => onPick(entry)}
+              title={`${entry.title} — Klick öffnet Resume/Archiv-Auswahl`}
             >
               <span className="td-hist-tick">{statusGlyph(entry.status)}</span>
               <div className="td-hist-rows">
@@ -453,6 +454,19 @@ function HistoryPanel({ entries, onPick }: HistoryPanelProps) {
             </div>
           ))}
         </div>
+      </div>
+      {/* Sprint 9 — Footer-Button für die ausführliche Verlauf-Tabelle.
+          Quickliste oben zeigt nur die letzten N Einträge; wer den ganzen
+          Verlauf mit Filter und Detail-Pane braucht, klickt hier. */}
+      <div className="td-panel-foot">
+        <button
+          type="button"
+          className="td-action-btn"
+          onClick={onOpenAll}
+          title="Vollständiger Verlauf mit Filter und Detail-Pane"
+        >
+          → Alle anzeigen
+        </button>
       </div>
     </div>
   );

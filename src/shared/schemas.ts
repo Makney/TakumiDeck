@@ -14,6 +14,15 @@ export const LimitBarSchema = z.object({
   limit_method: z.enum(['p90', 'fixed']),
   model_pattern: z.string().optional(),
   fixed_limit: z.number().positive().optional(),
+  // Sprint 9 — Reset-Zeitpunkt pro Bar (UI-Slot, Phase-2-Backend).
+  // day_of_week: 0=Sonntag, 1=Montag, ..., 6=Samstag.
+  reset_schedule: z
+    .object({
+      day_of_week: z.number().int().min(0).max(6),
+      hour: z.number().int().min(0).max(23),
+      minute: z.number().int().min(0).max(59),
+    })
+    .optional(),
 });
 
 export const AppSettingsSchema = z.object({

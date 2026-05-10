@@ -138,9 +138,9 @@ const cleanStatus: GitStatusResult = {
 const dirtyStatus: GitStatusResult = {
   branch: 'feature/sprint-7',
   files: [
-    { path: 'src/foo.ts', worktreeStatus: 'modified', indexStatus: 'unchanged' },
-    { path: 'docs/new.md', worktreeStatus: 'untracked', indexStatus: 'unchanged' },
-    { path: 'package.json', worktreeStatus: 'unchanged', indexStatus: 'modified' },
+    { path: 'src/foo.ts', worktreeStatus: 'modified', indexStatus: 'unchanged', insertions: 12, deletions: 3 },
+    { path: 'docs/new.md', worktreeStatus: 'untracked', indexStatus: 'unchanged', insertions: null, deletions: null },
+    { path: 'package.json', worktreeStatus: 'unchanged', indexStatus: 'modified', insertions: 1, deletions: 0 },
   ],
   ahead: 1,
   behind: 0,

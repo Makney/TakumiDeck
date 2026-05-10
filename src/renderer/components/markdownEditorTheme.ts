@@ -18,14 +18,22 @@ export const markdownEditorThemeOverride = EditorView.theme(
   {
     '&': {
       // Editor-Container — fließt in den td-panel-Body ein.
+      // Sprint 9 — Font-Size 12.5 → 13.5 px für bessere Lesbarkeit; passt
+      // zur Toolbar (13 px) und zur Sidebar-Liste (13 px).
       backgroundColor: 'var(--td-panel)',
       color: 'var(--td-text)',
-      fontSize: '12.5px',
+      fontSize: '13.5px',
     },
     '.cm-content': {
       caretColor: 'var(--td-accent)',
       fontFamily: 'var(--td-mono)',
       padding: '8px 0',
+    },
+    // Sprint 9 — Soft-Wrap: lange Zeilen umbrechen, statt horizontal zu
+    // scrollen. Markdown-Editor ist kein Code, der spaltenformatiert sein
+    // muss — Lesbarkeit hat Vorrang vor Spaltentreue.
+    '.cm-line': {
+      wordBreak: 'break-word',
     },
     '.cm-cursor, .cm-dropCursor': {
       borderLeftColor: 'var(--td-accent)',

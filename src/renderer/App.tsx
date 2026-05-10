@@ -10,6 +10,7 @@ import { StatsPane } from './panels/StatsPane';
 import { TitleBar } from './panels/TitleBar';
 import { UsageDetailModal } from './modals/UsageDetailModal';
 import { SettingsModal } from './modals/SettingsModal';
+import { HistoryActionModal } from './modals/HistoryActionModal';
 import { useUsageStore } from './stores/usage';
 import { useProjectStore } from './stores/projects';
 import { useUiStore } from './stores/ui';
@@ -44,6 +45,13 @@ export function App() {
   const fileTabsHydrateRef = useRef(false);
   const showSettingsModal = useUiStore((s) => s.showSettingsModal);
   const setShowSettingsModal = useUiStore((s) => s.setShowSettingsModal);
+  // Sprint 9 (C2) — Toast-Slot, statisch im MVP (kein automatischer Trigger).
+  // Phase 2 ruft useUiStore.getState().flashToast(msg) aus relevanten Stellen.
+  const toastMessage = useUiStore((s) => s.toastMessage);
+  // Sprint 9 — Sidebar-Verlauf-Klick öffnet das Action-Modal (Resume/
+  // Archivieren/Verlauf öffnen) statt direkt die HistoryPane zu wechseln.
+  const historyActionEntry = useUiStore((s) => s.historyActionEntry);
+  const setHistoryActionEntry = useUiStore((s) => s.setHistoryActionEntry);
   const activeProject = useMemo(
     () =>
       activeProjectId ? projects.find((p) => p.id === activeProjectId) ?? null : null,
@@ -116,7 +124,7 @@ export function App() {
   return (
     <div className="td-app">
       <TitleBar version={version} />
-      <main className="td-app-main">
+      <main className="td-main">
         {/* Spalte 1: LeftSidebar, full-height */}
         <div className="td-col-left">
           <LeftSidebar settings={settings} />
@@ -173,6 +181,19 @@ export function App() {
           onSettingsUpdated={(next) => setSettings(next)}
           onClose={() => setShowSettingsModal(false)}
         />
+      )}
+      {historyActionEntry && (
+        <HistoryActionModal
+          entry={historyActionEntry}
+          onClose={() => setHistoryActionEntry(null)}
+        />
+      )}
+      {/* Sprint 9 (C2) — Toast-Render (Vorlage app.jsx 365-369). */}
+      {toastMessage && (
+        <div className="td-toast" role="status" aria-live="polite">
+          <span aria-hidden style={{ color: 'var(--td-accent)' }}>●</span>
+          <span>{toastMessage}</span>
+        </div>
       )}
     </div>
   );

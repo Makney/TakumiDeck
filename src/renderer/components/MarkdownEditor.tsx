@@ -168,6 +168,10 @@ export function MarkdownEditor({
       oneDark,
       syntaxHighlighting(oneDarkHighlightStyle),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      // Sprint 9 — Soft-Wrap: lange Markdown-Zeilen brechen statt horizontal
+      // aus dem Viewport zu wandern. Reine View-Konfiguration, ändert das
+      // Doc nicht (Speichern bleibt mit Original-Zeilen).
+      EditorView.lineWrapping,
     ];
     if (yamlLinter) {
       exts.push(yamlLinter);

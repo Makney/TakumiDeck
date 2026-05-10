@@ -29,6 +29,9 @@ export function RightStack() {
   const tabsForActiveProject = useFileTabsStore((s) =>
     activeProjectId ? s.tabs[activeProjectId] ?? EMPTY_TAB_ARRAY : EMPTY_TAB_ARRAY,
   );
+  const activeFileTabId = useFileTabsStore((s) =>
+    activeProjectId ? s.activeId[activeProjectId] ?? null : null,
+  );
   const openFile = useFileTabsStore((s) => s.openFile);
 
   // dirtyRelPaths: Set wird im Body via useMemo gebaut, NICHT im Selector
@@ -42,11 +45,22 @@ export function RightStack() {
     return out.size === 0 ? EMPTY_SET : out;
   }, [tabsForActiveProject]);
 
+  // Sprint 9 (C3) — relPath des aktiven File-Tabs für den selected-State im
+  // FilesPanel. Diff-Tab hat keinen relPath → null. Macht die Verbindung
+  // EditorPane (Spalte 3) ↔ FilesPanel (Spalte 4) visuell sichtbar.
+  const selectedRelPath = useMemo(() => {
+    if (!activeFileTabId) return null;
+    const tab = tabsForActiveProject.find((t) => t.id === activeFileTabId);
+    if (!tab || tab.kind !== 'file') return null;
+    return tab.relPath;
+  }, [activeFileTabId, tabsForActiveProject]);
+
   return (
-    <aside className="td-right-stack">
+    <aside className="td-col-right-stack">
       <RightPaneFilesPanel
         projectId={activeProjectId}
         dirtyRelPaths={dirtyRelPaths}
+        selectedRelPath={selectedRelPath}
         onOpenFile={(relPath, label) => {
           if (!activeProjectId) return;
           void openFile(activeProjectId, relPath, label);

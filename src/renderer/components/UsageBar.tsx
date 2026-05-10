@@ -1,4 +1,4 @@
-import type { UsageWindowResult } from '@shared/types';
+import type { LimitBar, UsageWindowResult } from '@shared/types';
 
 // UsageBar (Sprint 5, Architektur 6.4).
 //
@@ -23,10 +23,13 @@ interface Props {
   result: UsageWindowResult | null;
   thresholds: Thresholds;
   loading: boolean;
+  // Sprint 9 — UI-Slot: pro-Bar-Reset-Schedule (Phase-2-Backend). Wenn
+  // gesetzt, hängt der Tooltip den Reset-Zeitpunkt an.
+  resetSchedule?: LimitBar['reset_schedule'];
   onOpenDetail?: () => void;
 }
 
-export function UsageBar({ result, thresholds, loading, onOpenDetail }: Props) {
+export function UsageBar({ result, thresholds, loading, resetSchedule, onOpenDetail }: Props) {
   if (!result) {
     return (
       <div className="td-usage-bar td-usage-bar-skeleton" aria-busy={loading}>
@@ -53,6 +56,9 @@ export function UsageBar({ result, thresholds, loading, onOpenDetail }: Props) {
   ];
   if (result.limitSource === 'p90') {
     tooltipLines.push('geschätzt aus den letzten 8 Tagen');
+  }
+  if (resetSchedule) {
+    tooltipLines.push(`Reset: ${formatResetSchedule(resetSchedule)} (Phase-2-Backend)`);
   }
 
   return (
@@ -107,4 +113,21 @@ function limitSourceLabel(source: UsageWindowResult['limitSource']): string {
     case 'fallback':
       return 'Fallback (Modell-Default)';
   }
+}
+
+const WEEKDAY_LABELS = [
+  'Sonntag',
+  'Montag',
+  'Dienstag',
+  'Mittwoch',
+  'Donnerstag',
+  'Freitag',
+  'Samstag',
+];
+
+function formatResetSchedule(schedule: NonNullable<LimitBar['reset_schedule']>): string {
+  const day = WEEKDAY_LABELS[schedule.day_of_week] ?? `Tag ${schedule.day_of_week}`;
+  const hh = String(schedule.hour).padStart(2, '0');
+  const mm = String(schedule.minute).padStart(2, '0');
+  return `${day} ${hh}:${mm}`;
 }

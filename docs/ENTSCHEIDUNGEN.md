@@ -24,6 +24,59 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## UsageBar als Vorlage-treue Zeile statt Card (Sprint 9, Variant A)
+
+**Entscheidung:** UsageBar im PlanPane rendert ohne eigenen Border und Card-Background — nur Label-Zeile + Track. Click-Target ist die ganze Zeile, Hover signalisiert Klickbarkeit ausschließlich über Color-Wechsel auf accent.
+
+**Varianten:**
+
+- **A** Vorlage-treue Zeile (gewählt — kein Border, kein bg, padding 0, hover via color-only)
+- **B** Card-Optik beibehalten — TakumiDeck-Eigenheit dokumentieren
+
+**Grund:** Working-Rule „bei Konflikt mit Vorlage gewinnt die Vorlage" zieht durch. Card war Sprint-7-Default, Vorlage hat reine Zeilen — die wirken eleganter und passen zur reduzierten Plan-Pane-Optik (kein Card-Stack, keine Border-Schwere). Track bekommt ohne Card-Border einen eigenen 1-px-Border + heller Background (`line-2`), damit die Bar trotzdem sichtbar bleibt.
+
+**Konsequenz:** Click-Target ohne sichtbaren Card-Rand — Hover-Color-Wechsel ist die einzige Klickbarkeit-Markierung. Wenn das im Daily-Driver zu subtil wirkt, ist der Fallback ein Cursor-pointer + zarter Border via `outline: 1px solid transparent` mit Hover auf accent-line.
+
+---
+
+## Settings-Modal: 2-Spalten-Sidebar statt horizontaler Tab-Bar (Sprint 9, Variant A — D5)
+
+**Entscheidung:** Settings-Modal-Body nutzt Grid `180 px 1 fr` mit linker `td-settings-sidenav` (App-konsistente `td-list-item`-Klassen) und rechter `td-settings-content`-Sektion. Inner-Scroll auf der Content-Seite, Outer-Scroll auf dem Body deaktiviert.
+
+**Varianten:**
+
+- **A** 2-Spalten-Sidebar nach Vorlage (gewählt)
+- **B** Horizontale Tab-Bar mit `border-bottom`-Highlight beibehalten — als TakumiDeck-Eigenheit dokumentieren
+
+**Grund:** Vorlage rendert das Settings-Modal als klassisches Preferences-Layout (app.jsx 422-431). Skaliert besser auf viele Tabs (6 aktuell, erweiterbar), Sidebar-Stil ist mit der App-Sidebar konsistent. Horizontale Tab-Bar war Sprint-8-Default ohne Vorlage-Bezug — Drift, die durch Sprint-9-Vorlage-Treue korrigiert wird.
+
+**Konsequenz:** Sidebar-Buttons sind `td-list-item`-Klassen — Hover/Active-Verhalten erbt automatisch. Tab-Wechsel via vertikale Selektion (für Power-User mit Tastatur potenziell langsamer als horizontale `Tab`-Navigation, aber Settings ist kein Power-Use-Pfad). Bei künftiger Erweiterung um Account/API-Keys/Sync-Settings (Phase 5+) trägt das Layout ohne Refactor.
+
+---
+
+## Per-Bar `reset_schedule` als UI-Slot ohne Backend-Berechnung (Sprint 9)
+
+**Entscheidung:** `LimitBar.reset_schedule?: { day_of_week, hour, minute }` als optionales Feld pro Bar. Schema validiert, JSON-Editor im Settings-Token-Tracking-Tab kennt das Feld, UsageBar-Tooltip zeigt „Reset: Montag 00:00 (Phase-2-Backend)" wenn gesetzt. **Aggregations-Logik nutzt den Wert noch nicht** — `usage:window` rechnet weiter mit Rolling-`window_hours`.
+
+**Varianten:**
+
+- **A** Globaler `weekly_reset` für alle weekly-Bars + Form-Felder im Settings-Tab
+- **B** Pro-Bar `reset_schedule` im JSON-Editor (gewählt)
+
+**Plus:**
+
+- **a** UI-Slot, Backend Phase 2 (gewählt)
+- **b** Auch Backend-Berechnung jetzt: `usage:window` startet beim letzten Reset-Zeitpunkt
+
+**Grund:** Pro-Bar ist flexibler (verschiedene Limits könnten unterschiedliche Reset-Zyklen haben — z.B. Anthropic-Account vs. Claude-Design-Web vs. eigene custom-Filter), und der JSON-Editor ist für Power-User-Konfig sowieso da. UI-Slot statt Backend-Logik, weil:
+- die echte Reset-Berechnung (window vom letzten Reset bis jetzt, nicht rolling) ist eine nicht-triviale Änderung am `usage:bucket`-Aggregat
+- ohne reale Daten zur Reset-Cadence (Anthropic gibt keinen Account-API-Endpoint dafür) ist die UI-Eingabe sowieso nur eine Schätzung
+- Phase 2 kann den UI-Slot direkt nutzen, kein UI-Refactor nötig
+
+**Konsequenz:** Tooltip macht klar, dass es ein UI-Slot ist (`(Phase-2-Backend)`-Suffix). User können den Wert setzen, ohne dass die Bar-Berechnung sich ändert — kein Verwirrungs-Risiko. Phase-2-Backend-Arbeit ist isoliert auf das `usage:window`-Aggregat.
+
+---
+
 ## Settings-Persistenz: Auto-Save pro Form-Field statt Save-Button
 
 **Entscheidung:** Form-Inputs im Settings-Modal triggern beim Tippen einen 500-ms-debounced Patch via `settings:set` — kein expliziter Save-Button. Mehrere Felder werden in einem einzelnen Patch koalesziert (`createDebouncedSaver` puffert pro Tick und feuert atomar). Der Raw-JSON-Editor (für `limit_bars[]`, `sensitive_file_patterns[]`) hat einen separaten „Anwenden"-Knopf, weil unfertiges JSON sonst die `settings.json` verkrüppeln würde.

@@ -18,10 +18,13 @@ interface Props {
   projectId: string | null;
   // Set der relPaths, deren Datei-Tab gerade dirty ist — für die M-Pille.
   dirtyRelPaths: Set<string>;
+  // Sprint 9 (C3) — relPath des aktiven File-Tabs für die selected-Markierung;
+  // null, wenn Diff-Tab aktiv ist oder kein File-Tab offen ist.
+  selectedRelPath: string | null;
   onOpenFile: (relPath: string, label: string) => void;
 }
 
-export function RightPaneFilesPanel({ projectId, dirtyRelPaths, onOpenFile }: Props) {
+export function RightPaneFilesPanel({ projectId, dirtyRelPaths, selectedRelPath, onOpenFile }: Props) {
   const [tree, setTree] = useState<FsTreeNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,6 +67,13 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, onOpenFile }: Pr
 
   return (
     <div className="td-panel td-files">
+      {/* Sprint 9 — Header-Stil an die linke Sidebar angeglichen:
+          `td-panel-head` mit `td-panel-title` (22 px Display) statt der
+          kleinen Caption-Variante. Macht den Right-Stack visuell konsistent
+          mit der Sidebar. */}
+      <div className="td-panel-head">
+        <div className="td-panel-title">Dateien</div>
+      </div>
       <div className="td-files-head">
         <div className="td-files-search">
           <span aria-hidden>⌕</span>
@@ -71,7 +81,10 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, onOpenFile }: Pr
             type="text"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Dateien filtern…"
+            /* Sprint 9 (C6) — Placeholder mit Phase-2-Hinweis nach Vorlage
+               (components.jsx 254). Inhaltssuche selbst landet in Phase 2 —
+               der Hinweis macht den künftigen Pfad sichtbar. */
+            placeholder="Dateien filtern… (?Text zur Inhaltssuche, Phase 2)"
             spellCheck={false}
           />
           {filter !== '' && (
@@ -109,6 +122,7 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, onOpenFile }: Pr
             expanded={expanded}
             expandAll={expandAll}
             dirtyRelPaths={dirtyRelPaths}
+            selectedRelPath={selectedRelPath}
             onToggle={(p) => {
               setExpanded((prev) => {
                 const next = new Set(prev);
@@ -133,6 +147,7 @@ interface TreeNodeProps {
   expanded: Set<string>;
   expandAll: boolean;
   dirtyRelPaths: Set<string>;
+  selectedRelPath: string | null;
   onToggle: (relPath: string) => void;
   onOpenFile: (relPath: string, label: string) => void;
 }
@@ -143,6 +158,7 @@ function TreeNode({
   expanded,
   expandAll,
   dirtyRelPaths,
+  selectedRelPath,
   onToggle,
   onOpenFile,
 }: TreeNodeProps) {
@@ -168,6 +184,7 @@ function TreeNode({
               expanded={expanded}
               expandAll={expandAll}
               dirtyRelPaths={dirtyRelPaths}
+              selectedRelPath={selectedRelPath}
               onToggle={onToggle}
               onOpenFile={onOpenFile}
             />
@@ -177,10 +194,11 @@ function TreeNode({
   }
   // File
   const isDirty = dirtyRelPaths.has(node.relPath);
+  const isSelected = selectedRelPath === node.relPath;
   const kind = fileKind(node.name);
   return (
     <div
-      className={`td-file ${kind}`}
+      className={`td-file ${kind}${isSelected ? ' selected' : ''}`}
       style={indent}
       onClick={() => onOpenFile(node.relPath, node.name)}
       title={node.relPath}

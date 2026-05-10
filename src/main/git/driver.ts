@@ -38,15 +38,41 @@ export interface GitDriver {
 export const realGitDriver: GitDriver = {
   async status(repoPath: string): Promise<GitStatusResult> {
     const git = simpleGit(repoPath);
-    const status = await git.status();
-    // simple-git's StatusResult.files hat working_dir + index als Single-Char-Codes.
-    // Wir mappen sie auf unser semantisches Set, damit der Renderer keinen
-    // Git-Code-Knowhow braucht.
-    const files: GitFileChange[] = status.files.map((f) => ({
-      path: f.path,
-      worktreeStatus: mapStatusCode(f.working_dir),
-      indexStatus: mapStatusCode(f.index),
-    }));
+    // Sprint 9 — Status + Line-Counts in einem Roundtrip. `diffSummary()`
+    // ruft `git diff --numstat` auf und liefert pro Datei die Insertions/
+    // Deletions. Untracked Files erscheinen nicht im diff-Output — die
+    // bekommen `null` als Counts.
+    const [status, summary] = await Promise.all([
+      git.status(),
+      git.diffSummary().catch(() => ({ files: [] as Array<{ file: string; insertions?: number; deletions?: number; binary?: boolean }> })),
+    ]);
+    const countsByPath = new Map<string, { insertions: number | null; deletions: number | null }>();
+    for (const f of summary.files) {
+      // `summary.files` ist ein Union: TextFile (insertions/deletions) | BinaryFile
+      // (binary=true, keine Counts) | NameStatusFile (rename/copy ohne numstat).
+      // Type-Narrowing per `in`-Operator statt Cast, sonst stolpert TS über den Union.
+      if ('binary' in f && f.binary) {
+        // PNGs/PDFs etc. — numstat liefert `-`, wir markieren als unmessbar.
+        countsByPath.set(f.file, { insertions: null, deletions: null });
+      } else if ('insertions' in f && 'deletions' in f) {
+        countsByPath.set(f.file, {
+          insertions: f.insertions ?? 0,
+          deletions: f.deletions ?? 0,
+        });
+      }
+      // NameStatusFile-Pfad (selten — nur bei rename/copy ohne diff-Body)
+      // bleibt ohne Eintrag → File bekommt unten `null`/`null` als Counts.
+    }
+    const files: GitFileChange[] = status.files.map((f) => {
+      const counts = countsByPath.get(f.path);
+      return {
+        path: f.path,
+        worktreeStatus: mapStatusCode(f.working_dir),
+        indexStatus: mapStatusCode(f.index),
+        insertions: counts?.insertions ?? null,
+        deletions: counts?.deletions ?? null,
+      };
+    });
     // status.current ist null bei detached HEAD — dann fallen wir auf die kurze SHA zurück.
     let branch = status.current ?? '';
     if (!branch) {

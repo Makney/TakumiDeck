@@ -20,6 +20,36 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Season 9 — Pre-Release-QA (UI-Vergleich gegen Design-Vorlage)
+
+**Ziel:** Sprint-9-Slot 1: systematischer Pixel-Pass durch alle sichtbaren Komponenten gegen `docs/design/claude-export/`. Findings-Liste produzieren, kritische Befunde direkt fixen, kosmetische je nach Daily-Driver-Schmerz priorisieren, Spec-Erweiterungen kategorisieren. Sprint-9-Slot 2 („Code-Review + Debugging") bleibt eigene Mini-Season, war hier nicht im Scope.
+
+**Ergebnis:** Zwei vollständige Findings-Pässe (`SPRINT9_UI_FINDINGS.md` initial, `SPRINT9_LIVE_VERGLEICH.md` nach den Fixes). 5 kritische A-Punkte + 20 kosmetische B-Punkte + 6 C-Punkte (UI-Slots) + 6 D-Punkte (Naming-Refactor + Settings-Layout) + 5 Live-Findings (L1–L5) — alle umgesetzt außer den explizit Phase-2-deklarierten (Reset-Berechnung, Detail-Pfeil-Button, Heatmap, Toast-Aufrufer, dynamischer Status-Slot, HistoryPane-Filter-Klassen). Plus: Verlauf-UX-Refactor mit `HistoryActionModal`, per-Bar `reset_schedule`-Schema (UI-Slot), Terminal-Resize-Pipeline robuster (RAF + Window-Resize-Backup + cols-Estimate beim Resume), Mid-Spalten-Verteilung zurück auf 1fr/1fr (Sprint-8-Pivot 1.6fr/1fr widerrufen). Tests: 396 grün durchgängig — kein Pure-Logik-Test war für die CSS/Layout-Fixes nötig, der einzige Test-Touch (`git-ipc.test.ts`) hat die `insertions`/`deletions`-Felder im `GitFileChange` mitgezogen.
+
+**Gut gelaufen:**
+
+- **Findings-Listen-Pattern hat den Sprint-Scope sauber strukturiert.** Vor dem ersten Code-Touch eine vollständige Findings-Tabelle nach Kategorien (🔴/🟡/🔵/⚪/⚡) — User entscheidet sich pro Block (alle A, alle B, alle C, alle D), statt jedes Finding einzeln zu diskutieren. Die zweite Findings-Liste (`SPRINT9_LIVE_VERGLEICH.md`) hat 5 Live-Findings nach den Fixes erfasst und wieder denselben Block-Modus genutzt. Keine Variants-Müdigkeit — nur 4 Variants im ganzen Sprint (A1, B17, D5, Reset-Scope/Backend).
+- **Vorlage-Treue als Konfliktauflöser.** Working-Rule „bei Konflikt mit Vorlage gewinnt die Vorlage" hat mehrere Variants implizit gelöst: Tab-Optik (Window-Frame → Vorlage), Mid-Spalten-Verteilung (1fr/1fr → Vorlage), Settings-Modal-Layout (2-Spalten-Sidebar → Vorlage), UsageBar (Zeile statt Card → Vorlage). User hat in allen vier Fällen die Vorlage-Variante gewählt; die Working-Rule war im Sprint 6 als „Sidebar 1:1 aus Vorlage" angelegt worden — zieht durch.
+- **Mehrstufige Diagnosen für unsichtbare PlanPane-Bars.** Drei CSS-Iterationen + ein `<button>`-UA-Default-Fund: `bg-3` zu nah am Panel-bg → `line-2`; flex-Kollaps → `flex-shrink: 0`; Track-min-content-Width durch UA-Default → `align-items: stretch` + `width: 100 %` + `box-sizing: border-box`. Lehre: bei `<button>`-Elementen mit `display: flex` immer `align-items: stretch` + `box-sizing: border-box` explizit setzen, nie auf UA-Defaults vertrauen.
+- **xterm-Resize-Pipeline durchdiagnostiziert.** ResizeObserver + Window-Resize + RAF + cols-Estimate — vier Schichten, jede mit klarem Begründungs-Kommentar. Plus die Erklärung, dass xterm.js' Reflow zeichenbasiert ist und claude-code's hard-newline-Output beim resize nicht nachformatiert. User-Verständnis durch transparente Antwort: das ist Architektur-Eigenschaft des Terminal-Protokolls, kein Bug.
+- **Doku-Verzicht bis zur Trigger-Phrase.** Architektur 6.0.3-Hover-Pattern-Klärung blieb als CSS-Kommentar dokumentiert, nicht als Architektur-Doc-Edit. Working Rule 3 hat geblockt; CSS-Kommentar trägt die pragmatische Lesart bis zur Trigger-Phrase. Lehre: bei Sprints, die *implizite* Architektur-Klärungen produzieren, am Ende explizit fragen, ob das ins Architektur-Doc soll.
+
+**Gebremst durch:**
+
+- **PlanPane-Bars unsichtbar — drei Render-Iterationen mit User-Feedback.** Erste zwei Fixes haben jeweils das CSS verbessert, aber das echte Problem (UA-Default `<button>`) erst beim dritten Pass identifiziert. ~15 Minuten Diagnose-Overhead. Lehre: bei „Element wird nicht gerendert"-Symptomen früher in DevTools schauen (computed `width` der `.td-usage-bar-track`) statt CSS-Werte zu raten.
+- **Container-Query greifte nicht zuverlässig.** `@container term-col (max-width: 620px)` definiert + getestet — bei ~580 px Mid-Column-Breite hat die Query im Live-Build nicht durchgeschlagen. Fallback-Lösung mit `min-width: 240px` + `flex-wrap: wrap` ist robuster und erschließt sich ohne Container-Query-Knowhow. Container-Query bleibt als Schutznetz, ist aber redundant.
+- **Settings-Bestands-User mit altem `weekly_design`-Bar.** Default-Settings wurden geändert (Bar-Liste auf 3 Bars reduziert, „Nur Sonnet" → „Wöchentlich · Nur Sonnet"), aber existing settings.json wird nicht migriert. User mit Bestand sehen weiter 4 Bars. Pragmatische Doku im SPRINT-9-Block der CHANGELOG; saubere Lösung wäre ein Migrations-Pass beim Settings-Load (Phase-2-Slot, falls weitere Default-Drifts kommen).
+- **Findings-Doku-Drift zwischen Sprint-Plan und tatsächlich Umgesetztem.** Initial-Sprint-Briefing hatte „nur UI-Vergleich, kein Code-Review". User hat aber während des Sprints zusätzlich gewünscht: Verlauf-UX-Refactor (HistoryActionModal), per-Bar reset_schedule, Terminal-Resize-Verbesserungen, ctx-Slot in Action-Bar. Alles passte semantisch in „Pre-Release-QA", aber überdehnte den UI-Vergleich-Scope. Lehre: bei Sprints mit emergentem User-Feedback früh entscheiden, ob das in den aktuellen Sprint kommt oder in einen Folge-Slot — bei Sprint 9 war's gerechtfertigt (alles direkt mit dem UI-Vergleich verzahnt), aber das Pattern grenzt an Scope-Creep.
+
+**Für nächste Season:**
+
+- **Sprint-9-Slot 2 „Code-Review + Debugging" ist offen.** Roadmap-Eintrag in PHASE1.md noch ⛔. Realistisch: eigene Mini-Season nach einem Daily-Driver-Test (z.B. eine Woche TakumiDeck statt claude-CLI). Schmerzpunkte sortieren sich von selbst.
+- **Settings-Migrations-Pass beim Load** wird interessant, sobald weitere Default-Drifts kommen. Aktuell drei sichtbare Drifts: `limit_bars`-Liste (Sprint 9), `default_limit` 1 M → 200 k (Sprint 8), Sensitive-Pattern-Defaults. Phase-2-Slot, falls die Bestands-Settings-User-Liste wächst.
+- **Phase-2-Reset-Berechnung ist UI-Slot-ready.** `LimitBar.reset_schedule` im Schema, JSON-Editor-Hint, Tooltip-Render — alles da. `usage:window`-Aggregat braucht nur den Switch von rolling-N-Stunden auf reset-relativ. Realistisch ~1 Tag Backend-Arbeit + ein paar Tests.
+- **Findings-Listen-Pattern für Sprint 10/11 wiederverwendbar.** `docs/code-review/`-Slot ist etabliert. Bei jedem Pre-Release-QA-Pass eine SPRINT-N-Findings-Liste anlegen, kategorisch durchgehen, mit Block-Modus (alle A / alle B / alle C / alle D) abarbeiten. Hat in Sprint 9 ~30 Findings effizient strukturiert.
+
+---
+
 ## Season 8 — Polish (MVP-Abschluss von Phase 1)
 
 **Ziel:** Sprint-8-Polish-Phase: Settings-Dialog (Architektur 6.9, 6 Tabs mit Mix Form-Inputs + Raw-JSON-Editor), Header-Bar (Architektur 6.0, td-titlebar mit Brand/Meta/Window-Controls), Crash-Recovery-Reconciliation-Pass, Datei-Tab-Persistenz pro Projekt, Sensitive-Pattern-Konfigurierbarkeit, Modell-Limit-Defaults auf 200 k, Tastatur-Hints, Error-Handling-Pässe (FS-Permission/SQLite-Locking/claude-Health), `SESSION_NO_CLAUDE_UUID`-Cosmetic-Hint, Build + manuelle GitHub-Release-Anleitung. Plus alle drei TECH_SCHULDEN-Einträge aus Sprint 7 aufgelöst (Datei-Tabs, Sensitive-Patterns, Modell-Limits).

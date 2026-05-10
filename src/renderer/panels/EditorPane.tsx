@@ -184,14 +184,10 @@ export function EditorPane() {
         )}
       </div>
 
-      {tabs.length > 0 && (
-        <QuickAccessFooter
-          entries={quickAccess}
-          openIds={new Set(tabs.map((t) => t.id))}
-          onPick={(relPath, label) => void openFile(projectId, relPath, label)}
-          onOpenDiff={() => openDiffTab(projectId)}
-        />
-      )}
+      {/* Sprint 9 — QuickAccessFooter unter dem Editor entfernt: der
+          rechte FilesPanel-Tree übernimmt die Schnellzugriff-Funktion.
+          QuickAccessEmpty bleibt als Empty-State im Body, weil es ohne
+          offene Tabs noch eine sinnvolle Anker-Liste rendert. */}
     </div>
   );
 }

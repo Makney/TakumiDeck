@@ -425,7 +425,7 @@ Letzter Schliff vor dem MVP-Release. Sprint 8 hat den Code fertig — Sprint 9
 prüft die Qualität gegen die Design-Vorlage und räumt Code-Schulden auf,
 die bei den schnellen Sprint-Iterationen liegen geblieben sind.
 
-### Feature: UI-Vergleich gegen Design-Vorlage ⛔
+### Feature: UI-Vergleich gegen Design-Vorlage ✅
 
 Systematischer Pass durch jede sichtbare Komponente und Abgleich gegen
 die Design-Handoff-Spec in `docs/design/claude-export/`.

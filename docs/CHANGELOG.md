@@ -17,6 +17,66 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-10 — Season 9: Pre-Release-QA — UI-Vergleich gegen Design-Vorlage
+
+### Was jetzt geht
+
+- **Vorlage-Treue durchgängig.** Pixel-Pass durch alle sichtbaren Komponenten gegen `docs/design/claude-export/` mit zwei Findings-Listen (`docs/code-review/SPRINT9_UI_FINDINGS.md` initial, `SPRINT9_LIVE_VERGLEICH.md` nach den Fixes). Display-Font ist jetzt überall im richtigen Slot: 22 px für Sidebar-Sektionen (Projekte/Aktive Sessions/Verlauf/Notizen) und Modal-Titles, 28 px für die PlanPane-Headline, klein-uppercase nur für Captions. Mid-Spalten-Verteilung zurück auf 1fr/1fr (Sprint-8-Pivot 1.6fr/1fr widerrufen, Editor war zu schmal).
+- **Window-Frame-Tab-Optik in der Mid-Spalte.** Tabs sehen jetzt aus wie nahtlos angesteckte Browser-Tabs (`border-radius: 6px 6px 0 0`, `bottom: -1px`, active-Tab versteckt seinen unteren Border mit panel-Farbe). Tab-Add-Button ohne fixe Höhe, fließt im flex-stretch mit. Status-Dot bleibt drin (bewusste Spec-Erweiterung — Multi-Tab-Übersicht).
+- **KeyboardHints in der richtigen Hierarchie.** Vorlage hatte die Hints als Footer im `td-term-input-wrap`, ohne Trennlinie — jetzt sitzt unsere `td-keyboard-hints`-Sektion zwischen xterm und Action-Bar (Reihenfolge xterm → Hints → ActionBar), ohne dashed Border. ActionBar's `border-top` übernimmt den Trenner.
+- **Action-Bar mit ctx-Slot.** `ctx`-Bar zwischen Pillen und Status, live verkabelt mit `useUsageStore.contextBySession[sessionId]`. Bei fehlenden Daten oder 0 Tokens halb-transparent (`opacity: 0.5`). `flex: 1 1 240px` mit `min-width: 240px` löst zusammen mit `flex-wrap: wrap` das Wrapping-Problem: bei schmalen Mid-Spalten wandert ctx + Status auf eine zweite Zeile statt zur Unsichtbarkeit zu schrumpfen. Container-Query als Schutznetz.
+- **PlanPane-Bars sichtbar mit klarer Füll-Anzeige.** Track 4 → 12 px mit `box-sizing: border-box` + 1-px-Border (`line-3`) gegen den Panel-Hintergrund + `min-height: 12 px` als Kollaps-Schutz + `width: 100 %` + `align-items: stretch` auf der UsageBar selbst (`<button>`-UA-Default schrumpfte den inneren Track sonst auf min-content). UsageBar als Vorlage-treue Zeile statt Card (B17-Variant-A). 3 Bars verteilen sich gleichmäßig auf die 300-px-Zeile via `flex: 1 1 0; justify-content: center`. „Wöchentlich · Claude Design"-Default raus (Web-App-eigenes Limit), „Nur Sonnet" → „Wöchentlich · Nur Sonnet".
+- **Diff-Viewer hübscher.** Header größer (font 11 → 13 px, Branch 14 px bold-accent, +/~/−-Counts als farbige Badges mit Background + Border). Per-File-Line-Counts (`+12 −3`) rechts neben dem Pfad — `realGitDriver.status` ruft jetzt parallel `git diffSummary()` auf und merged die Insertions/Deletions in `GitFileChange`. Pfad in `dir`/`name` gesplittet (Folder dim, Filename hell, active = accent), `direction: rtl` auf dem Folder-Span sodass beim Truncate der **letzte** Folder + Filename sichtbar bleiben, nicht der Anfang. Mark als Badge (Background + Border je Status).
+- **MD-Editor mit Soft-Wrap und größerer Schrift.** `EditorView.lineWrapping` im CodeMirror — lange Markdown-Zeilen brechen visuell, das Doc bleibt unverändert. CodeMirror-font 12.5 → 13.5 px in MD-Editor und Diff-View, Toolbar an Diff-Header-Maße angeglichen (font 13 px, padding 10/14, Pfad in `text` statt `text-dim`). Schnellzugriff-Footer-Pills entfernt — der rechte FilesPanel-Tree übernimmt die Funktion.
+- **FilesPanel-Header konsistent.** Caption-Header in der rechten Spalte raus, durch `td-panel-head` + `td-panel-title` (22 px Display) ersetzt — visuell konsistent mit Projekte/Aktive Sessions/Verlauf in der linken Sidebar. `.td-file.selected` markiert die Datei, die im EditorPane gerade als aktiver Tab offen ist (Spalte 4 ↔ Spalte 3 visuell verbunden). Filter-Placeholder mit Phase-2-Hinweis: „Dateien filtern… (?Text zur Inhaltssuche, Phase 2)".
+- **Settings-Modal als 2-Spalten-Sidebar (V D5-A).** Horizontale Tab-Bar raus, klassisches Preferences-Layout: 180 px Sidebar mit `td-list-item`-Klassen (App-konsistent), 1 fr Content. Inner-Scroll auf der Content-Seite, Outer-Scroll deaktiviert (sonst Doppel-Scrollbar). Token-Tracking-Tab ergänzt: JSON-Editor-Hint erklärt das neue `reset_schedule`-Feld pro Bar (UI-Slot, Backend Phase 2).
+- **Per-Bar Reset-Schedule (UI-Slot).** `LimitBar.reset_schedule?: { day_of_week, hour, minute }` (Wochentag 0=Sonntag–6=Samstag). UsageBar-Tooltip zeigt „Reset: Montag 00:00 (Phase-2-Backend)" wenn gesetzt. zod-Schema validiert, im JSON-Editor des Settings-Dialogs editierbar. Echte Aggregation berücksichtigt den Wert noch nicht — `window_hours`-Rolling bleibt aktiv bis Phase 2 nachzieht.
+- **HistoryActionModal — Klick auf Verlauf-Eintrag öffnet kleines Auswahl-Modal.** Drei Aktionen: ↻ Resume (Tab anlegen + claude resumen, mit Inline-Confirm-Pattern bei Archiv), ⌧ Archivieren, → Im Verlauf öffnen (Standard-HistoryPane-Replace-View). Vorher öffnete der Klick direkt die HistoryPane, der User musste die Session dort nochmal auswählen. Footer-Button „→ Alle anzeigen" in der Sidebar-Verlauf-Box öffnet weiterhin die HistoryPane-Tabelle.
+- **C-Punkte als UI-Slots vorbereitet.** Toast-Komponente mit `useUiStore.flashToast(msg)` (Phase-2-Aufrufer; UI ist da, Trigger-Stellen folgen). StatsPane-Range-Toggle „Alle/30d/7d" mit lokalem State (Phase-2-Aggregations-Filter). TitleBar-System-Status-Slot „Terminal · P90 192 h" rechts vor den Icons (statisch, Phase-2-dynamisch). `td-file.selected` und `td-files-clear` (×-Button) als kleine UX-Pluspunkte direkt funktional.
+- **Naming-Drift-Refactor (D-Punkte).** Klassen an Vorlage angeglichen: `.td-app-main` → `.td-main`, `.td-right-stack` → `.td-col-right-stack`, `td-stats-pane` → `td-dash-pane`/`td-dash-head`/`td-dash-tabs`/`td-dash-range`/`td-dash-tab`/`td-ueb-stats`/`td-stat .lbl/.val/.sub`. NewSessionModal + TemplatesModal auf `td-field`/`td-radio-row`/`td-radio` (HistoryPane-Filter behält Sprint-6-Klassen, weil Status-Filter Multi-Select-Semantik haben).
+- **Token-Format einheitlich.** `fmtTokens(n)` (k/M/G) als shared util in `components/fmtTokens.ts`. Action-Bar-ctx und StatsPane-Karten nutzen denselben Helper. Vorher zeigten die Karten 9-stellige Zahlen (`277.250.657 Tokens`) — jetzt `277.3 M`.
+- **Terminal-Resize-Pipeline robuster.** ResizeObserver + Window-Resize-Listener triggern fit() via `requestAnimationFrame` (DOM-Layout final, kein stale `clientWidth`). `rafScheduled`-Guard koalesziert Resize-Bursts auf einen fit-Call pro Frame. Initial-Spawn auch nach RAF-Tick, damit cols/rows zur PTY mit echten Container-Maßen übermittelt werden statt mit dem 80-Default. xterm-eigene Scrollbar gestylt (8 px, td-line-2-Thumb) — der weiße Browser-Default-Balken ist weg.
+- **`estimateTerminalCols(fontSize)` für den Resume-Pfad.** `claude --resume <id>` wurde mit `cols: 80, rows: 24` hardcoded gespawnt — bei Mid-Column < 80 cols schnitt xterm den Welcome-Output rechts ab (Buffer wird nicht reflowt). Der neue Helper misst `.td-col-mid-top.clientWidth` und teilt durch ~0.6 × fontSize, sodass claude von Anfang an mit der richtigen Spalten-Zahl spawnt. TabContainer.handleResume und HistoryActionModal nutzen ihn.
+- **Sidebar-Höhe gleichmäßig + Hover-Differenzierung.** Projekte/Aktive Sessions/Verlauf bekommen alle `flex: 1 1 0` (vorher: Aktive-Sessions ungebremst, Verlauf 280-px-Cap, Projekte content-height — sehr ungleich). `.td-list-item:hover` Background-Wechsel ohne Border (sonst nicht von Active zu unterscheiden), `.active` mit `var(--td-accent)`-Border (statt accent-line) für eindeutigen Aktiv-Status.
+
+### Umgesetzte Entscheidungen
+
+- **Findings-Ladder durchgängig: 5 kritisch + 20 kosmetisch + 6 Spec-Erweiterungen + 6 Spec-Klärungen, dazu 5 Live-Findings (L1–L5).** Alle direkt gefixt außer denen, die explizit Phase 2 sind (PlanPane → Detail-Pfeil-Button, StatsPane-Heatmap, Reset-Berechnung). Variants nur für nicht-trivialen Scope: A1 (Tab-Optik Window-Frame vs. Pillen — Vorlage gewann nach Working-Rule „bei Konflikt gewinnt die Vorlage"), B17 (UsageBar Card → Zeile, Variant A), D5 (Settings-Modal-Layout Variant A), Reset-Scope (pro Bar) + Backend-Logik (UI-Slot, Phase 2).
+- **Memory-Konvention-Stand: 4 aktive Memories tragen weiter, kein Sprint-9-Reminder nötig.** UX-Defaults: konvenient vor traditionell hat in Sprint 9 mehrfach gegriffen (Tab-Optik nicht für Pillen-Bequemlichkeit gehalten, sondern Vorlage; UsageBar als Zeile statt Card; Settings-Sidebar statt horizontale Tabs). StrictMode-Guard war für die UsageBar-Hover-Stabilisierung relevant.
+- **Vorlage-Konflikt mit Architektur 6.0.3 (Hover-Pattern) als CSS-Kommentar dokumentiert.** Architektur-Regel sagt „kein Background-Change", Vorlage und Impl haben aber bei Listen-Einträgen einen bg-Wechsel. Pragmatische Lesart: Regel gilt für **Buttons + Pills + Action-Targets**, nicht für **Listen-Einträge mit Aktiv-State**. CSS-Kommentar bei `.td-list-item:hover` markiert die Klärung — echtes Architektur-Doc-Update wurde mangels Trigger-Phrase im Sprint nicht durchgeführt; bei Bedarf nachziehen.
+
+### Mid-Sprint-Anpassungen
+
+- **PlanPane-Bars waren mehrere Iterationen lang nicht sichtbar.** Erst Background `bg-3` (zu nah am Panel-bg) → auf `line-2` umgestellt. Dann `flex-shrink: 0` ergänzt (Track schrumpfte in der flex-column-UsageBar). Dann `<button>`-UA-Default-Diagnose: ohne `align-items: stretch` quetschen Browser-Defaults Row und Track auf min-content-Width — die Bar erschien als 1-px-vertikale-Linie am linken Rand. Final-Fix: `align-items: stretch` + `width: 100 %` + `box-sizing: border-box` auf UsageBar, `width: 100 %` + 1-px-Border auf Track.
+- **Action-Bar-Container-Query greifte nicht zuverlässig.** `@container term-col (max-width: 620px)` definiert, aber im Live-Test bei ~580 px Mid-Column-Breite nicht durchgeschlagen. Pragmatischer Fix: `min-width: 0` auf der ctx-Bar war das eigentliche Problem (verhinderte das Wrapping, weil die Bar bis 0 schrumpfen durfte). `flex: 1 1 240px` + `min-width: 240px` triggert jetzt das `flex-wrap: wrap` automatisch. Container-Query bleibt als Schutznetz.
+- **Resume mit hardcoded `cols: 80, rows: 24` war seit Sprint 6 latent.** Wurde erst beim UI-Vergleich sichtbar, weil bei der Vorlage-konformen 1fr/1fr-Verteilung die Mid-Column auf den meisten User-Bildschirmen schmaler als 80 cols ist. Helper extrahiert (`estimateTerminalCols`), TabContainer + HistoryActionModal angepasst.
+- **Verlauf-Quickliste-Klick-UX zwei Iterationen.** Erste Version: Klick → setHistorySelected + setMainView('history'). User-Feedback: muss Session in der Tabelle nochmal auswählen. Zweite Version: kleines Auswahl-Modal mit Resume/Archive/Verlauf-Öffnen direkt aus dem Sidebar-Klick. Footer-Button „Alle anzeigen" deckt den Tabellen-Pfad ab.
+
+### Bonus-Bugfixes unterwegs
+
+- **xterm-Scrollbar gestylt.** Browser-Default zeigte einen weißen vertikalen Balken im Terminal-Bereich. `.td-terminal-canvas .xterm-viewport::-webkit-scrollbar` mit 8 px / `line-2` / `line-3`-Hover dezent in den td-Tönen.
+- **Tab-Bar-Scrollbar auch gestylt.** `.td-tabs::-webkit-scrollbar` analog 4 px / `line-2`. Plus `overflow-y: hidden`, sodass nur horizontal gescrollt wird (kein vertikaler weißer Streifen mehr).
+- **Modal-Footer mit `bg-2`.** War vorher flach am Body — Vorlage rendert Footer als Toolbar. `padding: 10/16` plus eigener Background.
+- **NotesPanel-Empty-State ohne Italic.** Vorlage rendert Plain inline-Style ohne Italic — Drift gefixt.
+- **`td-titlebar-meta-item` Color auf `text-mute`.** War `text-dim` (kontrastreicher), Vorlage hat `text-mute` — zarter, weniger ablenkend.
+
+### Offen geblieben (bewusst Phase 2/5+)
+
+- **Backend-Berechnung des `reset_schedule`** — UI-Slot da, Aggregation rolling 168 h. Phase 2: `usage:window` rechnet vom letzten Reset-Zeitpunkt statt rolling.
+- **PlanPane → Detail-Pfeil-Button** — UsageDetailModal öffnet pro Bar-Klick statt global. Phase 2.
+- **StatsPane-Heatmap + 8 Mini-Karten** — Skeleton mit 3 Karten. Phase 2 (Architektur 6.4).
+- **Action-Bar Reset-Zeit-Hinweis pro Bar im Tooltip** — implementiert, aber Backend liefert keine echte „Reset in X h"-Berechnung. Phase 2.
+- **Toast-Aufrufer** — UI + Store ready, aber kein Trigger ruft `flashToast()`. Phase 2 verwendet's z.B. nach Session-Start, Template-Send, Archive.
+- **TitleBar-System-Status dynamisch** — aktuell statisch „Terminal · P90 192 h". Phase 2 reagiert auf Mid-Pane-Wechsel.
+- **HistoryPane-Filter-Klassen-Refactor** — `td-form-pills`/`td-form-input` bleiben aus Multi-Select-Gründen erhalten. Phase 2 könnte eigene `td-history-filter-*`-Klassen einführen.
+- **Sprint-9-Slot „Code-Review + Debugging"** — separater Eintrag in PHASE1.md, in Sprint 9 nicht angefasst (Scope war UI-Vergleich). Bleibt als ⛔-Eintrag, kommt eigenständig in Phase 2 oder als kurzer Sprint 10.
+
+### Pre-Release-Status
+
+Phase 1 hat zwei Sprint-9-Slots — UI-Vergleich ist mit Sprint 9 ✅, Code-Review + Debugging bleibt offen (eigene Mini-Season). Tests: 396 grün. Suite-Lauf ~1.2 s, weiter komfortabel. `npm run make` produziert weiter Setup + Portable-ZIP parallel.
+
+---
+
 ## 2026-05-10 — Season 8: Polish — MVP-Abschluss
 
 ### Was jetzt geht

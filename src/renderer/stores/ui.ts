@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ClaudeMdFrontmatter } from '@shared/types';
+import type { ClaudeMdFrontmatter, SessionHistoryEntry } from '@shared/types';
 
 // Renderer-UI-State (Zustand-Store, Sprint 4 + Sprint-5-Erweiterungen).
 //
@@ -78,6 +78,17 @@ interface UiStoreState {
   // Sprint 8 (Architektur 6.9): Settings-Modal-Trigger via Ctrl+K oder
   // Settings-Icon im neuen Header. Globaler Zustand wie die anderen Modals.
   showSettingsModal: boolean;
+  // Sprint 9 (C2) — Toast-Slot. UI-Slot vorbereitet, damit Phase-2-Aufrufer
+  // nur `flashToast(msg)` rufen müssen. Aktuell triggert die App den Toast
+  // selbst nicht — der Slot bleibt leer, bis Phase-2-Stellen ihn nutzen
+  // (z.B. „Session gestartet", „Template via bracketed-paste gesendet").
+  toastMessage: string | null;
+  // Sprint 9 — Klick auf einen Verlauf-Eintrag in der Sidebar öffnet jetzt
+  // ein kleines Action-Modal (Resume / Archivieren / Im Verlauf anzeigen),
+  // statt direkt die HistoryPane-Replace-View zu öffnen. Der ganze Entry
+  // landet im Store, damit das Modal alle Anzeige-Daten direkt rendern
+  // kann, ohne erneut über die history-IPC zu laden.
+  historyActionEntry: SessionHistoryEntry | null;
 
   setActiveProject: (projectId: string | null, view?: MainView) => void;
   setMainView: (view: MainView) => void;
@@ -89,7 +100,16 @@ interface UiStoreState {
   hydrateFromStorage: () => void;
   loadActiveProjectFrontmatter: (projectId: string) => Promise<void>;
   setDashboardDetailBar: (barId: string | null) => void;
+  flashToast: (message: string, durationMs?: number) => void;
+  setHistoryActionEntry: (entry: SessionHistoryEntry | null) => void;
 }
+
+// Sprint 9 (C2) — modulares Toast-Timeout, kein Store-State (würde sonst
+// jeden Render unnötig invalidieren). Beim erneuten flashToast wird der
+// vorherige Timer abgebrochen, damit zwei schnelle Aufrufe nicht zu einem
+// Geist-Toast führen, der nach Abklingen des zweiten Toasts noch kurz
+// erscheint.
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useUiStore = create<UiStoreState>((set, get) => ({
   activeProjectId: null,
@@ -102,6 +122,8 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
   showTemplatesModal: false,
   showPreCommitModal: false,
   showSettingsModal: false,
+  toastMessage: null,
+  historyActionEntry: null,
 
   setActiveProject: (projectId, view) => {
     const state = get();
@@ -189,5 +211,21 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
 
   setDashboardDetailBar: (barId) => {
     set({ dashboardDetailBarId: barId });
+  },
+
+  flashToast: (message, durationMs = 2200) => {
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
+    set({ toastMessage: message });
+    toastTimer = setTimeout(() => {
+      toastTimer = null;
+      set({ toastMessage: null });
+    }, durationMs);
+  },
+
+  setHistoryActionEntry: (entry) => {
+    set({ historyActionEntry: entry });
   },
 }));

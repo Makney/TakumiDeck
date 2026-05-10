@@ -30,6 +30,48 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Reset-Berechnung im usage:window-Aggregat fehlt (Sprint 9 UI-Slot)
+
+**Bereich:** `src/main/usage/window.ts` (oder analog `usage:bucket`-Aggregat)
+
+**Was:** `LimitBar.reset_schedule?: { day_of_week, hour, minute }` ist als Schema-Feld da, der UI-Slot zeigt es im Tooltip („Reset: Montag 00:00 (Phase-2-Backend)"), aber die echte Token-Aggregation rechnet weiter mit dem rolling `window_hours`-Fenster. Setzt der User `reset_schedule` auf Montag 00:00 und ist es Donnerstag, sollte die Bar nur den Verbrauch seit Montag zeigen — sie zeigt aber weiter die letzten 168 h rolling.
+
+**Warum so:** Sprint-9-Scope war UI-Vergleich; die Backend-Änderung am Aggregations-Pfad ist nicht trivial (window-Berechnung muss vom letzten Reset-Zeitpunkt rückwärts rechnen, P90-Schätzung muss vergleichbar bleiben). Plus: ohne reale User-Daten zur Reset-Cadence ist die Aggregations-Änderung Spekulation.
+
+**Risiko:** Wenn User `reset_schedule` setzt, weil er es im UI sieht, und dann erwartet dass die Bar entsprechend neu berechnet — Verwirrung. Tooltip mit `(Phase-2-Backend)`-Suffix mitigiert das, aber nicht 100 %.
+
+**Auflösung:** Phase-2-Sprint: `usage:window`-Aggregat-Logik so erweitern, dass bei gesetztem `reset_schedule` der Window-Start vom letzten Reset-Zeitpunkt berechnet wird statt rolling-N-Stunden. P90-Schätzung kann weiter rolling bleiben (Limit-Quelle bleibt stabil), nur der Verbrauchs-Counter ändert sich. ~1 Tag Backend + Tests.
+
+---
+
+## Container-Query als Schutznetz, eigentlicher Wrap-Mechanismus ist `min-width`-Trick (Sprint 9)
+
+**Bereich:** `src/renderer/styles/app.css` (`.td-tab-container`, `.td-term-bar`)
+
+**Was:** `@container term-col (max-width: 620px)` ist im CSS definiert, hat aber im Live-Test nicht zuverlässig durchgeschlagen. Das tatsächliche Action-Bar-Wrapping läuft über `flex: 1 1 240px; min-width: 240px` auf der `.td-ctx`-Sektion — wenn der Slot nicht in seine Min-Width passt, triggert `flex-wrap: wrap` automatisch. Container-Query bleibt im Code, weil's billig ist und bei sehr schmalen Containern als zweite Schicht greift.
+
+**Warum so:** Schnelle Lösung statt tiefere Diagnose, warum `@container` in Electron-Chromium nicht stabil greift. Möglicherweise ein Layout-Timing-Problem (`container-type: inline-size` + `flex: 1`-Container interagieren nicht 100 % vorhersehbar) oder eine spezielle Electron-Konfig-Eigenheit.
+
+**Risiko:** Bei zukünftigen Action-Bar-Erweiterungen (mehr Pillen) könnte das `min-width: 240px` zu eng sein, und das Wrap-Verhalten unintuitiv werden. Wer den Code liest, sieht zwei Wrap-Mechanismen (Container-Query + min-width-Trick) und muss beide verstehen.
+
+**Auflösung:** Bei der nächsten Action-Bar-Refactor (z.B. wenn die ctx-Bar wirklich konfigurierbare Inhalte bekommt) entweder Container-Query in DevTools sauber durchdebuggen oder den Container-Query-Block ersatzlos entfernen und nur den `min-width`-Trick behalten. Aktuell beide drin = redundant aber sicher.
+
+---
+
+## Settings-Migration für Default-Drifts fehlt (Sprint 9)
+
+**Bereich:** `src/main/settings/store.ts` (Settings-Load)
+
+**Was:** Sprint 9 hat die `limit_bars`-Default-Liste geändert (Claude-Design-Bar entfernt, Sonnet-Label umbenannt). Bestehende `settings.json`-Files werden nicht migriert — User mit Bestand sehen weiter die alte 4-Bar-Liste mit „Nur Sonnet" statt „Wöchentlich · Nur Sonnet". Sprint 8 hatte schon das gleiche Pattern (Modell-Limit-Defaults 1 M → 200 k). Sprint 9 macht es zum dritten Mal sichtbar.
+
+**Warum so:** Migration-Pass beim Settings-Load braucht Schema-Versionierung + Migration-Pipeline (analog zu SQLite-Migrations). Im MVP nicht gebaut, weil Bestands-User-Liste klein ist und manuelle Settings-Korrektur via JSON-Editor zumutbar bleibt.
+
+**Risiko:** Wachsende Bestands-User-Liste mit divergierenden Settings — User mit Sprint-7-Settings sehen Sprint-9-UI nicht so wie geplant. Bei jedem Default-Drift wächst der Erklärungsbedarf in der CHANGELOG.
+
+**Auflösung:** Phase-2-Slot: `SettingsSchema` bekommt einen `version`-Feld (default 1). Settings-Load liest die Version und führt versionierte Migrations durch (analog SQLite `0002_jsonl_offsets.sql`-Pattern, aber als TypeScript-Funktionen). Pro Migration: alte Defaults erkennen, auf neue Werte mappen, Version inkrementieren. Erste Migration könnte die `weekly_design`-Bar entfernen (wenn vorhanden) und das `weekly_sonnet`-Label updaten.
+
+---
+
 ## ✅ Datei-Tabs gehen beim App-Restart verloren — aufgelöst 2026-05-10 (Sprint 8)
 
 **Bereich:** `src/renderer/stores/fileTabs.ts` (`useFileTabsStore.hydrateFromStorage`)

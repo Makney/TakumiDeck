@@ -94,12 +94,13 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
             submit();
           }}
         >
-          <label className="td-form-row">
-            <span className="td-form-label">Titel</span>
+          {/* Sprint 9 (D4) — Form-Klassen an Vorlage angeglichen
+              (`td-field`/`td-radio-row`/`td-radio`, components.jsx 437-454). */}
+          <label className="td-field">
+            <span>Titel</span>
             <input
               ref={titleInputRef}
               type="text"
-              className="td-form-input"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="z.B. Sprint-3-Tabs"
@@ -107,14 +108,14 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
             />
           </label>
 
-          <div className="td-form-row">
-            <span className="td-form-label">Typ</span>
-            <div className="td-form-pills">
+          <div className="td-field">
+            <span>Typ</span>
+            <div className="td-radio-row">
               {SESSION_TYPES.map((t) => (
                 <button
                   key={t}
                   type="button"
-                  className={`td-pill ${type === t ? 'active' : ''}`}
+                  className={`td-radio ${type === t ? 'active' : ''}`}
                   onClick={() => setType(t)}
                 >
                   {TYPE_LABELS[t]}
@@ -124,18 +125,17 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
           </div>
 
           {type === 'feature' && nextSeasonPreview !== null && (
-            <div className="td-form-row td-form-hint">
-              <span className="td-form-label" />
+            <div className="td-field td-form-hint">
+              <span />
               <span className="td-form-meta">
                 Diese Season wäre <strong>#{nextSeasonPreview}</strong>.
               </span>
             </div>
           )}
 
-          <label className="td-form-row">
-            <span className="td-form-label">Modell</span>
+          <label className="td-field">
+            <span>Modell</span>
             <select
-              className="td-form-select"
               value={model}
               onChange={(e) => setModel(e.target.value)}
             >

@@ -295,8 +295,10 @@ function UserInput({ name, label, required, multiline, value, onChange }: UserIn
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const isMissing = required && value.trim() === '';
   return (
-    <label className="td-form-row td-templates-input">
-      <span className="td-form-label">
+    /* Sprint 9 (D4) — Vorlage-Naming `td-field` statt `td-form-row`.
+       `invalid`-Klasse für die Validierungs-Markierung bleibt eigenständig. */
+    <label className="td-field td-templates-input">
+      <span>
         {label}
         {required && <span className="td-form-required"> *</span>}
       </span>
@@ -305,7 +307,7 @@ function UserInput({ name, label, required, multiline, value, onChange }: UserIn
           ref={(el) => {
             inputRef.current = el;
           }}
-          className={`td-form-input td-templates-textarea ${isMissing ? 'invalid' : ''}`}
+          className={`td-templates-textarea ${isMissing ? 'invalid' : ''}`}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={`{{${name}}}`}
@@ -317,7 +319,7 @@ function UserInput({ name, label, required, multiline, value, onChange }: UserIn
             inputRef.current = el;
           }}
           type="text"
-          className={`td-form-input ${isMissing ? 'invalid' : ''}`}
+          className={isMissing ? 'invalid' : ''}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={`{{${name}}}`}

@@ -136,7 +136,7 @@ Letzter Schliff vor MVP-Release.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `UI-Vergleich gegen Design-Vorlage` | ⛔  |           |
+| `UI-Vergleich gegen Design-Vorlage` | ✅  | 2026-05-10 — Zwei-Pass-Findings (`docs/code-review/SPRINT9_UI_FINDINGS.md` + `SPRINT9_LIVE_VERGLEICH.md`). Kritisch + alle B/C/D-Punkte umgesetzt: 22-px-Display-Headlines (Sidebar/Modal), 28-px PlanPane-Headline, Window-Frame-Tabs, KeyboardHints-Hierarchie, ctx-Slot in Action-Bar, Toast-Slot, td-file.selected, Range-Toggle, TitleBar-System-Status, FilesPanel-Caption, Modal-Wide 820 px, Vorlage-Naming (td-main/td-col-right-stack/td-dash-/td-stat/td-field/td-radio), Settings-Modal-Sidebar (V D5-A), HistoryActionModal mit Resume/Archive/Verlauf-Öffnen, per-Bar reset_schedule (UI-Slot), xterm-Scrollbar, Action-Bar-Wrapping mit `flex: 1 1 240px`-min-width-Trick, cols-Estimate beim Resume. |
 | `Code-Review + Debugging`           | ⛔  |           |
 
 ---

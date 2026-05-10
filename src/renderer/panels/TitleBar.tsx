@@ -184,6 +184,17 @@ export function TitleBar({ version }: Props) {
 
       <div className="td-spacer" />
 
+      {/* Sprint 9 (C5) — System-Status-Slot rechts vor den Icons nach Vorlage
+          (app.jsx 276-279). Statisch im MVP — Phase 2 kann den Text dynamisch
+          machen (z.B. „Markdown-Editor" wenn Mid-Pane auf Editor steht,
+          „History" wenn HistoryPane offen ist). */}
+      <span
+        className="td-titlebar-meta-item td-titlebar-system-status"
+        title="App-Modus + P90-Fenster"
+      >
+        Terminal · P90 {/* hardcoded 192 — Phase 2: aus settings.p90_window_hours ziehen */}192 h
+      </span>
+
       <div className="td-icons">
         <button
           type="button"
