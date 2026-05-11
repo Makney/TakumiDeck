@@ -241,7 +241,14 @@ export function MarkdownEditor({
   // selbst lesen wir aus dem Ref, sonst feuert der Effect bei jedem Render
   // (Eltern-Komponente reicht eine Inline-Closure rein) und triggert eine
   // setDirty-Endlosschleife im Zustand-Store.
+  //
+  // Zusätzlicher Ref gegen den Initial-Mount-Pulse: Eltern bekommen `false`
+  // nur, wenn der Wert wirklich von `true` zurückgefallen ist, nicht bei jeder
+  // frischen Mount-Initialisierung.
+  const lastReportedDirtyRef = useRef<boolean | null>(null);
   useEffect(() => {
+    if (lastReportedDirtyRef.current === dirty) return;
+    lastReportedDirtyRef.current = dirty;
     onDirtyChangeRef.current?.(dirty);
   }, [dirty]);
 

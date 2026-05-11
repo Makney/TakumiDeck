@@ -4,8 +4,9 @@ import {
   findSensitiveFiles,
 } from '../../src/renderer/components/sensitiveFiles';
 
-// Sprint 7 — Tests für den Sensitive-File-Detector (Pre-Commit-Modal-Warnung,
-// Q7 Variante A: hartcoded Patterns: .env(.*), secrets.*, *.key, *.pem).
+// Sprint 7 — Tests für den Sensitive-File-Detector (Pre-Commit-Modal-Warnung).
+// Sprint 8 / Bereich-8-Review — Pattern-Set verbreitert: *secret* (Substring),
+// *token* (Substring), id_rsa-Varianten, credentials.{json,yaml,yml}.
 
 describe('isSensitiveFile', () => {
   it('matched .env exact', () => {
@@ -15,11 +16,36 @@ describe('isSensitiveFile', () => {
     expect(isSensitiveFile('.env.development.local')).toBe(true);
   });
 
-  it('matched secrets.* (egal welche Endung)', () => {
+  it('matched alles mit „secret" im Basename', () => {
     expect(isSensitiveFile('secrets.json')).toBe(true);
     expect(isSensitiveFile('secrets.yaml')).toBe(true);
     expect(isSensitiveFile('secrets.toml')).toBe(true);
     expect(isSensitiveFile('secrets.txt')).toBe(true);
+    // Bereich-8-Review: Substring-Match, fängt auch nicht-secrets.-Files
+    expect(isSensitiveFile('mysecrets.txt')).toBe(true);
+    expect(isSensitiveFile('api-secret.txt')).toBe(true);
+    expect(isSensitiveFile('my_secret_config.json')).toBe(true);
+  });
+
+  it('matched alles mit „token" im Basename', () => {
+    expect(isSensitiveFile('auth-token.txt')).toBe(true);
+    expect(isSensitiveFile('github_token.env')).toBe(true);
+    expect(isSensitiveFile('access_token.json')).toBe(true);
+  });
+
+  it('matched SSH-Private-Keys (id_rsa und Varianten)', () => {
+    expect(isSensitiveFile('id_rsa')).toBe(true);
+    expect(isSensitiveFile('id_dsa')).toBe(true);
+    expect(isSensitiveFile('id_ecdsa')).toBe(true);
+    expect(isSensitiveFile('id_ed25519')).toBe(true);
+    // Mit Endung (.pub ist eigentlich der Public-Key — wir warnen lieber zu viel als zu wenig)
+    expect(isSensitiveFile('id_rsa.pub')).toBe(true);
+  });
+
+  it('matched credentials.{json,yaml,yml}', () => {
+    expect(isSensitiveFile('credentials.json')).toBe(true);
+    expect(isSensitiveFile('credentials.yaml')).toBe(true);
+    expect(isSensitiveFile('credentials.yml')).toBe(true);
   });
 
   it('matched *.key', () => {
@@ -37,6 +63,7 @@ describe('isSensitiveFile', () => {
     expect(isSensitiveFile('.ENV')).toBe(true);
     expect(isSensitiveFile('Server.KEY')).toBe(true);
     expect(isSensitiveFile('SECRETS.JSON')).toBe(true);
+    expect(isSensitiveFile('ID_RSA')).toBe(true);
   });
 
   it('matched NICHT bei harmlosen Files', () => {
@@ -57,11 +84,6 @@ describe('isSensitiveFile', () => {
   it('matched NICHT, wenn .env-Präfix ohne Punkt-Trenner kommt', () => {
     expect(isSensitiveFile('.envrc')).toBe(false); // direnv-File, harmlos
     expect(isSensitiveFile('.environment')).toBe(false);
-  });
-
-  it('respektiert exakten Trenner für secrets.', () => {
-    expect(isSensitiveFile('mysecrets.txt')).toBe(false);
-    expect(isSensitiveFile('secrets')).toBe(false); // ohne Endung, nicht sensitiv
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { SessionHistoryEntry } from '@shared/types';
 import { useUiStore } from '../stores/ui';
 import { useSessionStore } from '../stores/sessions';
@@ -22,10 +22,15 @@ import { estimateTerminalCols } from '../components/estimateTerminalCols';
 
 interface Props {
   entry: SessionHistoryEntry;
+  // Sprint-8-Settings-Default. Greift nur, wenn die Session keinen
+  // `current_model` mehr in der DB hat (Architektur 6.2 Default-Hierarchie:
+  // Per-Session > Global-Default). Null nur, solange App.tsx die Settings
+  // noch lädt — extrem kurzes Fenster.
+  defaultModel: string | null;
   onClose: () => void;
 }
 
-export function HistoryActionModal({ entry, onClose }: Props) {
+export function HistoryActionModal({ entry, defaultModel, onClose }: Props) {
   const setHistorySelected = useUiStore((s) => s.setHistorySelected);
   const setMainView = useUiStore((s) => s.setMainView);
   const addTab = useSessionStore((s) => s.addTab);
@@ -41,6 +46,16 @@ export function HistoryActionModal({ entry, onClose }: Props) {
     entry.status !== 'archived' && entry.status !== 'running';
   const canArchive = entry.status !== 'archived';
 
+  // Esc schließt das Modal — gleicher Handler wie in den anderen Modalen
+  // (Architektur 6.0.1: Esc + Backdrop + ×-Button als drei Schließpfade).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const handleResume = async () => {
     setError(null);
     setBusy(true);
@@ -53,7 +68,7 @@ export function HistoryActionModal({ entry, onClose }: Props) {
           projectId: entry.project_id,
           title: entry.title,
           type: entry.type,
-          model: entry.current_model ?? 'claude-sonnet-4-6',
+          model: entry.current_model ?? defaultModel ?? 'claude-sonnet-4-6',
           initialNotes: entry.notes_md,
         });
       }

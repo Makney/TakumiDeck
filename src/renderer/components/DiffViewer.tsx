@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView, lineNumbers, drawSelection } from '@codemirror/view';
 import { syntaxHighlighting, defaultHighlightStyle, indentOnInput } from '@codemirror/language';
@@ -186,8 +186,16 @@ function DiffPaneSingleFile({ projectId, relPath }: DiffPaneProps) {
       window.api.fs.read({ projectId, relPath }),
     ]).then(([showRes, readRes]) => {
       if (seq.current !== mySeq) return;
-      if (showRes.ok) setHead(showRes.data.content);
-      else setHead('');
+      if (showRes.ok) {
+        setHead(showRes.data.content);
+      } else {
+        // Untracked Files liefert der Driver als ok+empty — ein Err hier ist
+        // immer ein echter Git-Fehler (GIT_SHOW_FAILED / PROJECT_NOT_FOUND).
+        // Wir behandeln ihn als leeren HEAD, damit der Diff trotzdem rendert,
+        // loggen aber für Diagnose.
+        setHead('');
+        console.warn(`[DiffViewer] git:show fehlgeschlagen für ${relPath}: ${showRes.error}`);
+      }
       if (readRes.ok) {
         setWorking(readRes.data.content);
       } else {

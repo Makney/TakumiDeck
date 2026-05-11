@@ -5,10 +5,13 @@
 // AppSettings.sensitive_file_patterns kommen ZU den Defaults dazu — die
 // Defaults sind universell richtig und nicht deaktivierbar.
 //
-// Defaults (Architektur 6.7):
-//   - .env (exact)
-//   - .env.* (z.B. .env.local, .env.production, .env.development)
-//   - secrets.* (z.B. secrets.json, secrets.yaml, secrets.toml)
+// Defaults (Architektur 6.7 + Bereich-8-Review):
+//   - .env (exact) und .env.* (z.B. .env.local, .env.production)
+//   - *secret* (Substring im Basename — fängt sowohl `secrets.json` als auch
+//     `api-secret.txt` oder `my_secret_config.json`)
+//   - *token* (Substring im Basename — API-Tokens, Auth-Tokens)
+//   - id_rsa, id_dsa, id_ecdsa, id_ed25519 (SSH-Private-Keys)
+//   - credentials.json / credentials.yaml (gcloud-/aws-Style)
 //   - *.key (private Keys, jegliche Endung-.key)
 //   - *.pem (Zertifikate / Private Keys im PEM-Format)
 //
@@ -18,7 +21,10 @@
 
 const SENSITIVE_BASENAME_PATTERNS: ReadonlyArray<RegExp> = [
   /^\.env(\..+)?$/i,    // .env, .env.local, .env.production, ...
-  /^secrets\..+$/i,     // secrets.json, secrets.yaml, secrets.toml, ...
+  /secret/i,            // *secret* (substring): secrets.json, api-secret.txt, my_secret_config.json
+  /token/i,             // *token* (substring): auth-token.txt, github_token.env
+  /^id_(rsa|dsa|ecdsa|ed25519)(\..+)?$/i, // SSH-Private-Keys (mit/ohne Endung)
+  /^credentials\.(json|yaml|yml)$/i,      // gcloud/aws credentials-Files
   /\.key$/i,            // *.key
   /\.pem$/i,            // *.pem
 ];

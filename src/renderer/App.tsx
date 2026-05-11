@@ -185,6 +185,7 @@ export function App() {
       {historyActionEntry && (
         <HistoryActionModal
           entry={historyActionEntry}
+          defaultModel={settings?.default_model ?? null}
           onClose={() => setHistoryActionEntry(null)}
         />
       )}

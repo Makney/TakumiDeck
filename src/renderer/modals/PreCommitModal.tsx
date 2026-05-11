@@ -99,7 +99,13 @@ export function PreCommitModal({
   }, [onClose]);
 
   const triggerPhrase = frontmatter?.workbench.trigger_phrases.commit ?? 'commit';
-  const changedFiles = state.status?.files ?? [];
+  // changedFiles muss stabilisiert sein, sonst läuft das nachfolgende useMemo
+  // bei jedem Render erneut (logical-or auf state.status?.files erzeugt jedes
+  // Mal eine neue Array-Referenz).
+  const changedFiles = useMemo(
+    () => state.status?.files ?? [],
+    [state.status],
+  );
   const sensitive = useMemo(
     () => findSensitiveFiles(changedFiles.map((f) => f.path), sensitivePatterns),
     [changedFiles, sensitivePatterns],
@@ -156,7 +162,7 @@ export function PreCommitModal({
 
           {!state.loading && !state.hasGit && (
             <div className="td-precommit-empty">
-              Projekt „{project.name}" ist kein Git-Repository — kein commit-Trigger
+              Projekt „{project.name}“ ist kein Git-Repository — kein commit-Trigger
               möglich. Initialisiere das Repo via <code>git init</code>.
             </div>
           )}

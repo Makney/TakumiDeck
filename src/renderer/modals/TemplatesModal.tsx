@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   ClaudeMdFrontmatter,
   ProjectRow,
@@ -292,7 +292,6 @@ interface UserInputProps {
 }
 
 function UserInput({ name, label, required, multiline, value, onChange }: UserInputProps) {
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const isMissing = required && value.trim() === '';
   return (
     /* Sprint 9 (D4) — Vorlage-Naming `td-field` statt `td-form-row`.
@@ -304,9 +303,6 @@ function UserInput({ name, label, required, multiline, value, onChange }: UserIn
       </span>
       {multiline ? (
         <textarea
-          ref={(el) => {
-            inputRef.current = el;
-          }}
           className={`td-templates-textarea ${isMissing ? 'invalid' : ''}`}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -315,9 +311,6 @@ function UserInput({ name, label, required, multiline, value, onChange }: UserIn
         />
       ) : (
         <input
-          ref={(el) => {
-            inputRef.current = el;
-          }}
           type="text"
           className={isMissing ? 'invalid' : ''}
           value={value}

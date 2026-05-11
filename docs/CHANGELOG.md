@@ -17,6 +17,31 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-11 — Code-Review Bereich 8: Modals + Components
+
+### Was jetzt geht
+
+- **HistoryActionModal hat einen Esc-Handler.** Das Auswahl-Modal (Resume/Archive/Verlauf-Öffnen) ließ sich vorher nur per Backdrop-Click oder ×-Button schließen — Architektur-6.0.1-Verstoß. Jetzt wie in den fünf anderen Modalen `useEffect` + `keydown→Escape→onClose`. Zusätzlich threaded `App.tsx` `settings.default_model` als Prop durch, sodass der Resume-Fallback bei fehlendem `current_model` aus den Settings kommt statt hardcoded Sonnet-4-6.
+- **UsageDetailModal-Burn-Rate-Chart funktioniert wirklich.** `burnSeries` war als `useState(() => result?.perModel...)[0]` initialisiert — der Initializer feuerte nur beim ersten Render mit `result === null` und cachte `[]` für die gesamte Modal-Lebensdauer. Async eintreffende Daten landeten nie im Chart. Auf `useMemo([result])` umgestellt.
+- **Sensitive-File-Detection vollständig laut Architektur 6.7.** Bisher nur `.env(.*)`, `secrets.*`, `*.key`, `*.pem`. Jetzt zusätzlich `*secret*` (Substring, fängt `mysecrets.txt`/`api-secret.txt`/`my_secret_config.json`), `*token*` (Substring), `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519`-SSH-Keys (mit/ohne Endung, deckt auch `.pub` ab), `credentials.{json,yaml,yml}` (gcloud/aws-Style). 13 Test-Cases (vorher 11), zwei kippten von `false`→`true` durch die breitere Spec.
+- **Settings-Modal Save-Status-Race behoben.** Die 1.5 s „✓ Gespeichert"-Badge feuerte `setSaveStatus({ kind: 'idle' })` aus einem `setTimeout` im `onOutcome`-Handler — bei schnell hintereinander folgenden Saves konnte der alte Timer einen frischen `saving`/`error`-Status zurück auf `idle` klobben. Timer jetzt in `useRef`, vor jedem neuen Outcome canceln, beim Effect-Unmount cleanen. Außerdem `Number.isFinite`-Validation für die drei Warning-Schwellen-Inputs (Gelb/Orange/Rot), analog zu den anderen Number-Feldern — NaN aus Paste löst keine schemaweise Patch-Abweisung mehr aus.
+- **DiffViewer git:show-Fehler nicht mehr silent.** Untracked Files liefert der Driver als `ok+empty` — ein echter Err von `git:show` war bisher silent zu „komplett neue Datei" geworden, ohne dass der User es bemerkt. Jetzt `console.warn` mit Pfad und Error-Message; gerendert wird trotzdem (kein UI-Bruch bei nicht-fatal-Errors).
+- **MarkdownEditor-Initial-Mount-Pulse weg.** Der `useEffect(() => onDirtyChangeRef.current?.(dirty), [dirty])` feuerte beim Mount mit `dirty=false` und sendete Eltern-Komponenten einen Pseudo-Cleanup. `lastReportedDirtyRef` filtert: nur bei echtem Wechsel an Eltern melden.
+- **FIXMEs aus OFFEN_MODALS bereinigt.** `PreCommitModal:102` (instabile useMemo-Dep) wurde durch `useMemo([state.status])` um den Logical-Or stabilisiert; `PreCommitModal:159` (`„...":` Mischung) durch U+201C als Schließquote; `DiffViewer:1` (ungenutzter `useMemo`-Import) entfernt. Alle drei eslint-disable-Kommentare raus.
+- **Toter `inputRef` in TemplatesModal-UserInput entfernt.** Ref wurde zugewiesen, nie gelesen — Überbleibsel aus einem nie eingebauten Auto-Focus.
+
+### Umgesetzte Entscheidungen
+
+- **18 Befunde im Report, 11 davon gefixt.** Bugs (Esc-Handler, burnSeries) und Warnungen (Sensitive-Patterns, Save-Race, Threshold-Inputs, DiffViewer-Logging) durchgefixt. Die drei FIXMEs aus OFFEN_MODALS aufgelöst. Verbesserungen (HistoryActionModal-defaultModel, MarkdownEditor-Pulse, TemplatesModal-toter-Ref) als Drive-by mitgenommen.
+- **Sieben Befunde explizit nach OFFEN_MODALS verschoben.** Focus-Trap/Restore (eigener Hook nötig), `validateUserPatterns`-Verkabelung (gehört zu Sensitive-Patterns-Feature-Erweiterung), `useEscapeKey`-Hook-Extraktion (Refactoring ohne Auftrag, Trigger: 7. Modal-Typ), CM6-Mount-Boilerplate-Extraktion (Trigger: 3. CM6-Anwender), Komplexitäts-Hotspots (akzeptiert ohne konkreten Bug). Sub-Bereich-Findings sind dort mit Datum, Auflösungs-Trigger und Begründung dokumentiert.
+- **Test-Scope strikt auf Sensitive-Patterns begrenzt.** Nur `sensitive-files.test.ts` angefasst (CLAUDE.md Regel 4: Tests covern nur das neu geänderte Feature). `mysecrets.txt`/`secrets`-Cases gekippt, drei neue Cases für `*token*`, `id_rsa`-Varianten und `credentials.{json,yaml,yml}` dazu. Keine Tests für die anderen 10 Fixes, weil das Refactorings/State-Race-Fixes sind, die keine isolierten Pure-Logik-Asserts ermöglichen.
+
+### Bonus-Bugfixes unterwegs
+
+- **Hard-coded Modell-Fallback in HistoryActionModal aufgelöst.** War als reine Verbesserung gemeldet (Architektur-6.2-Default-Hierarchie nicht eingehalten) — beim Esc-Handler-Fix sowieso im File, also gleich mitgenommen.
+
+---
+
 ## 2026-05-10 — Season 9: Pre-Release-QA — UI-Vergleich gegen Design-Vorlage
 
 ### Was jetzt geht

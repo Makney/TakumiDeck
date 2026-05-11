@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -46,12 +46,16 @@ export function UsageDetailModal({ bar, result, onClose }: Props) {
 
   // Burn-Rate-Reihe: ein Punkt pro Modell als Vereinfachung. Bei Per-Bucket-
   // Resolution würde man das Server-seitig rechnen (Sprint-5-Stub akzeptiert).
-  const burnSeries = useState(() =>
-    (result?.perModel ?? []).map((m) => ({
-      model: m.model,
-      tokens: m.tokens,
-    })),
-  )[0];
+  // useMemo statt useState, weil `result` async eintrifft — useState-Initializer
+  // hätte nur den Initial-null-Wert eingefroren und die Burn-Rate wäre leer geblieben.
+  const burnSeries = useMemo(
+    () =>
+      (result?.perModel ?? []).map((m) => ({
+        model: m.model,
+        tokens: m.tokens,
+      })),
+    [result],
+  );
 
   return (
     <div className="td-modal-backdrop" onClick={onClose}>

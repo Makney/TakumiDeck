@@ -76,23 +76,42 @@ export function SettingsModal({
     });
   }
 
+  // Idle-Reset-Timer für die „✓ Gespeichert"-Badge. In einem Ref, damit ein
+  // schnell folgendes Save-Outcome den alten Timer canceln kann — sonst hätten
+  // wir eine Race: alter Timer feuert nach 1.5 s `idle`, obwohl inzwischen ein
+  // neuer `saving`-Status aktiv ist.
+  const savedBadgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const saver = saverRef.current;
     if (!saver) return;
     const unsub = saver.onOutcome((outcome: SaveOutcome) => {
+      // Vor jedem neuen Outcome den evtl. wartenden idle-Reset abräumen.
+      if (savedBadgeTimerRef.current !== null) {
+        clearTimeout(savedBadgeTimerRef.current);
+        savedBadgeTimerRef.current = null;
+      }
       if (outcome.status === 'saved') {
         setSaveStatus({ kind: 'saved', fields: outcome.fields });
         if (outcome.result) {
           setSettings(outcome.result);
           onSettingsUpdated(outcome.result);
         }
-        // Nach 1.5 s zurück auf idle, damit der Indikator nicht dauerhaft sichtbar bleibt.
-        const t = setTimeout(() => setSaveStatus({ kind: 'idle' }), 1500);
-        return () => clearTimeout(t);
+        savedBadgeTimerRef.current = setTimeout(() => {
+          savedBadgeTimerRef.current = null;
+          setSaveStatus({ kind: 'idle' });
+        }, 1500);
+        return;
       }
       setSaveStatus({ kind: 'error', message: outcome.error ?? 'Unbekannter Fehler' });
     });
-    return unsub;
+    return () => {
+      unsub();
+      if (savedBadgeTimerRef.current !== null) {
+        clearTimeout(savedBadgeTimerRef.current);
+        savedBadgeTimerRef.current = null;
+      }
+    };
   }, [onSettingsUpdated]);
 
   // Esc + Modal-Close-Flush: letzte queued Field-Patches flushen.
@@ -467,6 +486,10 @@ function UsageTab({
 
   const setThreshold = useCallback(
     (color: 'yellow' | 'orange' | 'red', value: number) => {
+      // Wie bei den anderen Number-Inputs: invalides Input (NaN aus Paste o.ä.)
+      // verwerfen, statt es in den Patch zu schreiben und vom Schema abweisen
+      // zu lassen — User würde sonst „⚠ Ungültiger Settings-Patch" ohne Grund sehen.
+      if (!Number.isFinite(value) || value < 0 || value > 100) return;
       const next = { ...settings.token_warning_thresholds, [color]: value };
       setField('token_warning_thresholds', next);
     },
