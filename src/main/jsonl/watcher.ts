@@ -88,8 +88,20 @@ export class JsonlWatcher {
       clearTimeout(this.globalPushTimer);
       this.globalPushTimer = null;
     }
+    // chokidar zuerst schließen, damit keine *neuen* Events mehr `scheduleHandle`
+    // anstoßen. Bestehende inFlight-Promises laufen synchron weiter; wir warten
+    // anschließend auf sie, bevor wir zurückkehren — sonst könnte ein noch
+    // laufendes handleFile in eine bereits geschlossene DB schreiben (Race beim
+    // App-Quit: jsonlWatcher.stop() → db.close()).
     await this.chokidarWatcher?.close();
     this.chokidarWatcher = null;
+    // pending-Set leeren: weiteres Re-Schedulen für dieselbe Datei ist nicht mehr
+    // gewünscht, der nächste Aufruf von scheduleHandle würde ohnehin auflaufen
+    // ohne chokidarWatcher. Aber inFlight muss komplett zu Ende laufen.
+    this.pending.clear();
+    if (this.inFlight.size > 0) {
+      await Promise.allSettled(this.inFlight.values());
+    }
   }
 
   // Serialisiert Aufrufe pro Datei: läuft schon eine handleFile, wird ein Re-Run

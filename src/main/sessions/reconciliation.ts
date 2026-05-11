@@ -73,7 +73,7 @@ export function reconcileCrashedSessions(deps: ReconciliationDeps): Reconciliati
     // Lifecycle-Transition: validiert running/idle → interrupted (beides erlaubt seit
     // Sprint 5) und setzt ended_at = clock(). Im Erfolgsfall korrigieren wir ended_at
     // anschließend auf den letzten messages.ts-Stand — der genauere Wert.
-    const transition = lifecycle.transition(session.id, 'interrupted', 'app-quit');
+    const transition = lifecycle.transition(session.id, 'interrupted', 'crash-recovery');
     if (!transition.ok) {
       log.warn(
         `[reconciliation] Lifecycle-Transition fehlgeschlagen sessionId=${session.id}: ${transition.error}`,

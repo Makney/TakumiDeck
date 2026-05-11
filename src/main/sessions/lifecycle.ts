@@ -2,6 +2,7 @@ import type { SessionStatus, SessionRow } from '@shared/types';
 import type { SessionRepository } from '../db/repos/sessions';
 import type { IpcResult } from '@shared/types';
 import { ok, err } from '@shared/result';
+import type { Logger } from '../logger';
 
 // Zentrale Session-Lifecycle-State-Machine.
 //
@@ -22,6 +23,7 @@ export type LifecycleReason =
   | 'app-quit'         // App schließt, laufende Sessions als interrupted markieren
   | 'tab-close'        // User hat den Tab geschlossen (X) — archived
   | 'resume'           // Resume-Button: zurück auf running
+  | 'crash-recovery'   // Startup-Reconciliation: orphane Live-Sessions auf interrupted
   | 'manual';          // Catch-all (Tests, manuelle Patches)
 
 export type Clock = () => number;
@@ -54,6 +56,7 @@ export class SessionLifecycle {
   constructor(
     private readonly sessions: SessionRepository,
     private readonly clock: Clock = () => Date.now(),
+    private readonly log?: Logger,
   ) {}
 
   // App-Quit-Phase: setzt das Flag, sodass ein gleichzeitiger pty:exit-Handler
@@ -71,7 +74,7 @@ export class SessionLifecycle {
   transition(
     sessionId: string,
     to: SessionStatus,
-    _reason: LifecycleReason = 'manual',
+    reason: LifecycleReason = 'manual',
   ): IpcResult<SessionRow> {
     const current = this.sessions.findById(sessionId);
     if (!current) {
@@ -104,6 +107,12 @@ export class SessionLifecycle {
     if (!updated) {
       return err<SessionRow>(`Session ${sessionId} während Patch verschwunden`, 'SESSION_NOT_FOUND');
     }
+    // Reason fürs Diagnose-Log: bei Bug-Reports nachvollziehen, *warum* eine
+    // Session in einem bestimmten Status gelandet ist (PTY-Exit vs. App-Quit
+    // vs. Crash-Recovery). Debug-Level, damit es im Default-Loglevel nicht rauscht.
+    this.log?.debug(
+      `[lifecycle] ${current.status}→${to} session=${sessionId.slice(0, 8)} reason=${reason}`,
+    );
     return ok(updated);
   }
 }

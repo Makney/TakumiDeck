@@ -47,19 +47,36 @@ export class StateDetectionLoop {
   tick(): void {
     const now = (this.deps.now ?? Date.now)();
     const idleThresholdMs = this.deps.idleThresholdMs ?? 3000;
-    const candidates = [
-      ...this.deps.sessions.listByStatus('running'),
-      ...this.deps.sessions.listByStatus('idle'),
-    ];
+    let candidates;
+    try {
+      candidates = [
+        ...this.deps.sessions.listByStatus('running'),
+        ...this.deps.sessions.listByStatus('idle'),
+      ];
+    } catch (e) {
+      // Repo-Lese-Fehler (z.B. DB temporär gelockt) sollen den Loop nicht killen —
+      // der nächste Tick (intervalMs später) versucht es erneut. Eskaliert wird
+      // nicht: setInterval feuert unbeeindruckt weiter.
+      this.deps.log.warn(`[state-detection] Kandidaten-Lookup fehlgeschlagen: ${e}`);
+      return;
+    }
     for (const session of candidates) {
-      const lastEventAt = this.deps.messages.lastTimestampForSession(session.id);
-      if (lastEventAt === null) continue; // siehe Kommentar oben — kein Auto-idle vor erstem Output
-      const next = detectActivityState({ lastEventAt, now, idleThresholdMs });
-      if (next === session.status) continue;
-      const result = this.deps.lifecycle.transition(session.id, next, 'manual');
-      if (!result.ok) {
+      // Per-Session-Containment: ein Repo-Fehler für eine Session darf die anderen
+      // im selben Tick nicht abbrechen.
+      try {
+        const lastEventAt = this.deps.messages.lastTimestampForSession(session.id);
+        if (lastEventAt === null) continue; // siehe Kommentar oben — kein Auto-idle vor erstem Output
+        const next = detectActivityState({ lastEventAt, now, idleThresholdMs });
+        if (next === session.status) continue;
+        const result = this.deps.lifecycle.transition(session.id, next, 'manual');
+        if (!result.ok) {
+          this.deps.log.warn(
+            `[state-detection] transition ${session.id} → ${next} fehlgeschlagen: ${result.error}`,
+          );
+        }
+      } catch (e) {
         this.deps.log.warn(
-          `[state-detection] transition ${session.id} → ${next} fehlgeschlagen: ${result.error}`,
+          `[state-detection] Session ${session.id.slice(0, 8)} übersprungen: ${e}`,
         );
       }
     }

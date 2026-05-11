@@ -123,7 +123,9 @@ app.whenReady().then(async () => {
 
     const projectRepo = new ProjectRepository(new SqliteProjectDriver(db));
     const sessions = new SessionRepository(new SqliteSessionDriver(db));
-    const lifecycle = new SessionLifecycle(sessions);
+    // Logger fürs Lifecycle-Debug-Tracing: jeder Statusübergang wird mit Reason
+    // im Log nachvollziehbar (debug-Level, daher im Default-Loglevel still).
+    const lifecycle = new SessionLifecycle(sessions, undefined, logger);
     const messageRepo = new MessageRepository(new SqliteMessageDriver(db));
     const usageRepo = new UsageRepository(new SqliteUsageDriver(db));
     const jsonlOffsetRepo = new JsonlOffsetRepository(new SqliteJsonlOffsetDriver(db));
@@ -244,50 +246,64 @@ app.whenReady().then(async () => {
     // 'interrupted' patchen (synchron, better-sqlite3 ist synchron). Dann erst die
     // PTYs killen — sonst würde der pty:exit-Handler die Sessions auf 'completed'
     // setzen (Sprint-2-Bug, Variante A aus Sprint-3-Briefing).
-    app.on('before-quit', () => {
+    //
+    // Async-Cleanup via preventDefault: der JSONL-Watcher schreibt asynchron in
+    // die DB; wenn wir db.close() vor dem `await jsonlWatcher.stop()` aufrufen,
+    // kann ein laufendes handleFile in eine geschlossene DB schreiben. Wir blocken
+    // das Quit-Event, fahren das Cleanup synchron+asynchron sauber zu Ende und
+    // rufen dann app.quit() erneut auf — `cleanupDone` verhindert die Endlos-
+    // Schleife.
+    let cleanupDone = false;
+    app.on('before-quit', (event) => {
+      if (cleanupDone) return;
+      event.preventDefault();
       lifecycle.markShuttingDown();
-      try {
-        // Sprint 5: idle-Sessions zählen wie running-Sessions als „der claude-Prozess
-        // läuft noch", deshalb beide Status zu interrupted. Einen idle → interrupted-
-        // Übergang erlaubt die State-Machine seit Sprint 5 explizit.
-        const liveSessions = [
-          ...sessions.listByStatus('running'),
-          ...sessions.listByStatus('idle'),
-        ];
-        for (const session of liveSessions) {
-          const result = lifecycle.transition(session.id, 'interrupted', 'app-quit');
-          if (!result.ok) {
-            logger.warn(
-              `[before-quit] Lifecycle-Transition fehlgeschlagen sessionId=${session.id}: ${result.error}`,
-            );
+      void (async () => {
+        try {
+          // Sprint 5: idle-Sessions zählen wie running-Sessions als „der claude-Prozess
+          // läuft noch", deshalb beide Status zu interrupted. Einen idle → interrupted-
+          // Übergang erlaubt die State-Machine seit Sprint 5 explizit.
+          const liveSessions = [
+            ...sessions.listByStatus('running'),
+            ...sessions.listByStatus('idle'),
+          ];
+          for (const session of liveSessions) {
+            const result = lifecycle.transition(session.id, 'interrupted', 'app-quit');
+            if (!result.ok) {
+              logger.warn(
+                `[before-quit] Lifecycle-Transition fehlgeschlagen sessionId=${session.id}: ${result.error}`,
+              );
+            }
           }
+        } catch (e) {
+          logger.warn('Session-Status-Patches beim Quit fehlgeschlagen', e);
         }
-      } catch (e) {
-        logger.warn('Session-Status-Patches beim Quit fehlgeschlagen', e);
-      }
-      try {
-        stateLoop?.stop();
-      } catch (e) {
-        logger.warn('State-Detection-Loop-Stop fehlgeschlagen', e);
-      }
-      try {
-        ptyManager?.killAll();
-      } catch (e) {
-        logger.warn('PTY-Kill-All fehlgeschlagen', e);
-      }
-      // Watcher stop ist async — wir feuern und vergessen, der Process killt sich
-      // gleich ohnehin. Wichtig ist nur, dass kein neuer Read mehr inflight ist
-      // wenn die DB schließt.
-      try {
-        void jsonlWatcher?.stop();
-      } catch (e) {
-        logger.warn('JSONL-Watcher-Stop fehlgeschlagen', e);
-      }
-      try {
-        db.close();
-      } catch (e) {
-        logger.warn('DB-Close fehlgeschlagen', e);
-      }
+        try {
+          stateLoop?.stop();
+        } catch (e) {
+          logger.warn('State-Detection-Loop-Stop fehlgeschlagen', e);
+        }
+        try {
+          ptyManager?.killAll();
+        } catch (e) {
+          logger.warn('PTY-Kill-All fehlgeschlagen', e);
+        }
+        // Watcher stop: awaited, damit inFlight-handleFile-Promises ihren DB-
+        // Write zu Ende schreiben, bevor db.close() läuft (sonst SQLITE_MISUSE
+        // oder verlorene Token-Aggregate beim Hard-Quit).
+        try {
+          await jsonlWatcher?.stop();
+        } catch (e) {
+          logger.warn('JSONL-Watcher-Stop fehlgeschlagen', e);
+        }
+        try {
+          db.close();
+        } catch (e) {
+          logger.warn('DB-Close fehlgeschlagen', e);
+        }
+        cleanupDone = true;
+        app.quit();
+      })();
     });
 
     createMainWindow();

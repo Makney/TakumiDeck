@@ -67,7 +67,11 @@ export function parseJsonlSegment(segment: string): ParseSegmentResult {
     try {
       raw = JSON.parse(trimmed);
     } catch (e) {
-      warnings.push(`Zeile ist kein gültiges JSON: ${truncate(trimmed, 80)}`);
+      // Fail-Soft pro Zeile: Korrupte/abgeschnittene Records droppen wir, der
+      // Watcher loggt aber die erste Warning aus der Liste — Detail-Message ist
+      // nützlich, weil die Position im JSON aus dem SyntaxError kommt.
+      const detail = e instanceof Error ? e.message : String(e);
+      warnings.push(`Zeile ist kein gültiges JSON (${detail}): ${truncate(trimmed, 80)}`);
       continue;
     }
 
