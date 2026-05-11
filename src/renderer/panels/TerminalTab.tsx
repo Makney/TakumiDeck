@@ -167,6 +167,7 @@ export function TerminalTab({
     // formatiert seinen Welcome-Output mit den falschen cols → Output wird
     // rechts abgeschnitten. RAF stellt sicher, dass das Layout final ist,
     // bevor wir die cols an die PTY schicken.
+    let spawnRafHandle: number | null = null;
     if (needsSpawn && !spawnDispatchedRef.current) {
       spawnDispatchedRef.current = true;
       const doSpawn = async () => {
@@ -192,13 +193,19 @@ export function TerminalTab({
           terminal.focus();
         }
       };
-      requestAnimationFrame(() => {
+      // Bereich-7-Review: RAF-Handle in Variable, damit die Cleanup-Funktion
+      // einen Spawn abbrechen kann, wenn der Tab im 16-ms-Fenster zwischen
+      // Schedule und Fire unmountet. Sonst würde pty:create eine PTY anlegen,
+      // deren Output-Listener bereits abgemeldet ist (Renderer-loser Prozess).
+      spawnRafHandle = requestAnimationFrame(() => {
+        spawnRafHandle = null;
         safeFit(fit);
         void doSpawn();
       });
     }
 
     return () => {
+      if (spawnRafHandle !== null) cancelAnimationFrame(spawnRafHandle);
       offData();
       offExit();
       ro.disconnect();
@@ -221,10 +228,11 @@ export function TerminalTab({
   // ↔ display:none) erst im nächsten Paint die finale Container-Größe gibt.
   useEffect(() => {
     if (!isActive) return;
-    const terminal = terminalRef.current;
     const handle = requestAnimationFrame(() => {
       safeFit(fitRef.current);
-      terminal?.focus();
+      // Bereich-7-Review: Ref direkt im RAF-Callback lesen, damit der Fokus
+      // auf der jüngsten Terminal-Instanz landet (z.B. nach StrictMode-Remount).
+      terminalRef.current?.focus();
     });
     return () => cancelAnimationFrame(handle);
   }, [isActive]);

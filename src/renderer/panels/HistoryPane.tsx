@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  AppSettings,
   ProjectRow,
   SessionHistoryEntry,
   SessionStatus,
@@ -9,6 +10,7 @@ import { DEFAULT_PROJECT_ID } from '@shared/constants';
 import { useSessionStore } from '../stores/sessions';
 import { useUiStore } from '../stores/ui';
 import { displayProjectName } from '../components/displayProjectName';
+import { estimateTerminalCols } from '../components/estimateTerminalCols';
 
 // HistoryPane (Sprint 6, Q4 Variante A — Replace-View statt Modal).
 //
@@ -58,9 +60,10 @@ const MODEL_LABELS: Record<string, string> = {
 
 interface Props {
   project: ProjectRow;
+  settings: AppSettings;
 }
 
-export function HistoryPane({ project }: Props) {
+export function HistoryPane({ project, settings }: Props) {
   const [entries, setEntries] = useState<SessionHistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,10 +174,13 @@ export function HistoryPane({ project }: Props) {
         model: entry.current_model ?? 'claude-sonnet-4-6',
         initialNotes: entry.notes_md,
       });
+      // Sprint-9-Konsistenz mit TabContainer.handleResume: cols/rows aus der
+      // aktuellen Mid-Column-Breite schätzen statt 80×24 hardcoded.
+      const { cols, rows } = estimateTerminalCols(settings.terminal_font_size);
       const result = await window.api.sessions.resume({
         sessionId: entry.id,
-        cols: 80,
-        rows: 24,
+        cols,
+        rows,
       });
       if (!result.ok) {
         // Spezial-Fall SESSION_NO_CLAUDE_UUID (Sprint-6/7-Resume-Hotfix-Lücke):
@@ -196,7 +202,7 @@ export function HistoryPane({ project }: Props) {
       setStatus(entry.id, 'running');
       setMainView('terminals');
     },
-    [tabs, addTab, setActiveTab, setStatus, setMainView],
+    [tabs, addTab, setActiveTab, setStatus, setMainView, settings.terminal_font_size],
   );
 
   // Sprint 8 — Direkt-Archivieren ohne Confirm-Step für Resume-tote Sessions

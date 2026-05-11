@@ -142,7 +142,7 @@ export function App() {
           </div>
           {mainView === 'history' && activeProject && (
             <div className="td-view-slot">
-              <HistoryPane project={activeProject} />
+              <HistoryPane project={activeProject} settings={settings} />
             </div>
           )}
         </div>

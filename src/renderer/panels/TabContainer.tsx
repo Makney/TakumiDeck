@@ -88,7 +88,7 @@ export function TabContainer({ settings }: Props) {
   // beide auf den gleichen Open-Zustand zugreifen.
   // Tabs, die in dieser Session-Lebensdauer schon gespawnt wurden — verhindert,
   // dass ein erneuter Tab-Mount (z.B. nach React-Tree-Repaint) eine zweite PTY öffnet.
-  const [spawnedIds, setSpawnedIds] = useState<Set<string>>(new Set());
+  const [spawnedIds, setSpawnedIds] = useState<Set<string>>(() => new Set());
 
   // Wenn das Modal schließt, soll der Fokus zurück aufs aktive Terminal gehen.
   // Sonst bleibt er auf dem (jetzt unmounteten) Submit-/Cancel-Button und Tastatur-
@@ -163,9 +163,10 @@ export function TabContainer({ settings }: Props) {
       setStatus(sessionId, 'running');
       setActive(sessionId);
     },
-    // FIXME: docs/code-review/OFFEN_PANELS.md — Lint-Befund (Stale-Closure-Verdacht für settings.terminal_font_size), wartet auf Bereich-7-Review
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [setStatus, setActive],
+    // Bereich-7-Review: `settings.terminal_font_size` ist eine echte Closure-Dep —
+    // der User kann die Schriftgröße im Settings-Modal ändern, und Resume-Pfade
+    // müssen die aktuelle Größe für die cols/rows-Schätzung sehen.
+    [setStatus, setActive, settings.terminal_font_size],
   );
 
   const handleNewSession = useCallback(
@@ -213,9 +214,7 @@ export function TabContainer({ settings }: Props) {
           <div className="td-tab-empty">
             {activeProject ? (
               <>
-                {/* FIXME: docs/code-review/OFFEN_PANELS.md — Lint-Befund (unescaped quote), wartet auf Bereich-7-Review */}
-                {/* eslint-disable-next-line react/no-unescaped-entities */}
-                <p>Keine Sessions in „{displayProjectName(activeProject)}".</p>
+                <p>Keine Sessions in „{displayProjectName(activeProject)}&ldquo;.</p>
                 <p>
                   <button
                     type="button"

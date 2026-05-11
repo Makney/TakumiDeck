@@ -10,6 +10,7 @@ import { useUiStore } from '../stores/ui';
 import { useSessionStore, type SessionTab } from '../stores/sessions';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
 import { displayProjectName } from '../components/displayProjectName';
+import { estimateTerminalCols } from '../components/estimateTerminalCols';
 
 // LeftSidebar — Sprint-6-UI-Fix mit 3-Sektionen-Layout aus dem Design-Handoff
 // (docs/design/UI_DECISIONS.md + claude-export/components.jsx).
@@ -175,7 +176,12 @@ export function LeftSidebar({ settings }: Props) {
 
   const handleResumeFromTabs = useCallback(
     async (sessionId: string) => {
-      const result = await window.api.sessions.resume({ sessionId, cols: 80, rows: 24 });
+      // Sprint-9-Konsistenz mit TabContainer.handleResume: cols/rows aus der
+      // aktuellen Mid-Column-Breite schätzen statt 80×24 hardcoded. Sonst
+      // formatiert claude den Resume-Welcome rechts abgeschnitten, weil
+      // xterm den Buffer nicht reflowt.
+      const { cols, rows } = estimateTerminalCols(settings.terminal_font_size);
+      const result = await window.api.sessions.resume({ sessionId, cols, rows });
       if (!result.ok) {
         console.warn(`[LeftSidebar] session:resume fehlgeschlagen: ${result.error}`);
         return;
@@ -183,7 +189,7 @@ export function LeftSidebar({ settings }: Props) {
       setTabStatus(sessionId, 'running');
       setActiveTab(sessionId);
     },
-    [setTabStatus, setActiveTab],
+    [setTabStatus, setActiveTab, settings.terminal_font_size],
   );
 
   const workspaceMissing = !settings.workspace_path || settings.workspace_path.trim() === '';

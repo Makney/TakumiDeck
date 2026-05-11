@@ -43,6 +43,12 @@ export function PlanPane({ settings }: Props) {
   // aber hier, weil PlanPane sowieso schon mountet und dafür sorgt, dass
   // refreshContext für alle aktiven Sessions weiterläuft. Das vermeidet einen
   // doppelten Listener im TabContainer und hält die Sprint-5-Pipeline intakt.
+  //
+  // Bereich-7-Review: `barIds` muss in den Deps stehen, damit ein Settings-UI-
+  // Edit (limit_bars add/remove) den Listener-Fallback frisch capturet —
+  // sonst feuert ein Push ohne explizite `event.barIds` weiterhin auf den
+  // stale Initial-Snapshot. `barIds` ist via useMemo referenz-stabil, also
+  // re-subscribed der Listener nur bei echten Settings-Wechseln.
   useEffect(() => {
     void refreshBars(barIds);
     const unsubscribe = window.api.usage.onUpdate((event) => {
@@ -56,9 +62,7 @@ export function PlanPane({ settings }: Props) {
     return () => {
       unsubscribe();
     };
-    // barIds-Wechsel ist Sprint-8-Settings-UI-Sache; Sprint 5 lädt einmal beim Mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [barIds, refreshBars, refreshContext]);
 
   return (
     <section className="td-plan-pane" aria-label="Plannutzung">
