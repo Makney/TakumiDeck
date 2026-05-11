@@ -2,6 +2,12 @@
 // Sprint 1: Settings + App-Misc + IpcResult.
 // Sprint 2: Session-Row, PTY-Inputs/-Events, RendererApi-Erweiterung.
 
+// Re-Export der Schema-abgeleiteten Typen: schemas.ts ist die Single Source of
+// Truth für IPC-Vertrags-Shapes. Konsumenten können wahlweise hier oder direkt
+// aus @shared/schemas importieren.
+import type { ClaudeMdFrontmatter, WindowAction } from './schemas';
+export type { ClaudeMdFrontmatter, WindowAction };
+
 // Result-Type-Pattern: IPC-Handler werfen nicht, sondern returnen ein Result.
 // Renderer muss `ok` prüfen, bevor `data` benutzt wird.
 export type IpcResult<T> =
@@ -229,26 +235,6 @@ export interface ClaudeMdParseResult {
   frontmatter: ClaudeMdFrontmatter | null;
   body: string;
   warnings: string[];
-}
-
-export interface ClaudeMdFrontmatter {
-  workbench: {
-    project_name?: string;
-    default_model?: string;
-    current_phase_file?: string;
-    trigger_phrases: {
-      docs_update: string;
-      commit: string;
-    };
-    on_demand_files?: Array<
-      | string
-      | { path: string; trigger?: string; auto_inject?: boolean }
-    >;
-  };
-}
-
-export interface ProjectAddInput {
-  path: string;
 }
 
 export interface ProjectReadCfgInput {
@@ -511,7 +497,7 @@ export interface RendererApi {
     // Sprint 8 (Architektur 6.0 Header-Bar): Window-Controls aus dem Renderer
     // triggern, weil die Header-Bar eigene Buttons rendert (-webkit-app-region:
     // no-drag).
-    windowAction: (action: 'minimize' | 'maximize' | 'close') => Promise<IpcResult<null>>;
+    windowAction: (action: WindowAction) => Promise<IpcResult<null>>;
     // Sprint 8: Health-Check für die claude-Binary. Liefert ok=true mit dem
     // resolved-Pfad oder ok=false mit User-freundlicher Hinweistext.
     claudeHealth: () => Promise<

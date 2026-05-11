@@ -1,5 +1,5 @@
 // Zentrale Channel-Konstanten für die IPC zwischen Main und Renderer.
-// Sprint 1 hat settings:* und app:* belegt; Sprint 2 ergänzt pty:* und session:open / session:update.
+// Sprint 1 hat settings:* und app:* belegt; Sprint 2 ergänzt pty:* und session:update.
 export const Channels = {
   // Project-Management (Sprint 4)
   ProjectList: 'project:list',
@@ -7,8 +7,7 @@ export const Channels = {
   ProjectScan: 'project:scan-workspace',
   ProjectReadCfg: 'project:read-claude-md',
 
-  // Session-Management (Sprint 2: open/update; Sprint 3: close/resume; Sprint 6: history/archive)
-  SessionOpen: 'session:open',
+  // Session-Management (Sprint 2: update; Sprint 3: close/resume; Sprint 6: history/archive)
   SessionClose: 'session:close',
   SessionResume: 'session:resume',
   SessionUpdate: 'session:update',
@@ -29,7 +28,6 @@ export const Channels = {
   GitStatus: 'git:status',
   GitDiff: 'git:diff',
   GitShow: 'git:show',
-  GitWorktrees: 'git:worktrees',
 
   // Token-Tracking (Sprint 5)
   UsageWindow: 'usage:window',
@@ -49,9 +47,6 @@ export const Channels = {
   SettingsGet: 'settings:get',
   SettingsSet: 'settings:set',
 
-  // Notes (Sprint 2-3)
-  NotesSave: 'notes:save',
-
   // App-Misc (Sprint 1 teilweise)
   AppOpenDataFolder: 'app:open-data-folder',
   AppGetVersion: 'app:get-version',
@@ -62,5 +57,3 @@ export const Channels = {
   // ruft beim Mount + bei PTY-Spawn-Fehlern.
   AppClaudeHealth: 'app:claude-health',
 } as const;
-
-export type ChannelName = (typeof Channels)[keyof typeof Channels];

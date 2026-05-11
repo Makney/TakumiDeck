@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import { z } from 'zod';
 import { Channels } from '@shared/ipc-channels';
 import { ok, err, errFromUnknown } from '@shared/result';
+import { WindowActionSchema } from '@shared/schemas';
 import { resolveExecutable } from '../pty/binary';
 import type { SettingsStore } from '../settings/store';
 
@@ -9,10 +9,8 @@ import type { SettingsStore } from '../settings/store';
 //
 // Sprint 8 (Header-Bar, Architektur 6.0): app:window-action erlaubt dem Renderer,
 // die Standard-Window-Controls (minimieren/maximieren/schließen) auszulösen.
-// Wir validieren die Action-String per zod, damit die Renderer-Boundary nicht
-// beliebige Methoden-Calls auf BrowserWindow triggern kann.
-
-const WindowActionSchema = z.enum(['minimize', 'maximize', 'close']);
+// Wir validieren die Action-String per zod (Schema aus @shared/schemas), damit die
+// Renderer-Boundary nicht beliebige Methoden-Calls auf BrowserWindow triggern kann.
 
 export function registerAppIpc(deps?: { settings?: SettingsStore }): void {
   ipcMain.handle(Channels.AppGetVersion, () => {

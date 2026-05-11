@@ -55,8 +55,6 @@ export const AppSettingsSchema = z.object({
 // Frontend Settings-Felder schicken kann, bevor sie hier explizit modelliert sind.
 export const AppSettingsPatchSchema = AppSettingsSchema.partial();
 
-export type AppSettingsPatch = z.infer<typeof AppSettingsPatchSchema>;
-
 // --- Session / PTY ----------------------------------------------------
 
 export const SessionTypeSchema = z.enum(['feature', 'bug', 'review', 'docs-sync']);
@@ -239,12 +237,6 @@ export const ClaudeMdFrontmatterSchema = z.object({
 // Renderer-Seite mit einem flachen Frontmatter arbeitet, das exakt geprüft ist).
 export type ClaudeMdFrontmatter = z.infer<typeof ClaudeMdFrontmatterSchema>;
 
-// project:add nimmt einen Pfad und prüft im Main, dass eine CLAUDE.md drinliegt.
-// Path ist absolute (dialog.showOpenDialog liefert ohnehin nur absolute Pfade).
-export const ProjectAddInputSchema = z.object({
-  path: z.string().min(1),
-});
-
 // project:read-claude-md liest die CLAUDE.md eines bekannten Projekts und parst sie.
 // projectId ist eine UUID (DB-Primary-Key); kein Renderer schickt freie Pfade rein.
 export const ProjectReadCfgInputSchema = z.object({
@@ -300,6 +292,11 @@ export const UsageContextInputSchema = z.object({
   sessionId: z.string().min(1),
 });
 
-// usage:heatmap — Phase-2-Stub. Sprint 5 returnt nur `{ ok: true, data: { stub: true } }`,
-// damit der IPC-Channel reserviert ist und Phase 2 ihn nahtlos befüllen kann.
-export const UsageHeatmapInputSchema = z.object({}).passthrough();
+// --- App / Window-Controls (Sprint 8) --------------------------------
+
+// Whitelist für app:window-action — sperrt die Renderer-Boundary auf genau drei
+// BrowserWindow-Operationen, damit kein beliebiger Methoden-Call durchgereicht
+// werden kann.
+export const WindowActionSchema = z.enum(['minimize', 'maximize', 'close']);
+
+export type WindowAction = z.infer<typeof WindowActionSchema>;
