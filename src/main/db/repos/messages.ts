@@ -14,8 +14,9 @@ export interface MessageDbDriver {
   // Kontext-Bar gelesen. Returnt null, wenn die Session noch keine messages hat.
   lastTimestampForSession(sessionId: string): number | null;
   // Letzter usage-Stand der Session (für die Per-Session-Kontext-Bar). Liefert
-  // tokens_in/tokens_out, ts und das Modell, das in der letzten Zeile stand —
-  // wenn keine Messages vorliegen, null.
+  // tokens_in/tokens_out und ts der zuletzt eingelesenen Zeile, null wenn die
+  // Session noch keine Messages hat. Modell-Info hängt nicht an `messages` (gehört
+  // zu usage_buckets); der Caller liest sie aus session.current_model.
   lastUsageForSession(sessionId: string): LastUsageRow | null;
 }
 

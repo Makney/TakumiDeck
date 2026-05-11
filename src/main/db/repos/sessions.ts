@@ -12,23 +12,11 @@ import type {
 // Migration-Runner aus Sprint 1: die Klasse trägt die Geschäftslogik, der Driver
 // abstrahiert die SQL-Persistenz, sodass Tests mit einem In-Memory-Fake laufen.
 
-export interface SessionInsert {
-  id: string;
-  project_id: string;
-  title: string;
-  type: SessionType;
-  season_number: number | null;
-  status: SessionStatus;
-  current_model: string | null;
-  worktree_branch: string | null;
-  notes_md: string;
-  cwd: string;
-  started_at: number;
-  ended_at: number | null;
-  // Sprint-6-Hotfix: claude-codes eigene Session-UUID. Ab Sprint-6-Hotfix beim
-  // Spawn gleich `id` gesetzt (--session-id-Flag), für Legacy null.
-  claude_session_id: string | null;
-}
+// Insert-Shape ist heute strukturell identisch zu SessionRow (Domain-Type aus
+// @shared/types). Wir aliasen statt zu duplizieren, damit ein neues Feld nicht
+// an zwei Stellen ergänzt werden muss. Wenn die DB-Schicht jemals interne Felder
+// braucht (z.B. updated_at), splittet das wieder auf.
+export type SessionInsert = SessionRow;
 
 export interface SessionPatch {
   title?: string;
@@ -166,6 +154,17 @@ export class SqliteSessionDriver implements SessionDbDriver {
   private readonly listByStatusStmt: Database.Statement<[string], SessionRow>;
   private readonly setClaudeIdStmt: Database.Statement;
   private readonly listMissingClaudeIdStmt: Database.Statement<[], SessionRow>;
+  // Statement-Cache für patch(): Cache-Key = sortierte Whitelist-Keys, damit jede
+  // Patch-Permutation nur einmal vorbereitet wird. Schützt vor Re-Compile bei
+  // Bulk-Patches (z.B. before-quit-Handler über alle running-Sessions).
+  private readonly patchStmtCache = new Map<string, Database.Statement>();
+  // Statement-Cache für listHistoryForProject(): Cache-Key = Filter-Permutation
+  // (typesLen × statusesLen × hasQuery). Maximal ~56 Permutationen — alle dürfen
+  // dauerhaft im Cache leben.
+  private readonly historyStmtCache = new Map<
+    string,
+    Database.Statement<Record<string, unknown>, SessionHistoryEntry>
+  >();
 
   constructor(private readonly db: Database.Database) {
     this.insertStmt = db.prepare(
@@ -208,62 +207,91 @@ export class SqliteSessionDriver implements SessionDbDriver {
 
   listHistoryForProject(input: SessionHistoryInput): SessionHistoryEntry[] {
     // Dynamisches SQL: alle Bedingungen sind statische Spalten + Bind-Parameter.
-    // Der LEFT-JOIN über die messages-Tabelle aggregiert Tokens und Count zur Lesezeit
-    // (analog zum Sprint-4-session_count-Aggregat im Project-Listing). Sortierung:
-    // jüngste zuerst, damit der Verlauf-Panel den letzten Run oben hat.
-    const conditions: string[] = ['s.project_id = @projectId'];
-    const params: Record<string, unknown> = { projectId: input.projectId };
+    // Statements werden per Filter-Permutation gecached (typesLen × statusesLen ×
+    // hasQuery), damit nicht jeder History-Klick / Tastendruck im Suchfeld einen
+    // SQL-Re-Compile triggert. Permutations-Raum ist klein (~56 Kombinationen),
+    // alle dürfen dauerhaft im Cache leben.
+    const typesLen = input.types?.length ?? 0;
+    const statusesLen = input.statuses?.length ?? 0;
+    const trimmedQuery = input.query?.trim() ?? '';
+    const hasQuery = trimmedQuery.length > 0;
+    const cacheKey = `t${typesLen}_s${statusesLen}_q${hasQuery ? 1 : 0}`;
 
-    if (input.types && input.types.length > 0) {
-      const placeholders = input.types.map((_, i) => `@type${i}`).join(', ');
-      conditions.push(`s.type IN (${placeholders})`);
+    let stmt = this.historyStmtCache.get(cacheKey);
+    if (!stmt) {
+      const conditions: string[] = ['s.project_id = @projectId'];
+      if (typesLen > 0) {
+        const placeholders = Array.from({ length: typesLen }, (_, i) => `@type${i}`).join(', ');
+        conditions.push(`s.type IN (${placeholders})`);
+      }
+      if (statusesLen > 0) {
+        const placeholders = Array.from({ length: statusesLen }, (_, i) => `@status${i}`).join(', ');
+        conditions.push(`s.status IN (${placeholders})`);
+      }
+      if (hasQuery) {
+        // case-insensitive title-Match. SQLite LIKE ist per Default case-insensitive
+        // für ASCII; für nicht-ASCII würde ein FTS-Index nötig — Phase 2.
+        conditions.push('s.title LIKE @query');
+      }
+      const sql = `
+        SELECT
+          s.*,
+          COALESCE(m.tokens_in_sum, 0) AS tokens_in,
+          COALESCE(m.tokens_out_sum, 0) AS tokens_out,
+          COALESCE(m.msg_count, 0) AS message_count
+        FROM sessions s
+        LEFT JOIN (
+          SELECT session_id,
+                 SUM(tokens_in) AS tokens_in_sum,
+                 SUM(tokens_out) AS tokens_out_sum,
+                 COUNT(*) AS msg_count
+          FROM messages
+          GROUP BY session_id
+        ) m ON m.session_id = s.id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY s.started_at DESC
+      `;
+      stmt = this.db.prepare<Record<string, unknown>, SessionHistoryEntry>(sql);
+      this.historyStmtCache.set(cacheKey, stmt);
+    }
+
+    const params: Record<string, unknown> = { projectId: input.projectId };
+    if (input.types && typesLen > 0) {
       input.types.forEach((t, i) => {
         params[`type${i}`] = t;
       });
     }
-    if (input.statuses && input.statuses.length > 0) {
-      const placeholders = input.statuses.map((_, i) => `@status${i}`).join(', ');
-      conditions.push(`s.status IN (${placeholders})`);
+    if (input.statuses && statusesLen > 0) {
       input.statuses.forEach((s, i) => {
         params[`status${i}`] = s;
       });
     }
-    const trimmedQuery = input.query?.trim();
-    if (trimmedQuery && trimmedQuery.length > 0) {
-      // case-insensitive title-Match. SQLite LIKE ist per Default case-insensitive
-      // für ASCII; für nicht-ASCII würde ein FTS-Index nötig — Phase 2.
-      conditions.push('s.title LIKE @query');
+    if (hasQuery) {
       params.query = `%${trimmedQuery}%`;
     }
-
-    const sql = `
-      SELECT
-        s.*,
-        COALESCE(m.tokens_in_sum, 0) AS tokens_in,
-        COALESCE(m.tokens_out_sum, 0) AS tokens_out,
-        COALESCE(m.msg_count, 0) AS message_count
-      FROM sessions s
-      LEFT JOIN (
-        SELECT session_id,
-               SUM(tokens_in) AS tokens_in_sum,
-               SUM(tokens_out) AS tokens_out_sum,
-               COUNT(*) AS msg_count
-        FROM messages
-        GROUP BY session_id
-      ) m ON m.session_id = s.id
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY s.started_at DESC
-    `;
-    const stmt = this.db.prepare<Record<string, unknown>, SessionHistoryEntry>(sql);
     return stmt.all(params);
   }
 
   patch(id: string, patch: SessionPatch): SessionRow | null {
     const keys = Object.keys(patch) as (keyof SessionPatch)[];
     if (keys.length === 0) return this.findById(id);
-    // SQL-Spalten sind aus dem statischen PatchKey-Whitelist-Universum, keine Injection.
-    const setSql = keys.map((k) => `${k} = @${k}`).join(', ');
-    const stmt = this.db.prepare(`UPDATE sessions SET ${setSql} WHERE id = @__id`);
+    // Defense-in-Depth: SessionRepository.update() filtert via PATCHABLE_COLUMNS,
+    // wir doppeln den Guard hier, damit ein Direkt-Aufruf des Drivers (z.B. aus
+    // Tests oder zukünftigem Code) keine SQL-Spalten außerhalb der Whitelist
+    // setzen kann.
+    for (const k of keys) {
+      if (!PATCHABLE_COLUMNS.has(k)) {
+        throw new Error(`SessionDriver.patch: Spalte "${k}" ist nicht patchbar`);
+      }
+    }
+    // Cache-Key = sortierte Keys, damit Reihenfolge im Patch-Objekt egal ist.
+    const cacheKey = [...keys].sort().join(',');
+    let stmt = this.patchStmtCache.get(cacheKey);
+    if (!stmt) {
+      const setSql = keys.map((k) => `${k} = @${k}`).join(', ');
+      stmt = this.db.prepare(`UPDATE sessions SET ${setSql} WHERE id = @__id`);
+      this.patchStmtCache.set(cacheKey, stmt);
+    }
     stmt.run({ ...patch, __id: id });
     return this.findById(id);
   }

@@ -168,7 +168,7 @@ export class SqliteProjectDriver implements ProjectDbDriver {
   private readonly insertStmt: Database.Statement;
   private readonly findByIdStmt: Database.Statement<[string], ProjectRow>;
   private readonly findByPathStmt: Database.Statement<[string], ProjectRow>;
-  private readonly listAllStmt: Database.Statement<[], ProjectRow>;
+  private readonly listAllStmt: Database.Statement<[string], ProjectRow>;
   private readonly reassignStmt: Database.Statement;
   private readonly reassignMessagesStmt: Database.Statement;
   private readonly listSessionsStmt: Database.Statement<
@@ -204,9 +204,12 @@ export class SqliteProjectDriver implements ProjectDbDriver {
     );
     // Default-Project (UUID …0001) ans Ende, damit es in der Sidebar als Legacy-Bucket
     // unter den echten Projekten landet, ohne dass die UI selbst sortieren muss.
-    this.listAllStmt = db.prepare<[], ProjectRow>(
+    // Konstante per ?-Bind statt String-Interpolation — konsistent mit den anderen
+    // Statements, kein latentes Injection-Risiko, falls die Konstante jemals
+    // settings-getrieben wird.
+    this.listAllStmt = db.prepare<[string], ProjectRow>(
       `${PROJECT_SELECT_WITH_COUNT}
-       ORDER BY (p.id = '${DEFAULT_PROJECT_ID}') ASC, p.name COLLATE NOCASE ASC`,
+       ORDER BY (p.id = ?) ASC, p.name COLLATE NOCASE ASC`,
     );
     this.reassignStmt = db.prepare(
       'UPDATE sessions SET project_id = @newProjectId WHERE id = @sessionId',
@@ -248,7 +251,7 @@ export class SqliteProjectDriver implements ProjectDbDriver {
   }
 
   listAll(): ProjectRow[] {
-    return this.listAllStmt.all();
+    return this.listAllStmt.all(DEFAULT_PROJECT_ID);
   }
 
   reassignSession(sessionId: string, newProjectId: string): number {
