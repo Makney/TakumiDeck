@@ -1,5 +1,4 @@
 import { ipcMain } from 'electron';
-import fs from 'node:fs';
 import { Channels } from '@shared/ipc-channels';
 import { ok, err, errFromUnknown } from '@shared/result';
 import {
@@ -14,7 +13,8 @@ import type { SessionLifecycle } from '../sessions/lifecycle';
 import type { PtyManager } from '../pty/manager';
 import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
-import { resolveExecutable } from '../pty/binary';
+import { preSpawnCheck } from '../pty/preSpawnCheck';
+import { assertFromMainWindow } from './sender-guard';
 
 // IPC-Handler für die Session-Domain.
 // session:update — Sprint 2: notes_md / title / status-Patches.
@@ -32,7 +32,9 @@ export function registerSessionIpc(deps: {
 }): void {
   const { sessions, lifecycle, manager, settings, log } = deps;
 
-  ipcMain.handle(Channels.SessionUpdate, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.SessionUpdate, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = SessionUpdateInputSchema.parse(payload);
       // Status-Patches gehen durch die Lifecycle, alles andere direkt ins Repo.
@@ -44,8 +46,9 @@ export function registerSessionIpc(deps: {
       }
       const restPatch = { ...input.patch };
       delete restPatch.status;
-      // ended_at-Side-Effect ist jetzt in der Lifecycle — wir respektieren aber explizite
-      // Patches vom Renderer (z.B. wenn ein zukünftiger Caller ended_at gezielt setzt).
+      // Bereich-4-Review (B-1): ended_at ist nicht mehr im Schema; die Lifecycle
+      // setzt/nullt es zentral. Verbleibende Felder im restPatch sind reine
+      // Renderer-Eigenschaften (title, notes_md, current_model).
       const row = sessions.update(input.sessionId, restPatch);
       if (!row) {
         return err<never>(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
@@ -56,7 +59,9 @@ export function registerSessionIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.SessionClose, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.SessionClose, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = SessionCloseInputSchema.parse(payload);
       const session = sessions.findById(input.sessionId);
@@ -85,7 +90,9 @@ export function registerSessionIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.SessionResume, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.SessionResume, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = SessionResumeInputSchema.parse(payload);
       const session = sessions.findById(input.sessionId);
@@ -93,32 +100,38 @@ export function registerSessionIpc(deps: {
         return err<never>(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
       }
 
-      // 0a. Pre-Check: Binary auflösen (analog pty:create-Pfad).
+      // Bereich-4-Review (W-1): Pre-Spawn-Check via gemeinsamem Helper (Binary
+      // + cwd). Bei Sessions, deren Ordner zwischen den Sessions umbenannt
+      // wurde, kommt PTY_CWD_NOT_FOUND mit passendem Hint zurück.
       const current = settings.read();
-      const lookup = resolveExecutable(current.claude_binary_path);
-      if (!lookup.ok) {
-        log.warn(`[session:resume] Binary nicht auflösbar: ${lookup.error}`);
-        return err<never>(lookup.error, 'PTY_BINARY_NOT_FOUND');
-      }
-      // 0b. Pre-Check: existiert das (gespeicherte) cwd noch? Falls der User den
-      //     Ordner zwischen den Sessions umbenannt hat, scheitert ConPTY sonst.
-      if (!fs.existsSync(session.cwd)) {
-        const msg = `Working-Directory existiert nicht mehr: ${session.cwd}`;
-        log.warn(`[session:resume] ${msg}`);
-        return err<never>(msg, 'PTY_CWD_NOT_FOUND');
-      }
+      const pre = preSpawnCheck({
+        binaryPath: current.claude_binary_path,
+        cwd: session.cwd,
+        log,
+        label: 'session:resume',
+        cwdMissingHint: 'Der Ordner wurde umbenannt oder gelöscht.',
+      });
+      if (!pre.ok) return pre;
+      const { resolvedBinary } = pre.data;
 
-      // 0c. Sprint-6-Hotfix: Resume nutzt die claude-eigene Session-UUID. Bei
-      //     Sessions ab dem Hotfix ist das gleich `session.id` (weil pty:create
-      //     mit --session-id <id> spawnt), bei Legacy-Sessions wird die UUID vom
-      //     JSONL-Watcher rückwirkend befüllt. Wenn beides null ist (Session war
-      //     so kurz aktiv, dass keine JSONL-Zeile entstand), bleibt nur der
-      //     Sprint-3-Pfad — der für diese Session nicht funktioniert. Wir geben
-      //     einen sprechenden Fehler zurück, statt den Spawn ins Leere laufen zu
-      //     lassen.
+      // Sprint-6-Hotfix: Resume nutzt die claude-eigene Session-UUID. Bei
+      // Sessions ab dem Hotfix ist das gleich `session.id` (weil pty:create
+      // mit --session-id <id> spawnt), bei Legacy-Sessions wird die UUID vom
+      // JSONL-Watcher rückwirkend befüllt. Wenn beides null ist (Session war
+      // so kurz aktiv, dass keine JSONL-Zeile entstand), bleibt nur der
+      // Sprint-3-Pfad — der für diese Session nicht funktioniert. Wir geben
+      // einen sprechenden Fehler zurück, statt den Spawn ins Leere laufen zu
+      // lassen.
       const claudeSessionId = session.claude_session_id;
       if (claudeSessionId === null) {
-        lifecycle.transition(input.sessionId, 'error', 'spawn-error');
+        // Bereich-4-Review (I-1): Result der Lifecycle-Transition prüfen
+        // und loggen, falls sie scheitert.
+        const tr = lifecycle.transition(input.sessionId, 'error', 'spawn-error');
+        if (!tr.ok) {
+          log.warn(
+            `[session:resume] Lifecycle-Transition zu 'error' abgelehnt sessionId=${input.sessionId} → ${tr.error}`,
+          );
+        }
         return err<never>(
           'Diese Session hat keine claude-Session-UUID. Vermutlich wurde sie vor dem Hotfix gespawnt und hat nie eine Antwort erzeugt. Eine neue Session anlegen.',
           'SESSION_NO_CLAUDE_UUID',
@@ -136,15 +149,23 @@ export function registerSessionIpc(deps: {
       const model = session.current_model ?? current.default_model;
       try {
         manager.create(input.sessionId, {
-          shell: lookup.resolved,
+          shell: resolvedBinary,
           args: ['--resume', claudeSessionId, '--model', model],
           cwd: session.cwd,
           cols: input.cols,
           rows: input.rows,
         });
       } catch (e) {
-        lifecycle.transition(input.sessionId, 'error', 'spawn-error');
-        return errFromUnknown(e, 'PTY_RESUME_SPAWN');
+        const tr = lifecycle.transition(input.sessionId, 'error', 'spawn-error');
+        if (!tr.ok) {
+          log.warn(
+            `[session:resume] Lifecycle-Transition zu 'error' abgelehnt sessionId=${input.sessionId} → ${tr.error}`,
+          );
+        }
+        // Bereich-4-Review (B-3): Spawn-Error landet im Log, Renderer bekommt
+        // nur einen generischen Text mit Code.
+        log.warn(`[session:resume] PTY-Spawn fehlgeschlagen sessionId=${input.sessionId}`, e);
+        return err<never>('PTY-Spawn beim Resume fehlgeschlagen', 'PTY_RESUME_SPAWN');
       }
 
       log.info(
@@ -159,7 +180,9 @@ export function registerSessionIpc(deps: {
   // Sprint 6: Verlauf-Panel-Liste für ein Projekt. Filter (Typ/Status/Volltext) sind
   // optional; leere Filter liefern alle Sessions des Projekts. Token-Aggregate kommen
   // aus der messages-Tabelle (Sprint-5-Persistenz). Sortierung: jüngste zuerst.
-  ipcMain.handle(Channels.SessionHistory, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.SessionHistory, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = SessionHistoryInputSchema.parse(payload);
       return ok(sessions.listHistoryForProject(input));
@@ -172,7 +195,9 @@ export function registerSessionIpc(deps: {
   // bewusst von session:close (= Tab schließen ohne archive). Lifecycle setzt den
   // Status auf archived; Resume aus archived ist weiterhin verboten — der User
   // muss bewusst zustimmen, dass die Session aus der Liste verschwindet.
-  ipcMain.handle(Channels.SessionArchive, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.SessionArchive, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = SessionArchiveInputSchema.parse(payload);
       const result = lifecycle.transition(input.sessionId, 'archived', 'tab-close');

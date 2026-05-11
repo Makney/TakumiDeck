@@ -169,7 +169,6 @@ export function HistoryPane({ project }: Props) {
         title: entry.title,
         type: entry.type,
         model: entry.current_model ?? 'claude-sonnet-4-6',
-        cwd: entry.cwd,
         initialNotes: entry.notes_md,
       });
       const result = await window.api.sessions.resume({

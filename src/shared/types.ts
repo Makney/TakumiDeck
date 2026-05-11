@@ -99,6 +99,8 @@ export interface SessionRow {
 }
 
 // PTY-IPC-Payloads (Renderer → Main).
+// Bereich-4-Review (B-5): cwd wird im Main aus projects.getById(projectId).path
+// hergeleitet — Renderer übergibt keinen freien Pfad mehr.
 export interface PtyCreateInput {
   sessionId: string;
   // Sprint-5-Fix: Renderer schickt jetzt das aktive Projekt mit, damit die DB-
@@ -107,7 +109,6 @@ export interface PtyCreateInput {
   title: string;
   type: SessionType;
   model: string;
-  cwd: string;
   cols: number;
   rows: number;
 }

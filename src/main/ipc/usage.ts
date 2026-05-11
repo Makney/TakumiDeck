@@ -1,17 +1,18 @@
-import { ipcMain } from 'electron';
+import { ipcMain, type WebContents } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import { ok, err, errFromUnknown } from '@shared/result';
 import {
   UsageWindowInputSchema,
   UsageContextInputSchema,
 } from '@shared/schemas';
-import type { UsageHeatmapResult } from '@shared/types';
+import type { UsageHeatmapResult, UsageUpdateEvent } from '@shared/types';
 import type { UsageRepository } from '../db/repos/usage';
 import type { MessageRepository } from '../db/repos/messages';
 import type { SessionRepository } from '../db/repos/sessions';
 import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
 import { resolveWindow, resolveContext } from '../usage/resolver';
+import { assertFromMainWindow } from './sender-guard';
 
 // IPC-Domain `usage` (Sprint 5).
 //
@@ -19,6 +20,10 @@ import { resolveWindow, resolveContext } from '../usage/resolver';
 //                 Renderer ruft pro Bar einmal; bei usage:update-Push ruft er nach.
 // usage:context — Per-Session-Kontext-Bar.
 // usage:heatmap — Phase-2-Stub.
+//
+// Bereich-4-Review (W-4): der usage:update-Push aus dem JSONL-Watcher läuft
+// jetzt über `createUsagePusher()` statt direkt aus main.ts — damit bleibt
+// jeder Channel-Verkehr (handle + send) im ipc/-Layer (Architektur 3).
 
 export function registerUsageIpc(deps: {
   usage: UsageRepository;
@@ -29,7 +34,9 @@ export function registerUsageIpc(deps: {
 }): void {
   const { usage, messages, sessions, settings, log } = deps;
 
-  ipcMain.handle(Channels.UsageWindow, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.UsageWindow, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = UsageWindowInputSchema.parse(payload);
       const cfg = settings.read();
@@ -48,7 +55,9 @@ export function registerUsageIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.UsageContext, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.UsageContext, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = UsageContextInputSchema.parse(payload);
       const session = sessions.findById(input.sessionId);
@@ -66,7 +75,9 @@ export function registerUsageIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.UsageHeatmap, () => {
+  ipcMain.handle(Channels.UsageHeatmap, (event) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     // Sprint-5-Stub: der Channel ist reserviert, aber Heatmap kommt erst mit Phase 2
     // (Architektur 8 listet das explizit unter Phase-2-Erweiterungen).
     const result: UsageHeatmapResult = {
@@ -77,4 +88,15 @@ export function registerUsageIpc(deps: {
   });
 
   log.info('[ipc:usage] Channels registriert');
+}
+
+// Bereich-4-Review (W-4): Push-Channel `usage:update` (Watcher → Renderer) lebt
+// im ipc/-Layer statt in main.ts. Aufruf: createUsagePusher(getWebContents)
+// liefert eine Funktion, die der JsonlWatcher als `push`-Callback bekommt.
+export function createUsagePusher(
+  getWebContents: () => WebContents | null,
+): (event: UsageUpdateEvent) => void {
+  return (event) => {
+    getWebContents()?.send(Channels.UsageUpdate, event);
+  };
 }

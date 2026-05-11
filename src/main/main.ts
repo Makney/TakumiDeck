@@ -10,7 +10,8 @@ import { registerAppIpc } from './ipc/app';
 import { registerPtyIpc } from './ipc/pty';
 import { registerSessionIpc } from './ipc/session';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
-import { registerUsageIpc } from './ipc/usage';
+import { createUsagePusher, registerUsageIpc } from './ipc/usage';
+import { setMainWebContentsResolver } from './ipc/sender-guard';
 import { registerFsIpc, templatesDirFromUserData } from './ipc/fs';
 import { registerGitIpc } from './ipc/git';
 import { realGitDriver } from './git/driver';
@@ -35,8 +36,6 @@ import { StateDetectionLoop } from './sessions/state-detection-loop';
 import { JsonlWatcher, defaultClaudeProjectsPath } from './jsonl/watcher';
 import { realJsonlReadDriver } from './jsonl/parser';
 import { scanWorkspace, realFsDriver } from './workspace/scanner';
-import { Channels } from '@shared/ipc-channels';
-import type { UsageUpdateEvent } from '@shared/types';
 
 // Squirrel-Installer: bei Setup/Update-Events sofort beenden, bevor BrowserWindow erstellt wird.
 if (started) {
@@ -165,6 +164,11 @@ app.whenReady().then(async () => {
       logger.warn('[startup] Initial-Workspace-Scan fehlgeschlagen', e);
     }
 
+    // Bereich-4-Review (B-2): Sender-Guard-Resolver setzen, BEVOR irgendein
+    // Handler registriert wird. Sonst wären Handler bis zum ersten Aufruf
+    // ungeschützt (defensiv-blockend ist OK, aber inkonsistent).
+    setMainWebContentsResolver(() => mainWindow?.webContents ?? null);
+
     registerSettingsIpc(settings);
     registerAppIpc({ settings });
     registerSessionIpc({
@@ -211,6 +215,7 @@ app.whenReady().then(async () => {
     // (ignoreInitial:false) zieht historische Sessions in messages/usage_buckets
     // nach; persistierte Byte-Offsets verhindern, dass derselbe Bytes-Bereich beim
     // nächsten Start nochmal gelesen wird.
+    // Bereich-4-Review (W-4): usage:update-Push lebt im ipc/-Layer.
     jsonlWatcher = new JsonlWatcher({
       watchPath: defaultClaudeProjectsPath(),
       reader: realJsonlReadDriver,
@@ -219,9 +224,7 @@ app.whenReady().then(async () => {
       usage: usageRepo,
       sessions,
       log: logger,
-      push: (event: UsageUpdateEvent) => {
-        mainWindow?.webContents.send(Channels.UsageUpdate, event);
-      },
+      push: createUsagePusher(() => mainWindow?.webContents ?? null),
     });
     void jsonlWatcher.start();
 

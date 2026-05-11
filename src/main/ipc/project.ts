@@ -11,6 +11,7 @@ import type { Logger } from '../logger';
 import { scanWorkspace, realFsDriver } from '../workspace/scanner';
 import { parseClaudeMd } from '../workspace/claudeMdParser';
 import { scannedProjectName } from '../db/repos/projects';
+import { assertFromMainWindow } from './sender-guard';
 
 // IPC-Handler für die Project-Domain (Sprint 4).
 //
@@ -34,7 +35,9 @@ export function registerProjectIpc(deps: {
 }): void {
   const { projects, settings, log, getMainWindow } = deps;
 
-  ipcMain.handle(Channels.ProjectList, () => {
+  ipcMain.handle(Channels.ProjectList, (event) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       return ok(projects.listAll());
     } catch (e) {
@@ -42,7 +45,9 @@ export function registerProjectIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.ProjectScan, async () => {
+  ipcMain.handle(Channels.ProjectScan, async (event) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const workspacePath = settings.read().workspace_path;
       const scanned = await scanWorkspace(workspacePath, realFsDriver);
@@ -56,7 +61,9 @@ export function registerProjectIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.ProjectAdd, async () => {
+  ipcMain.handle(Channels.ProjectAdd, async (event) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const window = getMainWindow();
       // showOpenDialog kann ohne parent aufgerufen werden, dann ist es nicht modal —
@@ -106,7 +113,9 @@ export function registerProjectIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.ProjectReadCfg, async (_event, payload: unknown) => {
+  ipcMain.handle(Channels.ProjectReadCfg, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = ProjectReadCfgInputSchema.parse(payload);
       const project = projects.getById(input.projectId);
@@ -121,11 +130,15 @@ export function registerProjectIpc(deps: {
         const code = (e as NodeJS.ErrnoException).code;
         if (code === 'ENOENT') {
           return err(
-            `CLAUDE.md fehlt im Projekt-Ordner: ${claudeMdPath}`,
+            `CLAUDE.md fehlt im Projekt-Ordner: ${project.name}`,
             'CLAUDE_MD_NOT_FOUND',
           );
         }
-        return errFromUnknown(e, 'CLAUDE_MD_READ');
+        // Bereich-4-Review (B-3): Originalfehler nur ins Log; an den Renderer
+        // geht ein generischer Text mit Code, damit fs-Internals (Pfade) nicht
+        // ungewollt in die Renderer-Schicht leaken.
+        log.warn(`[project:read-claude-md] readFile fehlgeschlagen path=${claudeMdPath}`, e);
+        return err('CLAUDE.md konnte nicht gelesen werden', 'CLAUDE_MD_READ');
       }
       return parseClaudeMd(raw);
     } catch (e) {

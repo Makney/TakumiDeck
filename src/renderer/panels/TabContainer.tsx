@@ -163,21 +163,21 @@ export function TabContainer({ settings }: Props) {
       setStatus(sessionId, 'running');
       setActive(sessionId);
     },
+    // FIXME: docs/code-review/OFFEN_PANELS.md — Lint-Befund (Stale-Closure-Verdacht für settings.terminal_font_size), wartet auf Bereich-7-Review
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [setStatus, setActive],
   );
 
   const handleNewSession = useCallback(
     (input: { title: string; type: 'feature' | 'bug' | 'review' | 'docs-sync'; model: string }) => {
       if (!activeProjectId || !activeProject) return;
-      // Sprint-4-Default für cwd: der Pfad des aktiven Projekts. settings.workspace_path
-      // war Sprint-3-Lifeline, weil es nur das Default-Projekt gab — jetzt sind Sessions
-      // immer im Kontext eines konkreten Projekts.
+      // Bereich-4-Review (B-5): cwd wird im Main aus projects.getById(projectId).path
+      // hergeleitet — Renderer übergibt die Working-Directory nicht mehr.
       const tab = addTab({
         projectId: activeProjectId,
         title: input.title,
         type: input.type,
         model: input.model,
-        cwd: activeProject.path,
       });
       // Diesen Tab als spawn-pflichtig markieren — TerminalTab feuert dann pty:create.
       setSpawnedIds((prev) => {
@@ -213,6 +213,8 @@ export function TabContainer({ settings }: Props) {
           <div className="td-tab-empty">
             {activeProject ? (
               <>
+                {/* FIXME: docs/code-review/OFFEN_PANELS.md — Lint-Befund (unescaped quote), wartet auf Bereich-7-Review */}
+                {/* eslint-disable-next-line react/no-unescaped-entities */}
                 <p>Keine Sessions in „{displayProjectName(activeProject)}".</p>
                 <p>
                   <button
@@ -241,7 +243,6 @@ export function TabContainer({ settings }: Props) {
               title={tab.title}
               type={tab.type}
               model={tab.model}
-              cwd={tab.cwd}
               settings={settings}
               isActive={tab.sessionId === activeId}
               needsSpawn={spawnedIds.has(tab.sessionId)}

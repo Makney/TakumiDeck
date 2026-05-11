@@ -13,8 +13,8 @@ import type { ProjectRepository } from '../db/repos/projects';
 import type { SessionLifecycle } from '../sessions/lifecycle';
 import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
-import fs from 'node:fs';
-import { resolveExecutable } from '../pty/binary';
+import { preSpawnCheck } from '../pty/preSpawnCheck';
+import { assertFromMainWindow } from './sender-guard';
 
 // IPC-Handler für pty:create / pty:write / pty:resize / pty:kill.
 // Forwarded außerdem die PtyManager-Events ans aktive BrowserWindow.
@@ -56,26 +56,37 @@ export function registerPtyIpc(deps: {
     },
   });
 
-  ipcMain.handle(Channels.PtyCreate, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.PtyCreate, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = PtyCreateInputSchema.parse(payload);
       const current = settings.read();
 
-      // 0a. Pre-Check: existiert die Binary überhaupt? Sonst wirft ConPTY den Fehler
-      //     erst aus einem Worker-Thread und reißt (ohne uncaughtException-Handler)
-      //     den Main-Prozess um — wir geben den Fehler stattdessen sauber zurück.
-      const lookup = resolveExecutable(current.claude_binary_path);
-      if (!lookup.ok) {
-        log.warn(`[pty] Binary nicht auflösbar: ${lookup.error}`);
-        return err<never>(lookup.error, 'PTY_BINARY_NOT_FOUND');
+      // Bereich-4-Review (B-5): cwd kommt nicht mehr aus dem Renderer-Payload,
+      // sondern wird serverseitig aus dem Project hergeleitet. Damit kann der
+      // Renderer keinen freien OS-Pfad in einen `claude`-Spawn schieben.
+      const project = projects.getById(input.projectId);
+      if (!project) {
+        return err<never>(
+          `Projekt ${input.projectId} nicht gefunden`,
+          'PROJECT_NOT_FOUND',
+        );
       }
+      const cwd = project.path;
 
-      // 0b. Pre-Check: existiert das cwd? ConPTY wirft sonst ERROR_DIRECTORY (267).
-      if (!fs.existsSync(input.cwd)) {
-        const msg = `Working-Directory existiert nicht: ${input.cwd}. Setze workspace_path in settings.json auf einen vorhandenen Ordner.`;
-        log.warn(`[pty] ${msg}`);
-        return err<never>(msg, 'PTY_CWD_NOT_FOUND');
-      }
+      // Bereich-4-Review (W-1): Binary + cwd in einem Pre-Spawn-Helper, weil
+      // session:resume denselben Block hatte. PTY_BINARY_NOT_FOUND und
+      // PTY_CWD_NOT_FOUND kommen aus dem Helper zurück.
+      const pre = preSpawnCheck({
+        binaryPath: current.claude_binary_path,
+        cwd,
+        log,
+        label: 'pty',
+        cwdMissingHint: 'Setze workspace_path in settings.json auf einen vorhandenen Ordner.',
+      });
+      if (!pre.ok) return pre;
+      const { resolvedBinary } = pre.data;
 
       // 1. Sprint 6: Counter atomar allozieren (Q6 Variante B). Nur für 'feature' —
       //    Bug/Review/Docs-Sync bleiben ohne season_number. Wenn das Project nicht
@@ -101,7 +112,7 @@ export function registerPtyIpc(deps: {
         title: input.title,
         type: input.type,
         model: input.model,
-        cwd: input.cwd,
+        cwd,
         season_number: seasonNumber,
         claude_session_id: input.sessionId,
       });
@@ -116,16 +127,23 @@ export function registerPtyIpc(deps: {
       //    "No conversation found with session ID: ...".
       try {
         manager.create(input.sessionId, {
-          shell: lookup.resolved,
+          shell: resolvedBinary,
           args: ['--session-id', input.sessionId, '--model', input.model],
-          cwd: input.cwd,
+          cwd,
           cols: input.cols,
           rows: input.rows,
         });
       } catch (e) {
         // running → error via Lifecycle (statt direktem repo.update), damit der
         // Side-Effect-Pfad (ended_at setzen) konsolidiert bleibt.
-        lifecycle.transition(input.sessionId, 'error', 'spawn-error');
+        // Bereich-4-Review (I-1): Result-Drop sichtbar machen, falls die
+        // Transition selbst fehlschlägt (z.B. Session-Row inzwischen gelöscht).
+        const tr = lifecycle.transition(input.sessionId, 'error', 'spawn-error');
+        if (!tr.ok) {
+          log.warn(
+            `[pty] Lifecycle-Transition zu 'error' abgelehnt sessionId=${input.sessionId} → ${tr.error}`,
+          );
+        }
         throw e;
       }
 
@@ -136,7 +154,9 @@ export function registerPtyIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.PtyWrite, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.PtyWrite, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = PtyWriteInputSchema.parse(payload);
       manager.write(input.sessionId, input.data);
@@ -146,7 +166,9 @@ export function registerPtyIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.PtyResize, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.PtyResize, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = PtyResizeInputSchema.parse(payload);
       manager.resize(input.sessionId, input.cols, input.rows);
@@ -156,7 +178,9 @@ export function registerPtyIpc(deps: {
     }
   });
 
-  ipcMain.handle(Channels.PtyKill, (_event, payload: unknown) => {
+  ipcMain.handle(Channels.PtyKill, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const input = PtyKillInputSchema.parse(payload);
       manager.kill(input.sessionId);

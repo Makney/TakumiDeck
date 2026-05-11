@@ -78,14 +78,20 @@ export const PtyCreateInputSchema = z.object({
   title: z.string().min(1),
   type: SessionTypeSchema,
   model: z.string().min(1),
-  cwd: z.string().min(1),
+  // Bereich-4-Review (2026-05-11): cwd wurde aus dem Schema entfernt und im Main
+  // serverseitig aus projects.getById(projectId).path hergeleitet — damit kein
+  // Renderer-freier Pfad mehr in einen `claude`-Spawn fließt (B-5).
   cols: z.number().int().positive(),
   rows: z.number().int().positive(),
 });
 
+// Bereich-4-Review (B-6): pty:write-Cap auf 1 MiB. Renderer ist Trust-Boundary;
+// eine fehlerhafte Schleife könnte sonst unbounded Buffer an den Main schieben.
+// 1 MiB ist mehrere Größenordnungen über realem Tastatur-Input, bleibt aber
+// klein genug, um Speicher-Druck auf den Main-Prozess zu verhindern.
 export const PtyWriteInputSchema = z.object({
   sessionId: z.string().uuid(),
-  data: z.string(),
+  data: z.string().max(1024 * 1024),
 });
 
 export const PtyResizeInputSchema = z.object({
@@ -99,13 +105,15 @@ export const PtyKillInputSchema = z.object({
 });
 
 // SessionUpdate-Patch: nur Felder, die in Sprint 2 vom Renderer geschrieben werden dürfen.
+// Bereich-4-Review (B-1): ended_at ist NICHT mehr patchbar — die SessionLifecycle
+// setzt/nullt das Feld als Status-Side-Effect. Ein Renderer-Patch würde diese
+// Invariante überschreiben können (auch wenn aktuell kein Renderer-Call das tut).
 export const SessionUpdatePatchSchema = z
   .object({
     title: z.string().min(1),
     notes_md: z.string(),
     status: SessionStatusSchema,
     current_model: z.string().nullable(),
-    ended_at: z.number().int().nullable(),
   })
   .partial();
 
@@ -167,7 +175,10 @@ export const FsWriteInputSchema = z.object({
   relPath: z.string().min(1),
   // Voller Datei-Inhalt; UTF-8 ohne BOM. Save-Trigger ist manuell (Q1 Variante A:
   // Ctrl+S), kein Streaming.
-  content: z.string(),
+  // Bereich-4-Review (B-6): Cap auf 10 MiB. Markdown-Notizen liegen real bei
+  // wenigen 100 KiB; 10 MiB lässt großzügig Luft, schließt aber den unbounded
+  // Buffer-Pfad vom Renderer.
+  content: z.string().max(10 * 1024 * 1024),
 });
 
 // fs:list-tree (Phase 5): hierarchischer Scan eines Projekts. maxDepth bewusst

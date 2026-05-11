@@ -4,6 +4,7 @@ import { ok, err, errFromUnknown } from '@shared/result';
 import { WindowActionSchema } from '@shared/schemas';
 import { resolveExecutable } from '../pty/binary';
 import type { SettingsStore } from '../settings/store';
+import { assertFromMainWindow } from './sender-guard';
 
 // IPC-Handler für app:get-version, app:open-data-folder und app:window-action.
 //
@@ -13,7 +14,9 @@ import type { SettingsStore } from '../settings/store';
 // Renderer-Boundary nicht beliebige Methoden-Calls auf BrowserWindow triggern kann.
 
 export function registerAppIpc(deps?: { settings?: SettingsStore }): void {
-  ipcMain.handle(Channels.AppGetVersion, () => {
+  ipcMain.handle(Channels.AppGetVersion, (event) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       return ok(app.getVersion());
     } catch (e) {
@@ -21,7 +24,9 @@ export function registerAppIpc(deps?: { settings?: SettingsStore }): void {
     }
   });
 
-  ipcMain.handle(Channels.AppOpenDataFolder, async () => {
+  ipcMain.handle(Channels.AppOpenDataFolder, async (event) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const dir = app.getPath('userData');
       const result = await shell.openPath(dir);
@@ -33,7 +38,9 @@ export function registerAppIpc(deps?: { settings?: SettingsStore }): void {
     }
   });
 
-  ipcMain.handle(Channels.AppClaudeHealth, () => {
+  ipcMain.handle(Channels.AppClaudeHealth, (event) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       // Wenn der SettingsStore nicht injiziert wurde (Tests, frühe App-Init),
       // probieren wir 'claude' aus dem PATH — vernünftiger Default.
@@ -53,6 +60,8 @@ export function registerAppIpc(deps?: { settings?: SettingsStore }): void {
   });
 
   ipcMain.handle(Channels.AppWindowAction, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
     try {
       const action = WindowActionSchema.parse(payload);
       // Wir greifen auf das BrowserWindow des Senders zu — sauberer als ein

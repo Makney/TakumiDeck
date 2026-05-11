@@ -28,11 +28,12 @@ interface Props {
   // Sprint-5: Renderer schickt projectId beim pty:create mit, damit die DB-Session
   // am echten Projekt hängt (statt am Sprint-2-Default-Lifeline). Token-Aggregate
   // pro Projekt brauchen das Mapping korrekt.
+  // Bereich-4-Review (B-5): cwd wird im Main aus projects.getById(projectId).path
+  // hergeleitet — Renderer übergibt keine Working-Directory mehr.
   projectId: string;
   title: string;
   type: 'feature' | 'bug' | 'review' | 'docs-sync';
   model: string;
-  cwd: string;
   settings: AppSettings;
   isActive: boolean;
   // Wird genau dann auf true gesetzt, wenn dieser Tab gerade frisch im Store erzeugt wurde
@@ -48,7 +49,6 @@ export function TerminalTab({
   title,
   type,
   model,
-  cwd,
   settings,
   isActive,
   needsSpawn,
@@ -176,7 +176,6 @@ export function TerminalTab({
           title,
           type,
           model,
-          cwd,
           cols: terminal.cols,
           rows: terminal.rows,
         });
@@ -209,7 +208,7 @@ export function TerminalTab({
       fitRef.current = null;
     };
     // sessionId ist stabil über die Lebensdauer des Tabs — der Effect läuft
-    // bewusst genau einmal. settings/title/type/model/cwd ändern sich nicht
+    // bewusst genau einmal. settings/title/type/model ändern sich nicht
     // im Tab-Context (UI bietet keinen In-Place-Editor); needsSpawn wird vor
     // dem Mount fixiert.
     // eslint-disable-next-line react-hooks/exhaustive-deps

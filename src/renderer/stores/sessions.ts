@@ -20,7 +20,6 @@ export interface SessionTab {
   title: string;
   type: SessionType;
   model: string;
-  cwd: string;
   status: SessionStatus;
   // Renderer-Draft der Notizen (vor dem nächsten Debounce-Save).
   notesDraft: string;
@@ -34,7 +33,6 @@ export interface AddTabInput {
   title: string;
   type: SessionType;
   model: string;
-  cwd: string;
   initialNotes?: string;
 }
 
@@ -103,7 +101,6 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       title: input.title,
       type: input.type,
       model: input.model,
-      cwd: input.cwd,
       status: 'running',
       notesDraft: input.initialNotes ?? '',
       notesSaved: input.initialNotes ?? '',
