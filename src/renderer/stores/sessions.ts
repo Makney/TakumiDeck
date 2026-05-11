@@ -95,6 +95,16 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
 
   addTab: (input) => {
     const sessionId = input.sessionId ?? crypto.randomUUID();
+    // Dedupe-Guard: liefert ein Caller versehentlich dieselbe externe sessionId
+    // ein zweites Mal (z.B. Resume-Flow ohne ref-guard), würden zwei Tabs mit
+    // gleicher ID entstehen. Alle ID-basierten Lookups (setStatus, closeTab,
+    // setNotesDraft) treffen dann nur den ersten Match — der zweite wäre Geist-Tab.
+    // Stattdessen den existierenden Tab fokussieren und zurückgeben.
+    const existing = get().tabs.find((t) => t.sessionId === sessionId);
+    if (existing) {
+      set({ activeId: sessionId });
+      return existing;
+    }
     const tab: SessionTab = {
       sessionId,
       projectId: input.projectId,

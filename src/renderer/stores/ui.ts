@@ -128,7 +128,12 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
   setActiveProject: (projectId, view) => {
     const state = get();
     const sameProject = state.activeProjectId === projectId;
-    const targetView = view ?? state.mainView;
+    // Bei Projekt-Wechsel ohne expliziten View: zurück auf den Default 'terminals'.
+    // Sonst würde der Klick auf Projekt B aus dem 'history'-View von Projekt A still
+    // im History-View von Projekt B landen — die History-Tabelle ist projekt-scoped,
+    // historySelectedId wird unten geleert, also wäre die Tabelle ohne Selektion sichtbar.
+    // Bei selbem Projekt bleibt der aktuelle View bestehen (oder explizite Übergabe).
+    const targetView = view ?? (sameProject ? state.mainView : 'terminals');
     if (sameProject && state.mainView === targetView) return;
     if (sameProject) {
       set({ mainView: targetView });

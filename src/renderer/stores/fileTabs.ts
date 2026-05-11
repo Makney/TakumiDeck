@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create, type StoreApi } from 'zustand';
 
 // Datei-Tab-Stack pro Projekt (Sprint 7, Q6 Variante B: Per-Projekt-Stack
 // analog Sprint-4-Terminal-Tabs). Diff-Tab ist ein Sonderfall — immer ID 'diff',
@@ -136,6 +136,40 @@ function writePersisted(
   }
 }
 
+// Hilfsfunktion: einen file-Tab im Stack patchen, wenn er noch existiert.
+// Wenn der Tab inzwischen geschlossen wurde (User schnell), wird die Mutation
+// still verworfen. Konsolidiert die zuvor dreifach duplizierte Stack-Map-Logik
+// aus openFile (post-fs:read) und hydrateFromStorage (.then/.catch).
+function applyTabPatch(
+  set: StoreApi<FileTabsState>['setState'],
+  get: StoreApi<FileTabsState>['getState'],
+  projectId: string,
+  tabId: string,
+  patch: Partial<FileTab>,
+): void {
+  const stack = get().tabs[projectId];
+  if (!stack || !stack.some((t) => t.id === tabId)) return;
+  set((state) => {
+    const cur = state.tabs[projectId] ?? [];
+    const updated = cur.map((t) => (t.id === tabId ? { ...t, ...patch } : t));
+    return { tabs: { ...state.tabs, [projectId]: updated } };
+  });
+}
+
+// Strikte Tab-Schema-Validierung beim Hydrate. Schema-Version-Check (siehe
+// readPersisted) schützt vor Versions-Mismatch, validiert aber nicht die
+// Felder selbst — bei manipulierter localStorage könnte z.B. `label` ein
+// Object sein und React würde dann `[object Object]` als Tab-Pille rendern.
+function isValidPersistedTab(t: unknown): t is PersistedTab {
+  if (!t || typeof t !== 'object') return false;
+  const r = t as Record<string, unknown>;
+  if (typeof r.id !== 'string' || r.id.length === 0) return false;
+  if (typeof r.label !== 'string') return false;
+  if (r.kind === 'diff') return r.relPath === null;
+  if (r.kind === 'file') return typeof r.relPath === 'string' && r.relPath.length > 0;
+  return false;
+}
+
 export const useFileTabsStore = create<FileTabsState>((set, get) => ({
   tabs: {},
   activeId: {},
@@ -171,23 +205,13 @@ export const useFileTabsStore = create<FileTabsState>((set, get) => ({
     });
     persistCurrent(get);
     // fs:read starten. Result landet im Store, wenn der Tab noch existiert
-    // (User kann ihn vor der Antwort wieder geschlossen haben).
+    // (User kann ihn vor der Antwort wieder geschlossen haben — applyTabPatch
+    // prüft das).
     const result = await window.api.fs.read({ projectId, relPath });
-    const stillExists = (get().tabs[projectId] ?? []).some((t) => t.id === id);
-    if (!stillExists) return;
-    set((state) => {
-      const stack = state.tabs[projectId] ?? [];
-      const updated = stack.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              loading: false,
-              savedContent: result.ok ? result.data.content : null,
-              loadError: result.ok ? null : result.error,
-            }
-          : t,
-      );
-      return { tabs: { ...state.tabs, [projectId]: updated } };
+    applyTabPatch(set, get, projectId, id, {
+      loading: false,
+      savedContent: result.ok ? result.data.content : null,
+      loadError: result.ok ? null : result.error,
     });
   },
 
@@ -306,7 +330,7 @@ export const useFileTabsStore = create<FileTabsState>((set, get) => ({
     for (const [projectId, entry] of Object.entries(snapshot.byProject)) {
       if (!Array.isArray(entry.tabs) || entry.tabs.length === 0) continue;
       const stack: FileTab[] = entry.tabs
-        .filter((t) => t && (t.kind === 'diff' || (t.kind === 'file' && typeof t.relPath === 'string')))
+        .filter(isValidPersistedTab)
         .map((t) => ({
           id: t.id,
           kind: t.kind,
@@ -338,47 +362,25 @@ export const useFileTabsStore = create<FileTabsState>((set, get) => ({
     set({ tabs, activeId });
 
     // fs:read pro file-Tab im Hintergrund. Wenn der Tab inzwischen geschlossen
-    // wurde (User schnell), wird das Result still verworfen.
+    // wurde (User schnell), verwirft applyTabPatch die Mutation still.
     if (typeof window === 'undefined' || typeof window.api === 'undefined') return;
     for (const job of filesToLoad) {
       void window.api.fs
         .read({ projectId: job.projectId, relPath: job.relPath })
         .then((result) => {
-          const stack = get().tabs[job.projectId];
-          if (!stack || !stack.some((t) => t.id === job.tabId)) return;
-          set((state) => {
-            const cur = state.tabs[job.projectId] ?? [];
-            const updated = cur.map((t) =>
-              t.id === job.tabId
-                ? {
-                    ...t,
-                    loading: false,
-                    savedContent: result.ok ? result.data.content : null,
-                    loadError: result.ok ? null : result.error,
-                  }
-                : t,
-            );
-            return { tabs: { ...state.tabs, [job.projectId]: updated } };
+          applyTabPatch(set, get, job.projectId, job.tabId, {
+            loading: false,
+            savedContent: result.ok ? result.data.content : null,
+            loadError: result.ok ? null : result.error,
           });
         })
         .catch((e) => {
-          // Ein hard-Fehler im fs:read bleibt loading=true — der Editor zeigt
-          // dann ewig Skeleton, was UX-bremsend ist. Wir setzen loadError
-          // explizit, damit der Editor einen Hinweis rendert.
-          const stack = get().tabs[job.projectId];
-          if (!stack || !stack.some((t) => t.id === job.tabId)) return;
-          set((state) => {
-            const cur = state.tabs[job.projectId] ?? [];
-            const updated = cur.map((t) =>
-              t.id === job.tabId
-                ? {
-                    ...t,
-                    loading: false,
-                    loadError: e instanceof Error ? e.message : String(e),
-                  }
-                : t,
-            );
-            return { tabs: { ...state.tabs, [job.projectId]: updated } };
+          // Ein hard-Fehler im fs:read bleibt sonst loading=true — der Editor
+          // zeigt ewig Skeleton. loadError explizit setzen, damit der Editor
+          // einen Hinweis rendert.
+          applyTabPatch(set, get, job.projectId, job.tabId, {
+            loading: false,
+            loadError: e instanceof Error ? e.message : String(e),
           });
         });
     }
