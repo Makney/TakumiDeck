@@ -40,6 +40,7 @@ import type {
   UsageUpdateEvent,
   UsageWindowInput,
   UsageWindowResult,
+  WindowAction,
 } from '@shared/types';
 
 // Whitelist-API. Renderer hat keinen direkten Node/Electron-Zugriff (contextIsolation: true,
@@ -48,14 +49,14 @@ import type {
 const api: RendererApi = {
   settings: {
     get: () => ipcRenderer.invoke(Channels.SettingsGet) as Promise<IpcResult<AppSettings>>,
-    set: (patch) =>
+    set: (patch: Partial<AppSettings>) =>
       ipcRenderer.invoke(Channels.SettingsSet, patch) as Promise<IpcResult<AppSettings>>,
   },
   app: {
     getVersion: () => ipcRenderer.invoke(Channels.AppGetVersion) as Promise<IpcResult<string>>,
     openDataFolder: () =>
       ipcRenderer.invoke(Channels.AppOpenDataFolder) as Promise<IpcResult<string>>,
-    windowAction: (action) =>
+    windowAction: (action: WindowAction) =>
       ipcRenderer.invoke(Channels.AppWindowAction, action) as Promise<IpcResult<null>>,
     claudeHealth: () =>
       ipcRenderer.invoke(Channels.AppClaudeHealth) as Promise<
@@ -144,9 +145,7 @@ const api: RendererApi = {
         IpcResult<UsageContextResult>
       >,
     heatmap: () =>
-      ipcRenderer.invoke(Channels.UsageHeatmap, {}) as Promise<
-        IpcResult<UsageHeatmapResult>
-      >,
+      ipcRenderer.invoke(Channels.UsageHeatmap) as Promise<IpcResult<UsageHeatmapResult>>,
     onUpdate: (handler: (event: UsageUpdateEvent) => void) => {
       const wrapped = (_evt: IpcRendererEvent, payload: UsageUpdateEvent) => handler(payload);
       ipcRenderer.on(Channels.UsageUpdate, wrapped);
