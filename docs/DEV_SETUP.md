@@ -6,7 +6,7 @@ Schritt-für-Schritt-Anleitung für eine frische Entwicklungsumgebung. Ziel: von
 
 | Tool         | Mindestversion | Hinweis                                                 |
 | ------------ | -------------- | ------------------------------------------------------- |
-| `Node.js`    | 20.x LTS       | Empfohlen via [nvm-windows](https://github.com/coreybutler/nvm-windows) |
+| `Node.js`    | 20.x LTS       | Empfohlen via [nvm-windows](https://github.com/coreybutler/nvm-windows) — aktuell getestet mit Node 24 |
 | `npm`        | 10.x           | Kommt mit Node.js                                       |
 | `Git`        | 2.40+          | Für `simple-git`-Operationen                            |
 | `Claude Code`| 2.0+           | Wird als Subprocess gespawnt — muss im PATH liegen      |
@@ -94,13 +94,27 @@ Beide werden ohne offenes Terminal-Fenster ausgeführt — Doppelklick reicht.
 
 ## Häufige Probleme
 
-### `node-pty` kompiliert nicht
+### `@lydell/node-pty` kompiliert nicht
 
 **Symptom:** Bei `npm install` Fehler wie `MSBuild not found` oder `Python not found`.
 
-**Ursache:** `node-pty` ist ein Native-Modul. Die `@homebridge/node-pty-prebuilt-multiarch`-Variante sollte Prebuilds für gängige Electron-Versionen mitliefern, aber bei seltenen Versionen kann es trotzdem kompilieren wollen.
+**Ursache:** `@lydell/node-pty` ist ein Native-Modul mit NAPI-ABI. Für gängige Electron-Versionen liegen Prebuilds bereit (NAPI ist über Electron-Versionen stabiler als die V8-ABI von `better-sqlite3`); bei seltenen Versionen kann der Compile-Pfad trotzdem triggern.
 
-**Lösung:** Auf eine unterstützte Electron-Version pinnen (siehe `package.json`). Falls weiter problematisch: [windows-build-tools](https://github.com/felixrieseberg/windows-build-tools) installieren.
+**Lösung:** Primär eine unterstützte Electron-Version verwenden (siehe `package.json`, aktuell `electron: ^41.5.1` — Pinning-Grund in [ENTSCHEIDUNGEN.md „Electron auf 41 statt 42"](./ENTSCHEIDUNGEN.md)). Falls trotzdem ein Compile nötig wird: **Visual Studio 2022 Build Tools** mit Workload „Desktop-Entwicklung mit C++" installieren (komplette IDE nicht nötig). Das npm-Package `windows-build-tools` ist seit 2019 deprecated, nicht verwenden.
+
+### `better-sqlite3` lädt nicht (NODE_MODULE_VERSION-Mismatch)
+
+**Symptom:** Beim ersten `npm start` Fehler wie `NODE_MODULE_VERSION 130 vs 145` oder „The module ... was compiled against a different Node.js version".
+
+**Ursache:** `better-sqlite3` ist gegen die Standard-Node-ABI gebaut, Electron nutzt eine eigene ABI. Nach dem Klonen oder nach einem `npm install` muss das Modul einmalig für die Electron-Version rebuilt werden.
+
+**Lösung:**
+
+```bash
+npx @electron/rebuild -w better-sqlite3 -o better-sqlite3
+```
+
+Wichtig: **kein `-f`-Flag** verwenden. `-f` würde `@electron/rebuild` zwingen, den Prebuild-Download zu überspringen und stattdessen aus den C++-Quellen zu kompilieren — die Quelle ist mit Electron 41 + V8 13 inkompatibel (siehe [TECH_SCHULDEN.md „Electron-Bump auf 42 blockiert"](./TECH_SCHULDEN.md)).
 
 ### Claude Code wird nicht gefunden
 

@@ -61,6 +61,30 @@ Git-Mechanismus zum Auschecken eines Branches in einen separaten Ordner. Erlaubt
 
 Texte, die via Bracketed Paste an die aktive Claude-Code-Session gesendet werden — z.B. Trigger-Phrasen oder befüllte Templates. Müssen einzeilig oder mit Bracketed Paste umschlossen sein, sonst startet Claude Code die Verarbeitung schon nach der ersten Zeile.
 
+### Lifecycle-States
+
+Die 5 möglichen Status einer Session, geführt durch die zentrale State-Machine `SessionLifecycle` im Main-Prozess:
+
+- **running** — Claude Code arbeitet aktiv (letzte JSONL-Aktivität < 3 s)
+- **idle** — Spawned, aber inaktiv (letzte JSONL-Aktivität ≥ 3 s, kein Exit)
+- **completed** — Geordneter Exit, claude-Prozess hat sich selbst beendet
+- **interrupted** — Hard-Stop (App-Quit, Hard-Crash, User schließt Tab während running)
+- **error** — Spawn-Fehler oder Lifecycle-Inkonsistenz
+
+Sichtbar im UI als Sidebar-Status-Dot-Farben (grün/orange/grau), Verlauf-Filter, Resume-Bedingungen. Resume ist erlaubt aus `completed` / `interrupted` / `error` — nicht aus `running` / `idle` (laufende Session, wird via Tab-Wechsel weiterverwendet).
+
+### encodeCwd
+
+Projekt-spezifische Mapping-Konvention: Aus einem Working-Directory-Pfad (z.B. `D:\Projekte\TanaLib`) wird der entsprechende JSONL-Container-Pfad in `~/.claude/projects/` abgeleitet. Claude Code escaped Path-Separatoren (`/`, `\`) zu `-`, sodass `D:\Projekte\TanaLib` zu `D--Projekte-TanaLib` wird. TakumiDeck implementiert dieselbe Transformation, um JSONL-Files den eigenen Sessions zuzuordnen.
+
+### Legacy-Bucket (`__default__`-Project)
+
+Sammel-Container für Sessions, die in Sprint 2/3 gespawnt wurden, bevor der Workspace-Scanner (Sprint 4) existierte. Diese Sessions haben `project_id` = `00000000-0000-0000-0000-000000000001` und werden in der Sidebar unter „Sprint-2/3-Legacy" gezeigt, sofern `session_count > 0`. Im Verlauf-Panel sichtbar, Resume funktioniert seit dem Sprint-6-Hotfix. Bei Erstinstallation ab Phase 1 nicht mehr relevant.
+
 ### Kontext-Balken
 
 UI-Element pro Session, zeigt aktuell genutzten Kontext (`input_tokens + cache_creation + cache_read`) gegen das Modell-Limit. Snapshot-basiert (letzter Wert, nicht Maximum). Farb-Schwellen: gelb 70%, orange 85%, rot 95%.
+
+### Limit-Bar / Plannutzungs-Bar
+
+UI-Element im PlanPane für globale Token-Limits (5 h, weekly all, weekly top-tier, weekly sonnet, custom). Stellt aggregierten Verbrauch über eine Zeitspanne in % des P90-Schätzlimits dar — im Gegensatz zum **Kontext-Balken**, der nur die aktuelle Session und den aktuellen Modell-Kontext zeigt. Konfigurierbar via `limit_bars[]` im Settings-JSON-Editor.

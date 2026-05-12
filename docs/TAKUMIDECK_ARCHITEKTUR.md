@@ -1,7 +1,7 @@
 # TakumiDeck — Architektur-Referenz
 
-**Stand:** 2026-05-07
-**Status:** Architektur abgeschlossen, ready für Sprint 1
+**Stand:** 2026-05-12
+**Status:** Architektur abgeschlossen, MVP v0.1 ready (Phase 1 komplett)
 **Name:** TakumiDeck — "Takumi" (匠 = Meisterhandwerker) + "Deck" (Kommandobrücke)
 
 ---
@@ -738,7 +738,7 @@ Code-Beispiel:
 
 ## 8. Phasen-Plan
 
-### Phase 1 (MVP)
+### Phase 1 (MVP) — ✅ abgeschlossen 2026-05-12
 
 Komplette Liste — siehe Kapitel 6 oben. Kernfeatures:
 - Workspace-Manager + Projekt-Erkennung
@@ -780,6 +780,8 @@ Komplette Liste — siehe Kapitel 6 oben. Kernfeatures:
 ---
 
 ## 9. Build-Reihenfolge (Sprints)
+
+✅ Alle 8 Sprints abgeschlossen 2026-05-12 — die Sektion bleibt unverändert als Architektur-Plan-Historie. Aktueller Feature-Status in [FEATURES.md](./FEATURES.md), implementierte Abweichungen vom Plan in [CHANGELOG.md](./CHANGELOG.md) (z.B. Mid-Sprint-Right-Pane-Pivot Sprint 7, Sprint 9 als zusätzlicher QA-Sprint).
 
 **Strategie:** MVP-MVP zuerst (Skeleton in 1-2 Wochen), dann iterativ erweitern.
 
@@ -878,14 +880,14 @@ Komplette Liste — siehe Kapitel 6 oben. Kernfeatures:
 
 ## 13. Offene Fragen für Sprint 1 (Implementations-Detail-Level)
 
-Die folgenden Fragen werden während Sprint 1 entschieden, sind keine Architektur-Fragen mehr:
+Die folgenden Fragen wurden während Sprint 1 entschieden — die Antworten stehen zur Nachvollziehbarkeit hier, Details in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md).
 
-- React State-Library Pattern (Zustand-Slices vs. Single-Store)
-- IPC-Channel-Naming-Convention (Doppelpunkt vs. Punkt)
-- SQLite-Migration-Strategie (manuell vs. Schema-Versionierung)
-- Tailwind vs. CSS-Modules vs. Styled-Components
-- Test-Setup (Vitest? Wann anfangen?)
-- Logging-Library (electron-log? winston? console.log?)
+- React State-Library Pattern — **4 Zustand-Domain-Stores** (`useSessionStore`, `useProjectStore`, `useUsageStore`, `useUiStore`).
+- IPC-Channel-Naming-Convention — **Doppelpunkt** (`project:list`, `pty:create`).
+- SQLite-Migration-Strategie — **Schema-versioniert** via `PRAGMA user_version`, nummerierte SQL-Dateien.
+- Tailwind vs. CSS-Modules vs. Styled-Components — **CSS-Modules + `tokens.css`** (CSS Custom Properties).
+- Test-Setup — **Vitest**, Foundation-Smoke-Tests ab Sprint 1.
+- Logging-Library — **electron-log**.
 
 ---
 

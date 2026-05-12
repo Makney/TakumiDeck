@@ -137,7 +137,77 @@ Letzter Schliff vor MVP-Release.
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
 | `UI-Vergleich gegen Design-Vorlage` | ✅  | 2026-05-10 — Zwei-Pass-Findings (`docs/code-review/SPRINT9_UI_FINDINGS.md` + `SPRINT9_LIVE_VERGLEICH.md`). Kritisch + alle B/C/D-Punkte umgesetzt: 22-px-Display-Headlines (Sidebar/Modal), 28-px PlanPane-Headline, Window-Frame-Tabs, KeyboardHints-Hierarchie, ctx-Slot in Action-Bar, Toast-Slot, td-file.selected, Range-Toggle, TitleBar-System-Status, FilesPanel-Caption, Modal-Wide 820 px, Vorlage-Naming (td-main/td-col-right-stack/td-dash-/td-stat/td-field/td-radio), Settings-Modal-Sidebar (V D5-A), HistoryActionModal mit Resume/Archive/Verlauf-Öffnen, per-Bar reset_schedule (UI-Slot), xterm-Scrollbar, Action-Bar-Wrapping mit `flex: 1 1 240px`-min-width-Trick, cols-Estimate beim Resume. |
-| `Code-Review + Debugging`           | ⛔  |           |
+| `Code-Review + Debugging`           | ✅  | 2026-05-12 — 9 Bereiche aus REVIEW_PLAN.md durch (Build/Konfig, Modals/Components, IPC-Handler, Preload-Bridge, Main-Hardening); Electron 33→41 + Vite 5→6 Security-Bump, CSP-Header via webRequest.onHeadersReceived, will-navigate + setWindowOpenHandler, default-deny Permission-Handler. Validierung: `npm run typecheck` + `npm run lint` + `npx vitest run` (398/398) grün. |
+
+---
+
+## Phase 2 — Komfort & Stabilisierung (v1.0)
+
+Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezogen und implementiert.
+
+### Sessions (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Volle State-Detection`              | ⛔      | TUI-Pattern-Matching auf xterm-Buffer (running/waiting/idle/permission-prompt) |
+| `Trigger-Phrasen-Schnellbuttons`     | ⛔      | Dynamische Buttons aus `workbench.trigger_phrases` |
+
+### Token-Dashboard (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `20%-Kontext-Soft-Warning`           | ⛔      | Konfigurierbarer Schwellwert, Settings-Toggle |
+| `Modell-Filter im Verlauf-Panel`     | ⛔      | Ergänzt Phase-1-Filter um `current_model` |
+
+### Stats & Heatmap (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Stats-Cards`                        | ⛔      | Sitzungen/Nachrichten/Tokens/Aktive Tage/Streaks/Spitzenstunde/Lieblingsmodell |
+| `Aktivitäts-Heatmap`                 | ⛔      | GitHub-Style 30/52-Wochen-Calendar, CSS-Grid mit color-mix |
+| `Modelle-View`                       | ⛔      | Bar-Chart + Tabelle pro Modell, Phase-1-Skeleton ausbauen |
+| `Easter-Egg-Vergleiche`              | ⛔      | „~31× LotR"-Token-Vergleiche, konfigurierbare Werke |
+| `30d/7d-Filter`                      | ⛔      | Globaler Zeit-Toggle für Stats-Section |
+
+### Templates (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Erweiterte Template-Variablen`      | ⛔      | LETZTE_SEASON_NAME, TECH_SCHULDEN_RELEVANT, LETZTE_ENTSCHEIDUNGEN |
+
+### Docs-Sync (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Docs-Sync-Session`                  | ⛔      | Auto-Prompt für Komprimierung nach `docs/SUMMARIES/` |
+| `Kontext-Checkbox-Erweiterung`       | ⛔      | Summary-Inhalt als Präambel statt Pfad-Erinnerung |
+
+### Editor (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Markdown-Preview Side-by-Side`      | ⛔      | Zwei-Panel mit Synced-Scrolling, ergänzt Phase-1-Toggle |
+
+### Build & Distribution (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Auto-Update via electron-updater`   | ⛔      | GitHub-Releases als Update-Quelle |
+| `GitHub Actions Build-Pipeline`      | ⛔      | Tag-Push → Windows-Build → Release |
+
+### Right-Pane-Polish (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Datei-Browser-Filter`               | ⛔      | Live-Filter + File-Type-Toggles |
+| `Pre-Commit-Sensitive-Warning`       | ⛔      | Pattern-Liste in Settings konfigurierbar, Verfeinerung der hartcodierten Phase-1-Liste |
+| `Datei-Browser-Status-Indikatoren`   | ⛔      | M/A/D-Marks via simple-git status-Polling |
+
+### Diff-Viewer (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Multi-Tab-Diff`                     | ⛔      | Working Tree / Staged / Session-spezifisch |
 
 ---
 

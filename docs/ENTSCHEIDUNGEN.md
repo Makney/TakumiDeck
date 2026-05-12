@@ -40,6 +40,27 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Code-Review-Pass: Main-Hardening (Bereich 5 + Hotfix CSP-Dev-Block)
+
+**Entscheidung:** Der Main-Prozess implementiert vier sicherheitsarchitektonische Policies, die im MVP-Pre-Release-Code-Review (2026-05-12, Bereich 5 + Hotfix `6fe11a9`) festgelegt wurden und ab v0.1 dauerhaft gelten:
+
+1. **CSP doppelt verankert** — zusätzlich zum Meta-Tag im Renderer-HTML setzt `webRequest.onHeadersReceived` denselben CSP-Inhalt als HTTP-Header. Greift vor dem ersten Script-Tag, gilt auch für `file://`-Loads (Electronegativity CSP_GLOBAL_CHECK).
+2. **CSP-Profil dev/prod-aware** — Production: strict `script-src 'self'`. Development: zusätzlich `'unsafe-inline'`/`'unsafe-eval'` (für Vite-6 `@vitejs/plugin-react` Fast-Refresh-Preamble) + `ws://localhost:5173` im `connect-src` (für HMR-WebSocket).
+3. **shell.openExternal-Whitelist** — `setWindowOpenHandler` öffnet `http(s)`-Ziele explizit im System-Browser, andere Schemata (`file:`/`javascript:`/`data:`) bleiben blockiert. `will-navigate` blockt In-Place-Navigation aus dem Renderer und öffnet HTTP(S) extern (Electronegativity LIMIT_NAVIGATION_GLOBAL_CHECK).
+4. **Default-deny Permission-Handler** — `setPermissionRequestHandler` + `setPermissionCheckHandler` lehnen alle Browser-Permissions (Mikro, Geo, Notifications, MIDI, …) ab. Whitelisting bei Bedarf in zukünftigem Sprint (Electronegativity PERMISSION_REQUEST_HANDLER_GLOBAL_CHECK).
+
+**Varianten** (für CSP-Profil dev/prod, die nicht-triviale der vier Entscheidungen):
+
+- **A** Einheitliche strict-CSP, Vite-Dev über andere Plugin-Konfig ohne inline-Script — verworfen, weil `@vitejs/plugin-react`-Fast-Refresh-Preamble nicht ohne inline läuft und ein Custom-Plugin-Pfad fragil wäre.
+- **B** Dev-Mode-Branch in der CSP-Definition (gewählt) — Dev ist Owner-Maschine, kein realistischer Threat-Vektor; Prod-Build wird identisch hardened wie vor dem Hotfix.
+- **C** CSP nur als Meta-Tag (Status vor dem Hotfix) — verworfen, weil Vite-6 die Inline-Preamble nicht umgehen kann und der Renderer dadurch in Dev leer blieb.
+
+**Grund:** Sicherheits-Policies, die im Code-Review als „Default-Hardening für ein lokales Daily-Driver-Tool ohne externe Surface" plausibel waren. CSP-Doppel-Verankerung kostet eine doppelt zu pflegende Stelle (Meta-Tag im Renderer + Header in `main.ts`) — Trade-off bewusst akzeptiert. Dev/Prod-Trennung ist die einzige nicht-triviale: sie öffnet im Dev-Mode bewusst die CSP-Lücke, weil die App lokal auf einer Owner-Maschine läuft und der Dev-Workflow (Fast-Refresh, HMR) sonst nicht funktioniert.
+
+**Konsequenz:** Bei jeder Änderung der CSP-Werte beide Stellen synchron pflegen (Meta-Tag und Header). Wenn TakumiDeck später als signiertes Build über npm distributed wird, die Permission-Whitelist neu evaluieren (Notifications wären dann plausibel). Bei Vite-Update auf v7+ prüfen, ob die Fast-Refresh-Preamble nicht mehr inline kommt — dann Dev-CSP wieder verschärfen.
+
+---
+
 ## UsageBar als Vorlage-treue Zeile statt Card (Sprint 9, Variant A)
 
 **Entscheidung:** UsageBar im PlanPane rendert ohne eigenen Border und Card-Background — nur Label-Zeile + Track. Click-Target ist die ganze Zeile, Hover signalisiert Klickbarkeit ausschließlich über Color-Wechsel auf accent.

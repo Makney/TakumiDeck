@@ -17,6 +17,18 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-12 — MVP v0.1 ready — Phase 1 abgeschlossen
+
+Mit dem Abschluss des Code-Review-Passes (siehe folgender Eintrag) sind alle Phase-1-Features in [FEATURES.md](./FEATURES.md) auf ✅. TakumiDeck ist im Daily-Use-Zustand: Electron-Skelett mit Hardening, Multi-Session-PTY-Tabs mit Lifecycle/Resume, Workspace-Scanner mit CLAUDE.md-Parser, Token-Dashboard mit JSONL-Watcher und P90-Detection, Templates mit Variable-Filling, Season-Tracker mit Verlauf-Panel, Markdown-Editor + Diff-Viewer + Pre-Commit-Panel, Settings-Dialog mit 6 Tabs und JSON-Editor, `npm run make`-Build (Squirrel-Setup + Portable-ZIP). Sprint-9-UI-Vergleich gegen Design-Vorlage komplett (kritisch + alle B/C/D-Punkte umgesetzt).
+
+Phase 2 ist **trigger-getrieben** dokumentiert in [roadmap/PHASE2.md](./roadmap/PHASE2.md) — kein Auto-Start, sondern Schmerzpunkt-driven aus der Phase-1-Nutzung. FEATURES.md hat dafür ein ⛔-Skelett erhalten.
+
+### Hotfix-Nachzug
+
+- **CSP-Dev-Block (Commit `6fe11a9`)** — Folge des Electron-33→41 + Vite-5→6-Bumps. Vite-6 `@vitejs/plugin-react` injiziert ein inline Fast-Refresh-Preamble, das die strict `script-src 'self'`-CSP aus der statischen `index.html` blockte → Renderer blieb leer. Fix: Meta-CSP aus statischer `index.html` raus, via Vite-Plugin nur beim Production-Build wieder injiziert (identische strict-Werte); Header-CSP in `main.ts` dev/prod-aware (Dev erlaubt `'unsafe-inline'`/`'unsafe-eval'` + `ws://localhost:5173` für HMR, Production unverändert strict).
+
+---
+
 ## 2026-05-12 — Code-Review-Pass MVP-Pre-Release abgeschlossen
 
 Die neun Bereiche aus [docs/code-review/REVIEW_PLAN.md](./code-review/REVIEW_PLAN.md) sind durch. Bereiche 1–3 + 7–9 bereits in den Vortagen (Commits `ebe2c90`, `257c752`, `850bc79`, `5dc33d0`, Hotfix `ecdca93`), Bereich 4 + 5 heute (siehe die zwei folgenden Detail-Blöcke). Status-Matrix in REVIEW_PLAN.md auf den tatsächlichen Stand bereinigt; OFFEN_BUILD.md für Bereich 9 nachgeholt (DevDep-CVE-Tail, E42-Blocker, `exactOptionalPropertyTypes`-Slot, `electron-winstaller`-Pin-Anker, Husky-Test-Scope — alle als Design-by-Choice mit klaren Trigger-Bedingungen).
