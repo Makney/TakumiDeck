@@ -12,6 +12,9 @@ export const Channels = {
   SessionResume: 'session:resume',
   SessionUpdate: 'session:update',
   SessionHistory: 'session:history',
+  // Phase-2 Season-1: Main pusht Status-Änderungen (waiting/running/idle) aktiv
+  // an den Renderer, damit der Store aktuell bleibt ohne IPC-Poll.
+  SessionStatusPush: 'session:status-push',
   // Sprint-6-UX-Fix (Variante B): expliziter Archive-Schritt, getrennt vom × auf
   // dem Tab. session:close killt nur den PTY, session:archive setzt den Lifecycle.
   SessionArchive: 'session:archive',
@@ -23,6 +26,11 @@ export const Channels = {
   PtyKill: 'pty:kill',
   PtyData: 'pty:data',
   PtyExit: 'pty:exit',
+  // Phase-2 Season-1: Renderer pusht den detektierten TUI-Status (Pattern-Match
+  // auf serialisierten xterm-Buffer) ans Main. Nur State-Wechsel werden gesendet,
+  // damit der Channel ruhig bleibt — eine sitzende `waiting`-Session erzeugt
+  // keinen Traffic.
+  PtyTuiState: 'pty:tui-state',
 
   // Git (Sprint 7)
   GitStatus: 'git:status',

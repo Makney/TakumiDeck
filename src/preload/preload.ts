@@ -3,6 +3,7 @@ import { Channels } from '@shared/ipc-channels';
 import type {
   AppSettings,
   ClaudeMdParseResult,
+  SessionStatusPushEvent,
   FsListTemplatesInput,
   FsListTreeInput,
   FsReadInput,
@@ -24,6 +25,7 @@ import type {
   PtyExitEvent,
   PtyKillInput,
   PtyResizeInput,
+  PtyTuiStateInput,
   PtyWriteInput,
   RendererApi,
   SessionArchiveInput,
@@ -75,6 +77,8 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.PtyResize, input) as Promise<IpcResult<null>>,
     kill: (input: PtyKillInput) =>
       ipcRenderer.invoke(Channels.PtyKill, input) as Promise<IpcResult<null>>,
+    pushTuiState: (input: PtyTuiStateInput) =>
+      ipcRenderer.invoke(Channels.PtyTuiState, input) as Promise<IpcResult<null>>,
     // Wir reichen NUR die Payload (kein IpcRendererEvent) an den Renderer weiter — sonst
     // würden interne Electron-Objekte über die contextBridge-Grenze sichtbar.
     onData: (handler: (event: PtyDataEvent) => void) => {
@@ -101,6 +105,11 @@ const api: RendererApi = {
       >,
     archive: (input: SessionArchiveInput) =>
       ipcRenderer.invoke(Channels.SessionArchive, input) as Promise<IpcResult<SessionRow>>,
+    onStatusPush: (handler: (event: SessionStatusPushEvent) => void) => {
+      const wrapped = (_evt: IpcRendererEvent, payload: SessionStatusPushEvent) => handler(payload);
+      ipcRenderer.on(Channels.SessionStatusPush, wrapped);
+      return () => ipcRenderer.removeListener(Channels.SessionStatusPush, wrapped);
+    },
   },
   fs: {
     listTemplates: (input: FsListTemplatesInput) =>

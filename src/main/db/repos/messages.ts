@@ -13,6 +13,10 @@ export interface MessageDbDriver {
   // Letzter ts pro Session — wird vom State-Detection-Pfad und der Per-Session-
   // Kontext-Bar gelesen. Returnt null, wenn die Session noch keine messages hat.
   lastTimestampForSession(sessionId: string): number | null;
+  // Rolle der letzten Message — wird vom State-Detection-Loop für die
+  // `waiting`-Erkennung genutzt: last role = 'assistant' + stale timestamp
+  // bedeutet Claude hat geantwortet und wartet auf User-Input.
+  lastRoleForSession(sessionId: string): 'assistant' | 'user' | null;
   // Letzter usage-Stand der Session (für die Per-Session-Kontext-Bar). Liefert
   // tokens_in/tokens_out und ts der zuletzt eingelesenen Zeile, null wenn die
   // Session noch keine Messages hat. Modell-Info hängt nicht an `messages` (gehört
@@ -37,6 +41,10 @@ export class MessageRepository {
     return this.driver.lastTimestampForSession(sessionId);
   }
 
+  lastRoleForSession(sessionId: string): 'assistant' | 'user' | null {
+    return this.driver.lastRoleForSession(sessionId);
+  }
+
   lastUsageForSession(sessionId: string): LastUsageRow | null {
     return this.driver.lastUsageForSession(sessionId);
   }
@@ -47,6 +55,7 @@ export class MessageRepository {
 export class SqliteMessageDriver implements MessageDbDriver {
   private readonly insertStmt: Database.Statement;
   private readonly lastTsStmt: Database.Statement<[string], { ts: number }>;
+  private readonly lastRoleStmt: Database.Statement<[string], { role: string }>;
   private readonly lastUsageStmt: Database.Statement<[string], LastUsageRow>;
 
   constructor(db: Database.Database) {
@@ -60,6 +69,9 @@ export class SqliteMessageDriver implements MessageDbDriver {
     this.lastTsStmt = db.prepare<[string], { ts: number }>(
       'SELECT ts FROM messages WHERE session_id = ? ORDER BY ts DESC LIMIT 1',
     );
+    this.lastRoleStmt = db.prepare<[string], { role: string }>(
+      'SELECT role FROM messages WHERE session_id = ? ORDER BY ts DESC LIMIT 1',
+    );
     this.lastUsageStmt = db.prepare<[string], LastUsageRow>(
       'SELECT ts, tokens_in, tokens_out FROM messages WHERE session_id = ? ORDER BY ts DESC LIMIT 1',
     );
@@ -72,6 +84,12 @@ export class SqliteMessageDriver implements MessageDbDriver {
   lastTimestampForSession(sessionId: string): number | null {
     const row = this.lastTsStmt.get(sessionId);
     return row ? row.ts : null;
+  }
+
+  lastRoleForSession(sessionId: string): 'assistant' | 'user' | null {
+    const row = this.lastRoleStmt.get(sessionId);
+    if (!row) return null;
+    return row.role === 'assistant' ? 'assistant' : 'user';
   }
 
   lastUsageForSession(sessionId: string): LastUsageRow | null {
@@ -96,6 +114,16 @@ export class InMemoryMessageDriver implements MessageDbDriver {
       if (last === null || r.ts > last) last = r.ts;
     }
     return last;
+  }
+
+  lastRoleForSession(sessionId: string): 'assistant' | 'user' | null {
+    let candidate: MessageInsert | null = null;
+    for (const r of this.rows) {
+      if (r.session_id !== sessionId) continue;
+      if (!candidate || r.ts > candidate.ts) candidate = r;
+    }
+    if (!candidate) return null;
+    return candidate.role === 'assistant' ? 'assistant' : 'user';
   }
 
   lastUsageForSession(sessionId: string): LastUsageRow | null {

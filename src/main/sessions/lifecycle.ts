@@ -30,19 +30,52 @@ export type Clock = () => number;
 
 // Erlaubte Übergänge: from → Set(to). Was nicht hier steht, wird abgelehnt.
 // Schreibweise als 2D-Map, damit Truth-Table-Tests trivial darauf greifen können.
+//
+// Phase 2 Season 1: Volle State-Detection ergänzt `permission-prompt` als Ziel
+// und erlaubt running/idle die Übergänge nach waiting + permission-prompt
+// (TUI-Pattern-Push aus dem Renderer). Die umgekehrten Pfade aus waiting /
+// permission-prompt zurück nach `idle` sind BEWUSST nicht erlaubt — die
+// StateDetectionLoop skippt diese Sessions, sodass der Timestamp-Pfad den
+// vom Renderer gemeldeten TUI-Status nicht überschreibt.
 const ALLOWED: Record<SessionStatus, ReadonlySet<SessionStatus>> = {
-  // Sprint-5: running ↔ idle via JSONL-Detection. waiting bleibt absichtlich raus
-  // (Phase 2: Permission-Prompt-Recognition); idle bleibt der einzig „weichere"
-  // Übergang, alles andere weiterhin Sprint-3-konform.
-  running: new Set<SessionStatus>(['idle', 'completed', 'interrupted', 'error', 'archived']),
+  running: new Set<SessionStatus>([
+    'idle',
+    'waiting',
+    'permission-prompt',
+    'completed',
+    'interrupted',
+    'error',
+    'archived',
+  ]),
+  idle: new Set<SessionStatus>([
+    'running',
+    'waiting',
+    'permission-prompt',
+    'completed',
+    'interrupted',
+    'error',
+    'archived',
+  ]),
+  waiting: new Set<SessionStatus>([
+    'running',
+    'permission-prompt',
+    'completed',
+    'interrupted',
+    'error',
+    'archived',
+  ]),
+  'permission-prompt': new Set<SessionStatus>([
+    'running',
+    'waiting',
+    'completed',
+    'interrupted',
+    'error',
+    'archived',
+  ]),
   completed: new Set<SessionStatus>(['running', 'archived']),
   interrupted: new Set<SessionStatus>(['running', 'archived']),
   error: new Set<SessionStatus>(['running', 'archived']),
   archived: new Set<SessionStatus>(),
-  // waiting wird Sprint 5 NICHT geschrieben, aber als Source weiterhin akzeptiert,
-  // falls eine externe Komponente (Tests, künftige Phase-2-Detection) ihn setzt.
-  waiting: new Set<SessionStatus>(['running', 'completed', 'interrupted', 'error', 'archived']),
-  idle: new Set<SessionStatus>(['running', 'completed', 'interrupted', 'error', 'archived']),
 };
 
 // Ist `to` ein gültiger Folge-Status von `from`? Reine Daten-Frage, keine Side-Effects.

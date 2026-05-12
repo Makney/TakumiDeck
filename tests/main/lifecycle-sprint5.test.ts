@@ -37,9 +37,11 @@ describe('Sprint-5-Lifecycle: running ↔ idle erlaubt', () => {
     ['running', 'idle'],
     ['idle', 'running'],
   ];
+  // Phase-2 Season-1 hat running→waiting und idle→waiting freigeschaltet (siehe
+  // tests/main/lifecycle-phase2.test.ts). Hier bleiben nur die Transitions,
+  // die auch Phase-2-übergreifend NICHT erlaubt sind — vor allem alles aus dem
+  // archived-Endzustand.
   const stillDisallowed: Array<[SessionStatus, SessionStatus]> = [
-    ['running', 'waiting'], // Phase 2
-    ['idle', 'waiting'], // Phase 2
     ['archived', 'idle'],
     ['archived', 'running'],
   ];

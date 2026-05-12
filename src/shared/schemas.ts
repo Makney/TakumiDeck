@@ -63,6 +63,9 @@ export const SessionStatusSchema = z.enum([
   'running',
   'waiting',
   'idle',
+  // Phase-2 Season-1: TUI-Detection meldet Permission-Prompts, damit Sidebar +
+  // History-Pane sie sichtbar machen können (Sprint-9-Backlog-Punkt).
+  'permission-prompt',
   'completed',
   'archived',
   'interrupted',
@@ -102,6 +105,15 @@ export const PtyResizeInputSchema = z.object({
 
 export const PtyKillInputSchema = z.object({
   sessionId: z.string().uuid(),
+});
+
+// Phase-2 Season-1: pty:tui-state. Renderer schickt den vom Pattern-Match
+// detektierten TUI-Status. Whitelist auf die vier bekannten Werte; alles andere
+// (z.B. terminal-status wie completed/archived) wird verworfen — der Lifecycle
+// soll diese Pfade nur über die etablierten IPC-Handler bedienen.
+export const PtyTuiStateInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  state: z.enum(['running', 'waiting', 'idle', 'permission-prompt']),
 });
 
 // SessionUpdate-Patch: nur Felder, die in Sprint 2 vom Renderer geschrieben werden dürfen.

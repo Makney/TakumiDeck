@@ -149,8 +149,15 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
-| `Volle State-Detection`              | ⛔      | TUI-Pattern-Matching auf xterm-Buffer (running/waiting/idle/permission-prompt) |
+| `Volle State-Detection`              | ✅      | 2026-05-12 (Phase-2-Season-1) — versionierte TUI-Patterns (`cc-1.x`) auf serialisiertem xterm-Buffer im Renderer, JSONL-Timestamp-Loop im Main; Renderer pusht `waiting`/`permission-prompt`, Loop schreibt `running`/`idle`. Box-Layout-Toleranz (`^\s*`) für Claude-Code-2.x-Input-Box mit eingerücktem `? for shortcuts`. |
 | `Trigger-Phrasen-Schnellbuttons`     | ⛔      | Dynamische Buttons aus `workbench.trigger_phrases` |
+
+### Projekt-Verwaltung (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Projekt entfernen`                  | ⛔      | Sidebar-Action mit Confirmation; neuer IPC `project:remove`, Sessions werden auf Default-Bucket umgehängt statt FK-Cascade |
+| `First-Start-Workspace-Wizard`       | ⛔      | Welcome-Screen bei fehlender `settings.json`; expliziter Workspace-Pick statt stillem Default-Scan von `<home>/Projekte` |
 
 ### Token-Dashboard (Phase 2)
 

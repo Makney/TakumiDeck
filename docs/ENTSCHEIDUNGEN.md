@@ -24,6 +24,22 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## State-Detection in Phase 2: TUI für `waiting`/`permission-prompt`, JSONL für `running`/`idle`
+
+**Entscheidung:** Die volle State-Detection aus Phase 2 verteilt die Klassifikation auf zwei Quellen. `waiting` und `permission-prompt` werden ausschließlich vom Renderer per TUI-Pattern auf dem serialisierten xterm-Buffer erkannt und via `pty:tui-state`-IPC an den Main-Lifecycle gepusht. `running` und `idle` macht weiterhin der Main-Loop alle 2 s aus dem JSONL-Timestamp (Phase-1-Mechanik). Der JSONL-Loop überspringt running-Sessions mit stale JSONL — er darf `running` nicht eigenständig auf `idle`/`waiting` herunterstufen.
+
+**Varianten:**
+
+- **A** TUI nur für `permission-prompt`, JSONL für alles andere — verworfen, weil extended thinking / Perambulating den JSONL-Timestamp stale werden lässt, ohne dass Claude fertig ist. Die Session würde fälschlich auf `waiting`/`idle` kippen.
+- **B** TUI für `waiting` + `permission-prompt`, JSONL für `running` + `idle`, mit Skip-Schutz für stale-running-Sessions (gewählt).
+- **C** Komplette State-Detection im Renderer auf TUI-Patterns — verworfen, weil dann Crash-Recovery beim App-Start keine Quelle hat (Renderer noch nicht mounted) und der JSONL-Watcher seinen Token-Path-Datenfluss doppelt fahren müsste.
+
+**Grund:** Die zwei Signal-Quellen messen unterschiedliche Dinge: JSONL = „schreibt Claude gerade?" (gut für running/idle, blind bei TUI-Prompts ohne JSONL-Output). TUI = „was zeigt Claude gerade an?" (gut für Input-Prompt + Permission-Dialog, blind für interne Aktivität ohne TUI-Refresh). Erst die Kombination deckt alle vier Status zuverlässig ab. Variante B macht beide Quellen verantwortlich für *eigene* Status — kein Konkurrenz-Schreibpfad, kein State-Flackern.
+
+**Konsequenz:** Lifecycle-`ALLOWED`-Map ist Phase-2-typisch erweitert (running/idle → waiting/permission-prompt, und Rückweg → running). Bewusst verboten bleibt der Pfad `waiting`/`permission-prompt` → `idle`, damit der JSONL-Loop den vom Renderer gemeldeten TUI-Status nicht alle 2 s aushebelt. Pattern-Definition ist versioniert (`PatternVersion` mit `id`, Fixtures, Semver-Range pro Claude-Code-Version) — neue Claude-Code-Generationen kommen als zusätzlicher Eintrag dazu, alte Fixtures bleiben als Regressionsnetz grün. Box-Layout-Toleranz (`^\s*`) im waiting-Pattern war der konkrete Bug-Fix in Season 1 — diagnostiziert per Live-DevTools-Logging am echten Buffer.
+
+---
+
 ## Electron auf 41 statt 42 (Code-Review Build/Konfig)
 
 **Entscheidung:** Electron-Security-Bump landet auf 41.5.1, nicht auf der zum Review-Zeitpunkt aktuellen 42.0.1. Behebt die 18 High-CVEs aus dem npm-audit, ohne den Native-Module-Build-Pfad lokal zu brechen.

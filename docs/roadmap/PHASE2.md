@@ -10,7 +10,7 @@
 
 ## Bereich: Sessions
 
-### Feature: Volle State-Detection
+### Feature: Volle State-Detection ✅
 
 Erweitert die reduzierte Detection aus Phase 1.
 
@@ -30,6 +30,35 @@ Buttons in der App für die in CLAUDE.md definierten Trigger-Phrasen.
 - Button-Klick sendet Phrase via Bracketed Paste an aktive PTY-Session
 
 **Trigger:** Komfort-Wunsch nach Phase 1.
+
+---
+
+## Bereich: Projekt-Verwaltung
+
+Lücken im Phase-1-Sidebar-CRUD schließen. Phase 1 kann Projekte nur **anlegen** (Scan + Add), nicht entfernen — und scannt beim ersten Start kommentarlos den Default-Workspace `<home>/Projekte`.
+
+### Feature: Projekt entfernen
+
+Sidebar-Action zum Entfernen eines Projekts aus der Liste.
+
+- Rechtsklick oder Hover-Trash-Icon auf Sidebar-Eintrag → „Aus Liste entfernen"
+- Bestätigungs-Dialog mit Hinweis: „Sessions und Verlauf bleiben erhalten und wandern in den Legacy-Bucket"
+- Neuer IPC `project:remove` mit DB-Delete; abhängige Sessions werden vorher per UPDATE auf den Default-Project-Bucket umgehängt (gleicher Mechanismus wie `remapSessionsByCwdPrefix` aus Phase 1, nur in die andere Richtung)
+- Default-Project (`DEFAULT_PROJECT_ID`) selbst kann nicht entfernt werden — UI deaktiviert die Aktion dort
+
+**Trigger:** Empirisch — sobald die Sidebar durch alte Scans, Backup-Ordner oder umbenannte Projekte zumüllt.
+
+### Feature: First-Start-Workspace-Wizard
+
+Beim ersten App-Start keinen automatischen Default-Workspace-Scan, sondern explizite Auswahl.
+
+- Erkennung „erster Start": `settings.json` existiert noch nicht (Phase 1 schreibt sie sofort beim Boot)
+- Welcome-Screen vor dem normalen Layout: Begrüßung + Button „Workspace-Ordner auswählen" (öffnet `dialog.showOpenDialog` mit `openDirectory`)
+- Optional zweiter Button „Erstmal überspringen" → leerer Workspace, User kann später über Settings einen Pfad setzen
+- Erst nach User-Bestätigung läuft der Scanner; kein stiller Scan von `<home>/Projekte` mehr
+- In Settings (Tab Workspace) bleibt der Pfad weiterhin änderbar (Phase-1-Mechanik unverändert)
+
+**Trigger:** UX-Schmerzpunkt aus Phase 1 — beim ersten Start tauchen Projekte aus dem Default-Pfad auf, die der User nie als TakumiDeck-Projekte definiert hat. Stilles Default-Scannen verletzt zusätzlich das Prinzip der minimalen Überraschung.
 
 ---
 

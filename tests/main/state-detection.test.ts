@@ -105,7 +105,10 @@ describe('StateDetectionLoop.tick', () => {
     return { sessions, messages, messageDriver, lifecycle, loop };
   }
 
-  it('schaltet running → idle, wenn die letzte Message zu alt ist', () => {
+  it('lässt running-Sessions mit staler JSONL unverändert (extended thinking)', () => {
+    // JSONL-Loop darf running nicht auf waiting/idle setzen — extended thinking
+    // schreibt kein JSONL, der Timestamp läuft aus ohne dass Claude fertig ist.
+    // Der Renderer (TUI-Pattern) ist zuständig, waiting zu setzen.
     const { sessions, messages, loop } = setup();
     messages.insert({
       session_id: 'sess-active',
@@ -114,10 +117,10 @@ describe('StateDetectionLoop.tick', () => {
       content: '',
       tokens_in: 100,
       tokens_out: 0,
-      ts: FIXED_NOW - 5000, // 5 s her, > 3 s Threshold
+      ts: FIXED_NOW - 5000,
     });
     loop.tick();
-    expect(sessions.findById('sess-active')?.status).toBe('idle');
+    expect(sessions.findById('sess-active')?.status).toBe('running');
   });
 
   it('schaltet idle → running, wenn eine frische Message reinkommt', () => {
@@ -159,5 +162,130 @@ describe('StateDetectionLoop.tick', () => {
     });
     loop.tick();
     expect(sessions.findById('sess-active')?.status).toBe('completed');
+  });
+
+  // ---- Phase-2 Season-1: JSONL-Rollen-Detection + permission-prompt-Guard ----
+
+  it('lässt running + stale assistant-JSONL unverändert (kein Loop-Override)', () => {
+    // Kernfix Phase-2-Regression: running-Sessions dürfen vom Loop nicht auf
+    // waiting gesetzt werden — das ist Aufgabe des Renderers (TUI-Pattern).
+    const { sessions, messages, loop } = setup();
+    messages.insert({
+      session_id: 'sess-active',
+      project_id: 'proj-1',
+      role: 'assistant',
+      content: '',
+      tokens_in: 10,
+      tokens_out: 0,
+      ts: FIXED_NOW - 5000,
+    });
+    loop.tick();
+    expect(sessions.findById('sess-active')?.status).toBe('running');
+  });
+
+  it('lässt running + stale user-JSONL unverändert (kein running → idle via Loop)', () => {
+    const { sessions, messages, loop } = setup();
+    messages.insert({
+      session_id: 'sess-active',
+      project_id: 'proj-1',
+      role: 'user',
+      content: '',
+      tokens_in: 0,
+      tokens_out: 0,
+      ts: FIXED_NOW - 5000,
+    });
+    loop.tick();
+    expect(sessions.findById('sess-active')?.status).toBe('running');
+  });
+
+  it('setzt idle → waiting, wenn letzte Rolle assistant und Timestamp stale', () => {
+    // idle-Sessions können per JSONL-Rollen-Detection auf waiting gehen —
+    // das ist korrekt: Claude hat geantwortet, aber die Session ist aus dem
+    // running-Zustand already raus (z.B. nach einem restart).
+    const { sessions, lifecycle, messages, loop } = setup();
+    lifecycle.transition('sess-active', 'idle', 'manual');
+    messages.insert({
+      session_id: 'sess-active',
+      project_id: 'proj-1',
+      role: 'assistant',
+      content: '',
+      tokens_in: 10,
+      tokens_out: 0,
+      ts: FIXED_NOW - 5000,
+    });
+    loop.tick();
+    expect(sessions.findById('sess-active')?.status).toBe('waiting');
+  });
+
+  it('lässt waiting unverändert bei fresh assistant-JSONL (Renderer hat waiting gerade gesetzt)', () => {
+    // Kernfix: nach Clauds Antwort ist JSONL < 3 s alt (assistant-Rolle).
+    // Loop darf waiting nicht auf running zurücksetzen — das wäre der Flacker-Bug
+    // (kurz gelb, sofort wieder grün). Nur fresh user-JSONL darf waiting → running.
+    const { sessions, lifecycle, messages, loop } = setup();
+    lifecycle.transition('sess-active', 'waiting', 'manual');
+    messages.insert({
+      session_id: 'sess-active',
+      project_id: 'proj-1',
+      role: 'assistant',
+      content: '',
+      tokens_in: 10,
+      tokens_out: 50,
+      ts: FIXED_NOW - 200, // frisch, aber Rolle = assistant
+    });
+    loop.tick();
+    expect(sessions.findById('sess-active')?.status).toBe('waiting');
+  });
+
+  it('setzt waiting → running, wenn frische JSONL eintrifft (User hat gesendet)', () => {
+    const { sessions, lifecycle, messages, loop } = setup();
+    // Erst waiting-State herstellen.
+    messages.insert({
+      session_id: 'sess-active',
+      project_id: 'proj-1',
+      role: 'assistant',
+      content: '',
+      tokens_in: 1,
+      tokens_out: 0,
+      ts: FIXED_NOW - 10_000,
+    });
+    lifecycle.transition('sess-active', 'waiting', 'manual');
+    // User sendet Nachricht → frische JSONL.
+    messages.insert({
+      session_id: 'sess-active',
+      project_id: 'proj-1',
+      role: 'user',
+      content: '',
+      tokens_in: 5,
+      tokens_out: 0,
+      ts: FIXED_NOW - 200,
+    });
+    loop.tick();
+    expect(sessions.findById('sess-active')?.status).toBe('running');
+  });
+
+  it('lässt permission-prompt-Sessions vollständig in Ruhe (kein Loop-Override)', () => {
+    const { sessions, lifecycle, messages, loop } = setup();
+    messages.insert({
+      session_id: 'sess-active',
+      project_id: 'proj-1',
+      role: 'assistant',
+      content: '',
+      tokens_in: 1,
+      tokens_out: 0,
+      ts: FIXED_NOW - 10_000,
+    });
+    lifecycle.transition('sess-active', 'permission-prompt', 'manual');
+    // Auch frische JSONL darf permission-prompt nicht überschreiben.
+    messages.insert({
+      session_id: 'sess-active',
+      project_id: 'proj-1',
+      role: 'assistant',
+      content: '',
+      tokens_in: 5,
+      tokens_out: 0,
+      ts: FIXED_NOW - 200,
+    });
+    loop.tick();
+    expect(sessions.findById('sess-active')?.status).toBe('permission-prompt');
   });
 });

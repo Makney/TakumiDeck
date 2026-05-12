@@ -7,7 +7,14 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { AppSettings, SessionStatus } from '@shared/types';
+import { detectFromBuffer, type TuiDetectedState } from '@shared/tui-patterns';
 import { createCopyPasteKeyHandler } from '../components/clipboardKeyHandler';
+
+// Phase-2 Season-1: Tick-Intervall für TUI-Pattern-Match auf dem xterm-Buffer.
+// 1 s ist der Sweet-Spot zwischen Permission-Prompt-Reaktionszeit und CPU-Last
+// bei vielen Tabs. Die letzten ~30 Zeilen reichen für Claude-Code-Dialoge.
+const TUI_POLL_INTERVAL_MS = 1000;
+const TUI_POLL_WINDOW_LINES = 30;
 
 // Sprint-3-Multi-Tab-Variante des Single-Tab-TerminalPane aus Sprint 2.
 //
@@ -204,8 +211,59 @@ export function TerminalTab({
       });
     }
 
+    // Phase-2 Season-1: TUI-Pattern-Poll.
+    //
+    // Verantwortlichkeiten nach dem Phase-2-Refactor:
+    //   - permission-prompt: TUI (nicht in JSONL sichtbar).
+    //   - waiting: TUI (Input-Prompt ohne esc-to-interrupt).
+    //     JSONL-Loop setzt running-Sessions nicht mehr auf waiting — extended
+    //     thinking macht JSONL stale, ohne dass Claude fertig ist.
+    //   - running (keep-alive): TUI via runningIndicators (esc-to-interrupt
+    //     sichtbar) oder Rückweg aus permission-prompt.
+    //   - running/idle: JSONL-Loop (frischer/staler Timestamp).
+    //
+    // lastPushedState startet auf 'running' (Initialstatus jeder Session),
+    // damit der erste Tick keine redundante running→running-Transition schickt.
+    let lastPushedState: TuiDetectedState = 'running';
+    let lastBufferSignature: string | null = null;
+    const tuiTimer = setInterval(() => {
+      const term = terminalRef.current;
+      if (!term) return;
+      const lines = snapshotBufferLines(term, TUI_POLL_WINDOW_LINES);
+      const signature = lines.join('\n');
+      const bufferChanged = lastBufferSignature !== null && signature !== lastBufferSignature;
+      lastBufferSignature = signature;
+
+      const detected = detectFromBuffer({ lines, bufferChanged });
+
+      // Push-Filter: welche State-Änderungen soll der Renderer an Main melden?
+      //   1. permission-prompt → immer pushen (JSONL liefert das nicht).
+      //   2. Rückweg aus permission-prompt → running pushen (Lifecycle verlassen).
+      //   3. waiting → pushen sobald Claude Input-Prompt ohne esc zeigt.
+      //   4. running via runningIndicator oder nach waiting → pushen, damit
+      //      der Main-Loop die Session nicht irrtümlich auf idle lässt.
+      let toPush: TuiDetectedState | null = null;
+      if (detected === 'permission-prompt') {
+        toPush = 'permission-prompt';
+      } else if (lastPushedState === 'permission-prompt') {
+        toPush = 'running';
+      } else if (detected === 'waiting') {
+        toPush = 'waiting';
+      } else if (detected === 'running' && lastPushedState !== 'running') {
+        // esc-to-interrupt sichtbar nach waiting-Phase → running keep-alive.
+        toPush = 'running';
+      }
+
+      if (toPush !== null && toPush !== lastPushedState) {
+        void window.api.pty.pushTuiState({ sessionId, state: toPush });
+        onStatusChange(sessionId, toPush);
+        lastPushedState = toPush;
+      }
+    }, TUI_POLL_INTERVAL_MS);
+
     return () => {
       if (spawnRafHandle !== null) cancelAnimationFrame(spawnRafHandle);
+      clearInterval(tuiTimer);
       offData();
       offExit();
       ro.disconnect();
@@ -294,6 +352,23 @@ function showError(el: HTMLDivElement | null, msg: string): void {
   if (!el) return;
   el.textContent = `Fehler: ${msg}`;
   el.hidden = false;
+}
+
+// Liefert die letzten n Buffer-Zeilen als reinen Text (ohne ANSI-Escapes).
+// translateToString(true) trimt rechte Whitespace-Padding, das xterm für leere
+// Zellen einfügt — wichtig für den TUI-Pattern-Match (sonst wären selbst leere
+// Buffer-Reihen randvoll mit Spaces).
+function snapshotBufferLines(term: Terminal, n: number): string[] {
+  const buf = term.buffer.active;
+  const total = buf.length;
+  const start = Math.max(0, total - n);
+  const lines: string[] = [];
+  for (let i = start; i < total; i++) {
+    const line = buf.getLine(i);
+    if (!line) continue;
+    lines.push(line.translateToString(true));
+  }
+  return lines;
 }
 
 export type { Props as TerminalTabProps };

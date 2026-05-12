@@ -99,6 +99,15 @@ export function TabContainer({ settings }: Props) {
     window.dispatchEvent(new Event('td-focus-active'));
   }, [showNewSessionModal, showTemplatesModal, showPreCommitModal]);
 
+  // Phase-2 Season-1: Main pushed Status-Änderungen (waiting/running/idle) aktiv.
+  // Renderer-Store per setStatus synchron halten — ohne diesen Listener bliebe
+  // der Store stale, weil lifecycle.transition() im Main kein IPC-Reply schickt.
+  useEffect(() => {
+    return window.api.sessions.onStatusPush((event) => {
+      setStatus(event.sessionId, event.status);
+    });
+  }, [setStatus]);
+
   // Globale Keyboard-Shortcuts: Ctrl+N neue Session, Ctrl+T Templates, Ctrl+Tab /
   // Ctrl+Shift+Tab Wechsel. Tab-Navigation ist auf das aktive Projekt beschränkt
   // (siehe Sprint-4-Filter).
@@ -406,6 +415,7 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
   running: '● läuft',
   idle: '○ idle',
   waiting: '◐ wartet',
+  'permission-prompt': '⚠ fragt nach',
   completed: '✓ abgeschlossen',
   interrupted: '⏸ unterbrochen',
   error: '✗ Fehler',

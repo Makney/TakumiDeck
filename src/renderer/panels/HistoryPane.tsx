@@ -35,6 +35,8 @@ const TYPE_LABELS: Record<SessionType, string> = {
 const STATUS_OPTIONS: SessionStatus[] = [
   'running',
   'idle',
+  'waiting',
+  'permission-prompt',
   'completed',
   'interrupted',
   'error',
@@ -44,6 +46,7 @@ const STATUS_LABELS: Record<SessionStatus, string> = {
   running: 'läuft',
   waiting: 'wartet',
   idle: 'idle',
+  'permission-prompt': 'fragt nach',
   completed: 'abgeschlossen',
   archived: 'archiviert',
   interrupted: 'unterbrochen',
@@ -107,7 +110,15 @@ export function HistoryPane({ project, settings }: Props) {
     setError(null);
     const effectiveStatuses =
       selectedStatuses.length === 0
-        ? (['running', 'idle', 'completed', 'interrupted', 'error'] as SessionStatus[])
+        ? ([
+            'running',
+            'idle',
+            'waiting',
+            'permission-prompt',
+            'completed',
+            'interrupted',
+            'error',
+          ] as SessionStatus[])
         : selectedStatuses;
     void window.api.sessions
       .history({

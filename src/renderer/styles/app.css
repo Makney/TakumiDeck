@@ -813,6 +813,17 @@ body,
   background: var(--td-warn);
 }
 
+/* Phase-2 Season-1: Permission-Prompt fordert sofortige User-Aktion. Wir nutzen
+   denselben Orange-Ton wie 'interrupted' (signalisiert „Achtung, etwas hängt")
+   und legen eine schnelle Blink-Animation drüber, damit das Tab in der Sidebar
+   auch im Augenwinkel auffällt. Pulse vs. Blink: pulse fade't sanft (running),
+   td-blink schaltet hart on/off (permission-prompt). */
+.td-status-dot.permission-prompt {
+  background: var(--td-orange);
+  box-shadow: 0 0 8px rgba(255, 138, 60, 0.7);
+  animation: td-blink 0.7s steps(2, end) infinite;
+}
+
 .td-status-dot.idle {
   background: var(--td-text-mute);
 }
@@ -820,6 +831,11 @@ body,
 @keyframes td-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+@keyframes td-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.25; }
 }
 
 /* Action-Bar unter dem Terminal (Sprint 6 — docs/design/claude-export styles.css 532).

@@ -69,10 +69,14 @@ export interface AppSettings {
 // Session-Row laut SQLite-Schema (Architektur Kapitel 4).
 // status-Werte und type-Werte folgen Architektur 6.2.
 export type SessionType = 'feature' | 'bug' | 'review' | 'docs-sync';
+// Phase-2 Season-1 ergänzt `permission-prompt`. Treiber ist die volle
+// TUI-State-Detection (siehe src/shared/tui-patterns.ts). DB-Layer ist Text-
+// Column und braucht keine Migration; das Schema-Update in `schemas.ts` reicht.
 export type SessionStatus =
   | 'running'
   | 'waiting'
   | 'idle'
+  | 'permission-prompt'
   | 'completed'
   | 'archived'
   | 'interrupted'
@@ -126,6 +130,14 @@ export interface PtyResizeInput {
 
 export interface PtyKillInput {
   sessionId: string;
+}
+
+// Phase-2 Season-1: Pattern-Match-Resultat aus dem Renderer.
+// `state` ist auf die vier Detection-Werte beschränkt; alles andere ist Sache
+// der etablierten Lifecycle-IPCs (close/archive/resume/update).
+export interface PtyTuiStateInput {
+  sessionId: string;
+  state: 'running' | 'waiting' | 'idle' | 'permission-prompt';
 }
 
 // Events Main → Renderer.
@@ -510,6 +522,10 @@ export interface RendererApi {
     write: (input: PtyWriteInput) => Promise<IpcResult<null>>;
     resize: (input: PtyResizeInput) => Promise<IpcResult<null>>;
     kill: (input: PtyKillInput) => Promise<IpcResult<null>>;
+    // Phase-2 Season-1: Renderer pusht TUI-detektierten Status. Rückgabe ist
+    // null bei Erfolg (Status gesetzt oder bereits aktuell), Error-Code bei
+    // verweigertem Lifecycle-Übergang.
+    pushTuiState: (input: PtyTuiStateInput) => Promise<IpcResult<null>>;
     // Listener-Registrierung. Rückgabewert ist die Unsubscribe-Funktion.
     onData: (handler: (event: PtyDataEvent) => void) => () => void;
     onExit: (handler: (event: PtyExitEvent) => void) => () => void;
@@ -520,6 +536,9 @@ export interface RendererApi {
     resume: (input: SessionResumeInput) => Promise<IpcResult<SessionRow>>;
     history: (input: SessionHistoryInput) => Promise<IpcResult<SessionHistoryEntry[]>>;
     archive: (input: SessionArchiveInput) => Promise<IpcResult<SessionRow>>;
+    // Phase-2 Season-1: Main pushed Status-Änderungen aktiv; Renderer-Store
+    // abonniert und ruft setStatus auf, ohne selbst pollen zu müssen.
+    onStatusPush: (handler: (event: SessionStatusPushEvent) => void) => () => void;
   };
   fs: {
     listTemplates: (input: FsListTemplatesInput) => Promise<IpcResult<TemplateFile[]>>;
@@ -567,6 +586,13 @@ export interface RendererApi {
 // sofort) vs. Debounced (globale Bars max 2/Sek). Der Renderer reagiert pro Kanal:
 // `context` re-fetcht die Per-Session-Kontext-Bar, `global` re-fetcht alle limit_bars
 // (oder gezielt die im scope angegebenen).
+// Phase-2 Season-1: Main → Renderer, wenn der State-Detection-Loop einen
+// Live-Status (running/waiting/idle) geändert hat.
+export interface SessionStatusPushEvent {
+  sessionId: string;
+  status: SessionStatus;
+}
+
 export interface UsageUpdateEvent {
   kind: 'global' | 'context';
   // Optional: betroffene Session (kind === 'context') oder Liste von Bar-IDs

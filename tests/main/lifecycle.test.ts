@@ -59,7 +59,9 @@ describe('isTransitionAllowed (Truth-Table)', () => {
     ['archived', 'running'],
     ['archived', 'completed'],
     ['archived', 'archived'],
-    ['running', 'waiting'], // Sprint-5-Detection darf das später erlauben, Sprint 3 nicht
+    // Hinweis: running → waiting war Sprint-3 noch verboten und Sprint-5 weiterhin;
+    // Phase-2 Season-1 (TUI-Detection) hat es freigeschaltet. Test-Truth dort:
+    // tests/main/lifecycle-phase2.test.ts.
     ['completed', 'completed'],
     ['completed', 'interrupted'],
     ['interrupted', 'completed'],

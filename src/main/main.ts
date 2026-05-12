@@ -35,6 +35,7 @@ import { reconcileCrashedSessions } from './sessions/reconciliation';
 import { StateDetectionLoop } from './sessions/state-detection-loop';
 import { JsonlWatcher, defaultClaudeProjectsPath } from './jsonl/watcher';
 import { realJsonlReadDriver } from './jsonl/parser';
+import { Channels } from '@shared/ipc-channels';
 import { scanWorkspace, realFsDriver } from './workspace/scanner';
 
 // Squirrel-Installer: bei Setup/Update-Events sofort beenden, bevor BrowserWindow erstellt wird.
@@ -236,6 +237,9 @@ void app.whenReady().then(async () => {
       messages: messageRepo,
       lifecycle,
       log: logger,
+      notifyRenderer: (sessionId, status) => {
+        mainWindow?.webContents.send(Channels.SessionStatusPush, { sessionId, status });
+      },
     });
     stateLoop.start();
 
@@ -263,12 +267,14 @@ void app.whenReady().then(async () => {
       lifecycle.markShuttingDown();
       void (async () => {
         try {
-          // Sprint 5: idle-Sessions zählen wie running-Sessions als „der claude-Prozess
-          // läuft noch", deshalb beide Status zu interrupted. Einen idle → interrupted-
-          // Übergang erlaubt die State-Machine seit Sprint 5 explizit.
+          // Sprint 5: idle zählt wie running als „live". Phase-2 Season-1 ergänzt
+          // waiting + permission-prompt — alle vier Status bedeuten, dass der
+          // claude-Prozess noch läuft und beim Quit auf interrupted zu setzen ist.
           const liveSessions = [
             ...sessions.listByStatus('running'),
             ...sessions.listByStatus('idle'),
+            ...sessions.listByStatus('waiting'),
+            ...sessions.listByStatus('permission-prompt'),
           ];
           for (const session of liveSessions) {
             const result = lifecycle.transition(session.id, 'interrupted', 'app-quit');
@@ -357,11 +363,21 @@ app.on('web-contents-created', (_event, contents) => {
 // TakumiDeck braucht in Phase 1 keine davon; ein Whitelist-Eintrag käme erst, wenn ein
 // Feature ihn rechtfertigt. Permission-Check ebenfalls deny, damit Synchron-API-Pfade
 // (z.B. Notification.permission) nicht „granted" sehen.
+//
+// Ausnahmen (Whitelist): Clipboard-Schreib- und Lesezugriff für das Copy/Paste-Wiring
+// im Terminal-Panel (clipboardKeyHandler.ts). Ohne die Whitelist scheitert
+// navigator.clipboard.writeText still im void-catch → Ctrl+C / Ctrl+Shift+C kopieren
+// gar nichts. Paste lief unsichtbar über xterms nativen paste-DOM-Event und maskierte
+// den Bug. `clipboard-sanitized-write` sanitisiert HTML/Image-Payload — das ist die
+// Stufe, die moderne Web-Terminals (VS Code, Windows Terminal) standardmäßig nutzen.
+const CLIPBOARD_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read']);
 app.on('ready', () => {
-  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => {
-    callback(false);
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(CLIPBOARD_PERMISSIONS.has(permission));
   });
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) =>
+    CLIPBOARD_PERMISSIONS.has(permission),
+  );
 
   // Hardening — header-basierte CSP (Electronegativity CSP_GLOBAL_CHECK):
   // In Production lädt der Renderer via file://, dort wirkt nur der Meta-Tag aus

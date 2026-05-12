@@ -49,12 +49,15 @@ export function reconcileCrashedSessions(deps: ReconciliationDeps): Reconciliati
   const { sessions, messages, lifecycle, log } = deps;
   const clock = deps.clock ?? Date.now;
 
-  // Beide live-Status durchgehen: running + idle. Beide bedeuten „der claude-Prozess
-  // läuft noch" — beide können beim Hard-Crash zurückbleiben (Sprint-5-Erweiterung
-  // hat idle als zweiten Live-Status eingeführt; before-quit deckt seitdem beide ab).
+  // Alle vier live-Status durchgehen: running + idle + waiting + permission-prompt.
+  // Sprint 5 hatte running + idle eingeführt; Phase-2 Season-1 ergänzt waiting +
+  // permission-prompt aus der TUI-Detection. Alle vier bedeuten „der claude-Prozess
+  // läuft noch" und können beim Hard-Crash zurückbleiben.
   const candidates: SessionRow[] = [
     ...sessions.listByStatus('running'),
     ...sessions.listByStatus('idle'),
+    ...sessions.listByStatus('waiting'),
+    ...sessions.listByStatus('permission-prompt'),
   ];
 
   const result: ReconciliationResult = {

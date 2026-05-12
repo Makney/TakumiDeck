@@ -13,6 +13,18 @@ const config: ForgeConfig = {
     asar: true,
     name: 'TakumiDeck',
     appBundleId: 'dev.takumideck.app',
+    // Eigener Ignore-Filter überschreibt den Default des Vite-Plugins (der ALLES außer
+    // /.vite ausschließt — siehe @electron-forge/plugin-vite VitePlugin.js Z.124-131).
+    // Wir behalten zusätzlich /package.json und /node_modules, damit externalisierte
+    // Native-Module (better-sqlite3, @lydell/node-pty) zur Laufzeit aufgelöst werden
+    // können. Electron-Packager prune'd anschließend devDependencies aus node_modules.
+    ignore: (file: string) => {
+      if (!file) return false;
+      if (file.startsWith('/.vite')) return false;
+      if (file === '/package.json') return false;
+      if (file.startsWith('/node_modules')) return false;
+      return true;
+    },
   },
   rebuildConfig: {},
   makers: [

@@ -17,6 +17,21 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-12 — Phase 2 Season 1: Volle State-Detection
+
+### Was jetzt geht
+
+- **Status-Pille schaltet auf `waiting` (gelb), sobald Claude geantwortet hat und der Input-Prompt sichtbar ist.** Bisher hing der Tab-Dot auf grün (`running`), weil Claude Code 2.x den `? for shortcuts`-Hint unter einer Rounded-Box mit 2-Leerzeichen-Einrückung rendert und das waiting-Pattern den führenden Whitespace nicht toleriert hat. Patterns akzeptieren jetzt eingerückten Hint (`^\s*\?\s+for shortcuts\s*$` plus `^\s*[>❯]\s+\?\s+for shortcuts\s*$` für die Variante mit Prompt davor).
+- **Permission-Prompt-Erkennung greift weiterhin** (höchste Priorität im Pattern-Pfad), `waitingBlockers` schützen vor False-Positive während `esc to interrupt` sichtbar ist, `runningIndicators` halten extended-thinking-Sessions auf `running`, auch wenn die JSONL keinen frischen Timestamp liefert.
+- **Versionierte Pattern-Definition (`cc-1.x`) mit Schema-Test pro Claude-Code-Version.** Neue Pattern-Generationen kommen als zusätzlicher `PatternVersion`-Eintrag dazu — alte Fixtures bleiben grün, A/B-Vergleich nachträglich möglich.
+- **Verantwortlichkeits-Aufteilung Renderer-TUI ↔ Main-JSONL** klar dokumentiert in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md).
+
+### Diagnostik
+
+- Phase-2-Season-1 wurde im letzten Anlauf gestartet, ohne den echten Claude-Code-2.x-Buffer-Inhalt zu kennen — Patterns wurden aus dem Spec entwickelt und matchten daran vorbei. Diesmal: temporäres DevTools-Logging pro Tick (`detected`, `lastPushedState`, `bufferChanged`, JSON-stringified Tail) im Live-System reproduziert, Box-Layout an der Konsole gesehen, Pattern um `^\s*`-Toleranz erweitert. Logging direkt nach Bestätigung wieder entfernt.
+
+---
+
 ## 2026-05-12 — MVP v0.1 ready — Phase 1 abgeschlossen
 
 Mit dem Abschluss des Code-Review-Passes (siehe folgender Eintrag) sind alle Phase-1-Features in [FEATURES.md](./FEATURES.md) auf ✅. TakumiDeck ist im Daily-Use-Zustand: Electron-Skelett mit Hardening, Multi-Session-PTY-Tabs mit Lifecycle/Resume, Workspace-Scanner mit CLAUDE.md-Parser, Token-Dashboard mit JSONL-Watcher und P90-Detection, Templates mit Variable-Filling, Season-Tracker mit Verlauf-Panel, Markdown-Editor + Diff-Viewer + Pre-Commit-Panel, Settings-Dialog mit 6 Tabs und JSON-Editor, `npm run make`-Build (Squirrel-Setup + Portable-ZIP). Sprint-9-UI-Vergleich gegen Design-Vorlage komplett (kritisch + alle B/C/D-Punkte umgesetzt).

@@ -6,6 +6,7 @@ import {
   PtyWriteInputSchema,
   PtyResizeInputSchema,
   PtyKillInputSchema,
+  PtyTuiStateInputSchema,
 } from '@shared/schemas';
 import type { PtyManager } from '../pty/manager';
 import type { SessionRepository } from '../db/repos/sessions';
@@ -160,6 +161,25 @@ export function registerPtyIpc(deps: {
     try {
       const input = PtyWriteInputSchema.parse(payload);
       manager.write(input.sessionId, input.data);
+
+      // Variante A+B: Enter-Tastendruck auf einer waiting-Session → sofort
+      // optimistisch auf running setzen, damit der Tab-Dot sofort grün wird.
+      // Kein JSONL nötig — der State-Detection-Loop macht den Revert: kommt
+      // innerhalb von ~3 s keine neue JSONL-Zeile (versehentlicher Enter),
+      // landet die Session automatisch wieder auf waiting.
+      if (input.data.includes('\r') || input.data.includes('\n')) {
+        const current = sessions.findById(input.sessionId);
+        if (current?.status === 'waiting') {
+          const tr = lifecycle.transition(input.sessionId, 'running', 'manual');
+          if (tr.ok) {
+            getWebContents()?.send(Channels.SessionStatusPush, {
+              sessionId: input.sessionId,
+              status: 'running',
+            });
+          }
+        }
+      }
+
       return ok(null);
     } catch (e) {
       return errFromUnknown(e, 'PTY_WRITE');
@@ -187,6 +207,51 @@ export function registerPtyIpc(deps: {
       return ok(null);
     } catch (e) {
       return errFromUnknown(e, 'PTY_KILL');
+    }
+  });
+
+  // Phase-2 Season-1: Renderer-Push aus dem TUI-Pattern-Matcher. Wir trauen dem
+  // gemeldeten Status, aber filtern terminale Sessions (completed/archived/etc.)
+  // hier weg statt sie dem Lifecycle zu reichen — sonst würde ein „stille
+  // running-Push"-Renderer eine bereits archivierte Session resurrecten. Der
+  // Lifecycle würde das ohnehin per ALLOWED-Tabelle ablehnen, aber der explizite
+  // Check macht die Erwartung im Handler-Code sichtbar.
+  ipcMain.handle(Channels.PtyTuiState, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = PtyTuiStateInputSchema.parse(payload);
+      const current = sessions.findById(input.sessionId);
+      if (!current) {
+        return err<null>(
+          `Session ${input.sessionId} nicht gefunden`,
+          'SESSION_NOT_FOUND',
+        );
+      }
+      // Terminale Status sind vom Renderer aus nicht überschreibbar. Tab kann
+      // beim Schließen noch einen letzten TUI-State-Push schicken, bevor der
+      // Listener abreißt — den verwerfen wir hier still.
+      if (
+        current.status === 'completed' ||
+        current.status === 'archived' ||
+        current.status === 'interrupted' ||
+        current.status === 'error'
+      ) {
+        return ok(null);
+      }
+      const result = lifecycle.transition(input.sessionId, input.state, 'manual');
+      if (!result.ok) {
+        // Best-Effort: TUI-State-Push ist „Nice-to-have"; abgelehnte Transitions
+        // (z.B. weil die State-Machine den Pfad sperrt) loggen wir, lassen den
+        // Renderer aber keinen Fehler sehen. Sonst würde jeder Tick im Renderer
+        // den IpcResult-Error inspizieren müssen.
+        log.warn(
+          `[pty:tui-state] Transition abgelehnt sessionId=${input.sessionId.slice(0, 8)} → ${input.state}: ${result.error}`,
+        );
+      }
+      return ok(null);
+    } catch (e) {
+      return errFromUnknown(e, 'PTY_TUI_STATE');
     }
   });
 }

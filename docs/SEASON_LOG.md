@@ -20,6 +20,30 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 1 — Volle State-Detection
+
+**Ziel:** Phase-2-Skelett-Eintrag „Volle State-Detection" produktiv machen. Status-Pille soll auf `waiting` (gelb) wechseln, sobald Claude geantwortet hat und der Input-Prompt sichtbar ist. `permission-prompt`-Erkennung sollte schon im Skelett funktionieren, war im Daily-Use aber zweitrangig.
+
+**Ergebnis:** Status-Wechsel `running → waiting` funktioniert. Patterns auf `^\s*?` Whitespace-Toleranz erweitert für das echte Claude-Code-2.x-Box-Layout, neue Fixture mit dem Live-Buffer-Snapshot im Test (24/24 grün). Verantwortlichkeits-Aufteilung Renderer-TUI ↔ Main-JSONL in ENTSCHEIDUNGEN.md dokumentiert. Die letzte Season hatte das Skelett gebaut, ohne den echten Buffer gesehen zu haben — diesmal Live-Diagnostik vor Pattern-Edit.
+
+**Gut gelaufen:**
+
+- **Diagnose-First statt Pattern-Raten.** Die vorherige Season hat Patterns aus dem Spec entwickelt und musste blind raten, was Claude Code wirklich rendert. Diesmal: temporäres `console.log` im TUI-Poll-Tick (`detected`, `lastPushedState`, `bufferChanged`, JSON-stringified Tail der letzten 6 Zeilen), User hat 5 Tick-Logs zurückgespielt, Box-Layout (`──────` Top, `>` Input, `──────` Bottom, `  ? for shortcuts` eingerückt) war auf einen Blick sichtbar. Pattern-Fix war danach ein 2-Zeilen-Regex-Edit.
+- **Sub-Variants vor dem Fix-Code.** Drei Varianten angeboten (Diagnose-First / Manueller Buffer-Snapshot / Plan-B JSONL-Heuristik). User hat Diagnose-First gewählt; Spätfolge: kein Refactor nötig, der existierende Detection-Pfad war architektonisch richtig — nur eine Pattern-Lücke. Plan-B wäre Over-Engineering gewesen.
+- **Debug-Logging als pre-/post-stringified Variante.** Erste Iteration des Logs hatte das Tail-Array als Live-Objekt geloggt — DevTools-Console zeigt zugeklappt nur `…`. Nach Refactor mit `JSON.stringify(tail)` stand der Inhalt direkt in der Log-Zeile, ohne Aufklapp-Klick. Drei zusätzliche User-Roundtrips erspart.
+
+**Gebremst durch:**
+
+- **Erster Log-Roundtrip war ungenutzt.** Das Tail-Array war im DevTools-Output collapsed (`…`). Lehre: bei Debug-Logging über DevTools immer Strings als primitive Werte oder per `JSON.stringify` in den Format-String pre-rendern — nie auf das Object-Inspector-Verhalten verlassen.
+- **xterm.js `translateToString(true)` strippt Trailing-Whitespace nicht vollständig.** Der JSON-Output zeigte mehrere Zeilen mit langem Trailing-Whitespace. War im Pattern-Match unkritisch (`\s*$`), aber überraschend — Lehre: `translateToString(true)` ist `trimRight`, ja, aber nur am letzten Nicht-Zellen-Padding-Char, nicht alle Spaces.
+
+**Für nächste Season:**
+
+- TUI-Patterns sind in `src/shared/tui-patterns.ts` versioniert (`PatternVersion`-Registry). Sobald Claude Code 3.x rauskommt und die Box-Optik wechselt, eine neue `PatternVersion` mit eigenen Fixtures dazulegen — die alte `cc-1.x` bleibt für Regressionen drin. `DEFAULT_PATTERN_VERSION_ID` umschalten reicht; keine Renderer-Codeänderung nötig.
+- Falls in der nächsten Season ein UI-Sub-Indicator gewünscht ist (z. B. Permission-Prompt blinkt, Waiting nur gelb-statisch), Reicht ein CSS-Animations-Hook am bestehenden `data-status`-Attribut — Detection-Pfad ist sauber.
+
+---
+
 ## Season 9 — Pre-Release-QA (UI-Vergleich gegen Design-Vorlage)
 
 **Ziel:** Sprint-9-Slot 1: systematischer Pixel-Pass durch alle sichtbaren Komponenten gegen `docs/design/claude-export/`. Findings-Liste produzieren, kritische Befunde direkt fixen, kosmetische je nach Daily-Driver-Schmerz priorisieren, Spec-Erweiterungen kategorisieren. Sprint-9-Slot 2 („Code-Review + Debugging") bleibt eigene Mini-Season, war hier nicht im Scope.
