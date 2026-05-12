@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { CanvasAddon } from '@xterm/addon-canvas';
 import { FitAddon } from '@xterm/addon-fit';
@@ -8,7 +8,19 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { AppSettings, SessionStatus } from '@shared/types';
 import { detectFromBuffer, type TuiDetectedState } from '@shared/tui-patterns';
-import { createCopyPasteKeyHandler } from '../components/clipboardKeyHandler';
+import {
+  createCopyPasteKeyHandler,
+  type ImagePasteSaver,
+} from '../components/clipboardKeyHandler';
+import {
+  actionsToInsertText,
+  bytesToBase64,
+  classifyClipboardItems,
+  classifyDrop,
+  isAllowedImageMime,
+  type ScreenshotMime,
+} from '../components/terminalDropHandler';
+import { quotePathIfNeeded } from '../components/pathQuoting';
 
 // Phase-2 Season-1: Tick-Intervall für TUI-Pattern-Match auf dem xterm-Buffer.
 // 1 s ist der Sweet-Spot zwischen Permission-Prompt-Reaktionszeit und CPU-Last
@@ -65,6 +77,12 @@ export function TerminalTab({
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  // Phase-2 Season-2: dragenter/dragleave triggern hier — wir zählen, weil
+  // dragleave auch beim Wechsel zwischen Kind-Elementen feuert (jeder Move
+  // über ein neues Child-Element gibt ein leave + ein enter ab). Ein simpler
+  // Bool-Toggle würde dabei flackern.
+  const [isDropTarget, setIsDropTarget] = useState(false);
+  const dragDepthRef = useRef(0);
   // Guard gegen React-StrictMode-Double-Effect: pty:create darf pro Tab-Instanz nur
   // EINMAL gefeuert werden, sonst kollidiert der zweite Aufruf an der UNIQUE-Constraint
   // auf sessions.id. Die Ref überlebt die StrictMode-Mount→Cleanup→Remount-Sequenz,
@@ -96,10 +114,15 @@ export function TerminalTab({
     // Copy/Paste-Wiring: Ctrl+Shift+C kopiert Selection, Ctrl+Shift+V pastet via
     // Bracketed-Paste-Mode. Ctrl+C bleibt SIGINT, Ctrl+V bleibt PTY-Input — die
     // Standard-Konvention von Windows Terminal / VS Code / Alacritty.
+    //
+    // Phase-2 Season-2: imagePasteSaver-Driver für Win+Shift+S → Snip im Clipboard
+    // → Ctrl+Shift+V. Liefert er einen Pfad zurück, pastet der Handler den statt
+    // des Text-Inhalts; sonst läuft der klassische Text-Pfad.
     terminal.attachCustomKeyEventHandler(
       createCopyPasteKeyHandler({
         clipboard: navigator.clipboard,
         getTerminal: () => terminalRef.current,
+        imagePasteSaver: createImagePasteSaver(),
       }),
     );
 
@@ -331,9 +354,73 @@ export function TerminalTab({
     terminalRef.current?.focus();
   };
 
+  // Phase-2 Season-2: Drag-Drop für Screenshots ins Terminal.
+  // dragover MUSS preventDefault rufen, sonst lehnt der Browser den drop ab
+  // (Default-Verhalten: navigieren zur Datei-URL → würde den Renderer
+  // wegnavigieren, was zusätzlich vom will-navigate-Handler im Main geblockt
+  // wäre, aber der Drop kommt erst gar nicht zustande).
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepthRef.current++;
+    if (dragDepthRef.current === 1) setIsDropTarget(true);
+  };
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    // Cursor zur „Copy"-Variante — signalisiert dem User, dass der Drop OK ist.
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageFiles(e.dataTransfer)) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDropTarget(false);
+  };
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDropTarget(false);
+    const files = Array.from(e.dataTransfer.files);
+    void handleDroppedFiles(files);
+  };
+
+  const handleDroppedFiles = async (files: File[]) => {
+    const term = terminalRef.current;
+    if (!term) return;
+    const actions = await classifyDrop(files, {
+      getPathForFile: (f) => window.api.fs.getPathForFile(f),
+      readAsBytes: readFileAsBytes,
+    });
+    const text = await actionsToInsertText(actions, {
+      saveScreenshot: async ({ mime, base64 }) => {
+        const res = await window.api.fs.saveScreenshot({ mime, base64 });
+        return res.ok
+          ? { ok: true, absolutePath: res.data.absolutePath }
+          : { ok: false, error: res.error };
+      },
+      log: (msg, err) => console.warn(`[TerminalTab] ${msg}`, err),
+    });
+    if (text.length === 0) return;
+    term.paste(text);
+    term.focus();
+  };
+
   return (
-    <div className="td-terminal-pane" onMouseDown={handleHostMouseDown}>
+    <div
+      className={`td-terminal-pane${isDropTarget ? ' is-drop-target' : ''}`}
+      onMouseDown={handleHostMouseDown}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div ref={containerRef} className="td-terminal-canvas" />
+      {isDropTarget && (
+        <div className="td-terminal-drop-overlay" aria-hidden>
+          Screenshot fallen lassen — Pfad wird ins Terminal eingefügt
+        </div>
+      )}
       <div ref={errorRef} className="td-terminal-error" hidden />
     </div>
   );
@@ -352,6 +439,57 @@ function showError(el: HTMLDivElement | null, msg: string): void {
   if (!el) return;
   el.textContent = `Fehler: ${msg}`;
   el.hidden = false;
+}
+
+// Phase-2 Season-2: Beim Drag enthält das DataTransfer.items oft nur die
+// MIME-Typen, .files dagegen leeres Array — wir prüfen beide Pfade. Wenn
+// kein passender Image-Typ dabei ist, lassen wir das Event durchlaufen
+// (z.B. wenn der User aus Versehen Text in den Terminal-Bereich zieht).
+function hasImageFiles(dt: DataTransfer): boolean {
+  for (const item of Array.from(dt.items)) {
+    if (item.kind === 'file' && isAllowedImageMime(item.type)) return true;
+  }
+  for (const file of Array.from(dt.files)) {
+    if (isAllowedImageMime(file.type)) return true;
+  }
+  return false;
+}
+
+// Liest ein File komplett in ein Uint8Array. Sandbox-konform — kein Node-FS,
+// nur die Browser-FileReader-API.
+async function readFileAsBytes(file: File): Promise<Uint8Array> {
+  const buf = await file.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+// Phase-2 Season-2: Driver für den Clipboard-Image-Paste-Pfad. Sucht im
+// Clipboard das erste image/*-Item, speichert es via IPC und gibt den
+// fertigen Path-Insert-Text zurück (mit Quoting bei Whitespace im Pfad).
+function createImagePasteSaver(): ImagePasteSaver {
+  return {
+    tryReadAndSaveAsPathInsert: async () => {
+      // navigator.clipboard.read ist im Renderer nur verfügbar, wenn die
+      // clipboard-read-Permission greift — die ist in main.ts whitelisted.
+      // Auf älteren Electron-Pfaden oder im jsdom-Test-Setup kann die API
+      // fehlen; dann verhält sich der Driver wie „kein Bild gefunden".
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.read) return null;
+      const items = await navigator.clipboard.read();
+      const action = await classifyClipboardItems(items, {
+        readBlobAsBytes: async (blob) => new Uint8Array(await blob.arrayBuffer()),
+      });
+      if (action === null) return null;
+      // action ist garantiert save-and-paste — classifyClipboardItems hat
+      // schon das Image-MIME geprüft.
+      if (action.kind !== 'save-and-paste') return null;
+      const base64 = bytesToBase64(action.bytes);
+      const res = await window.api.fs.saveScreenshot({
+        mime: action.mime as ScreenshotMime,
+        base64,
+      });
+      if (!res.ok) return '';
+      return quotePathIfNeeded(res.data.absolutePath);
+    },
+  };
 }
 
 // Liefert die letzten n Buffer-Zeilen als reinen Text (ohne ANSI-Escapes).

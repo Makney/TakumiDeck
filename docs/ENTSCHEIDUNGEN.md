@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Screenshot-Drop: Ablage außerhalb des Projekts, Clipboard-Image-Paste mitgenommen
+
+**Entscheidung:** Gedroppte und gepastete Direkt-Bilder werden in `<userData>/screenshots/` abgelegt, nicht in den aktiven Projektordner. Der eingefügte Text ist immer ein roher absoluter Dateipfad (mit Quotes nur bei Whitespace). Zusätzlich zum Drag-Drop greift derselbe Pfad bei `Ctrl+Shift+V` mit einem Bild in der Zwischenablage (Image-First im bestehenden `clipboardKeyHandler`).
+
+**Varianten:**
+
+- **A** Nur Drag-Drop, Ablage in `<userData>/screenshots/` außerhalb der Projekte.
+- **B** Wie A, aber Ablage in `<projekt>/.screenshots/` — verworfen, weil jedes Projekt eine `.gitignore`-Pflege braucht, der Multi-Projekt-Fall (kein aktives Projekt) ohnehin auf A zurückfallen müsste und Screenshots semantisch keine Repo-Assets sind.
+- **C** A + Clipboard-Image-Paste (gewählt). Image-First nur, wenn ein `imagePasteSaver`-Driver gesetzt ist; ohne Driver bleibt der klassische Text-Paste-Pfad aus Sprint 3.5 unverändert (Regressions-Schutz).
+
+**Grund:** `Win+Shift+S` → Snip im Clipboard ist der reale Daily-Driver-Workflow für Windows-Screenshots — häufiger als ein expliziter Drag aus dem Explorer. Variante A allein hätte den halben Workflow abgedeckt. B koppelt das Feature an Projekt-Hygiene-Themen, die mit dem eigentlichen Feature-Kern (Bild → claude-Prompt) nichts zu tun haben. Der Ablage-Ort folgt der Working-Rule „konvenient vor traditionell" aus dem Auto-Memory.
+
+**Konsequenz:** Die Screenshots-Ablage wächst über die Zeit; ein „Aufräumen"-Mechanismus ist Phase-2-Backlog (TTL oder Manual-Clear-Button in Settings). Die MIME-Whitelist im Schema (`PNG/JPEG/GIF/WebP`) ist auf die Browser-Standard-Drag-Drop-Formate beschränkt — SVG ist explizit raus, weil es als XSS-Vektor in Read-Tool-Antworten gefährlich wäre und claude-code es nicht als Bild-Quelle akzeptiert.
+
+**Implementierungsdetail:** Bytes wandern als base64-String durch den `fs:save-screenshot`-IPC, nicht als `Uint8Array` oder `Blob`. Grund: `contextBridge` clont binäre Buffer-Typen über die Sandbox-Grenze nicht stabil; base64 ist verlustfrei, vom zod-Schema trivial validierbar (Längen-Cap auf 33 MiB ≈ 25 MiB roh) und im Renderer durch `btoa` über latin1-Chunks effizient herstellbar. `File.path` wurde in Electron 32 entfernt — die Bridge nutzt `webUtils.getPathForFile(file)` aus dem Preload-Context.
+
+---
+
 ## State-Detection in Phase 2: TUI für `waiting`/`permission-prompt`, JSONL für `running`/`idle`
 
 **Entscheidung:** Die volle State-Detection aus Phase 2 verteilt die Klassifikation auf zwei Quellen. `waiting` und `permission-prompt` werden ausschließlich vom Renderer per TUI-Pattern auf dem serialisierten xterm-Buffer erkannt und via `pty:tui-state`-IPC an den Main-Lifecycle gepusht. `running` und `idle` macht weiterhin der Main-Loop alle 2 s aus dem JSONL-Timestamp (Phase-1-Mechanik). Der JSONL-Loop überspringt running-Sessions mit stale JSONL — er darf `running` nicht eigenständig auf `idle`/`waiting` herunterstufen.

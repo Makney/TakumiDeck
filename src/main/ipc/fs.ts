@@ -7,12 +7,21 @@ import {
   FsListTemplatesInputSchema,
   FsListTreeInputSchema,
   FsReadInputSchema,
+  FsSaveScreenshotInputSchema,
   FsWriteInputSchema,
 } from '@shared/schemas';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
-import type { FsReadResult, FsTreeNode, FsWriteResult, IpcResult, ProjectRow } from '@shared/types';
+import type {
+  FsReadResult,
+  FsSaveScreenshotResult,
+  FsTreeNode,
+  FsWriteResult,
+  IpcResult,
+  ProjectRow,
+} from '@shared/types';
 import { listTemplates, realTemplateFsDriver } from '../templates/reader';
 import { scanProjectTree, realFsTreeDriver } from '../fs/treeScanner';
+import { buildScreenshotFilename } from '../fs/screenshotSave';
 import type { ProjectRepository } from '../db/repos/projects';
 import type { Logger } from '../logger';
 import { assertFromMainWindow } from './sender-guard';
@@ -36,9 +45,12 @@ import { assertFromMainWindow } from './sender-guard';
 export function registerFsIpc(deps: {
   projects: ProjectRepository;
   templatesDir: string;
+  // Phase-2 Season-2: Ziel-Ordner für gedroppte Screenshots
+  // (= <userData>/screenshots/, von configurePaths angelegt).
+  screenshotsDir: string;
   log: Logger;
 }): void {
-  const { projects, templatesDir, log } = deps;
+  const { projects, templatesDir, screenshotsDir, log } = deps;
 
   ipcMain.handle(Channels.FsListTemplates, async (event, payload: unknown) => {
     const guard = assertFromMainWindow(event);
@@ -137,6 +149,46 @@ export function registerFsIpc(deps: {
     }
   });
 
+  ipcMain.handle(Channels.FsSaveScreenshot, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = FsSaveScreenshotInputSchema.parse(payload);
+      const buffer = Buffer.from(input.base64, 'base64');
+      // base64 mit ungültigen Zeichen produziert eine deutlich kürzere Bytes-
+      // Sequenz, dann ist die Eingabe kaputt — wir akzeptieren keine 0-Byte-
+      // „Bilder" (würden im Terminal trotzdem zu einem leeren Pfad führen).
+      if (buffer.length === 0) {
+        return err('Screenshot-Daten sind leer oder ungültig kodiert', 'FS_SCREENSHOT_EMPTY');
+      }
+      const fileName = buildScreenshotFilename(new Date(), input.mime);
+      const absolute = path.join(screenshotsDir, fileName);
+      try {
+        await fs.writeFile(absolute, buffer);
+      } catch (e) {
+        if (isFsPermissionDenied(e)) {
+          return err(
+            'Keine Schreib-Berechtigung im Screenshot-Ordner. ' +
+              'Antimalware-Scanner oder ein anderer Prozess könnte den Ordner sperren.',
+            'FS_PERMISSION',
+          );
+        }
+        // Pfad bleibt im Log, im Renderer-Result steht nur die generische Meldung
+        // (gleiche Linie wie fs:read/fs:write — keine Pfad-Leaks ins UI).
+        log.warn(`[fs:save-screenshot] writeFile fehlgeschlagen path=${absolute}`, e);
+        return err('Screenshot konnte nicht gespeichert werden', 'FS_SCREENSHOT_FAILED');
+      }
+      const result: FsSaveScreenshotResult = {
+        absolutePath: absolute,
+        fileName,
+        bytesWritten: buffer.length,
+      };
+      return ok(result);
+    } catch (e) {
+      return errFromUnknown(e, 'FS_SAVE_SCREENSHOT');
+    }
+  });
+
   ipcMain.handle(Channels.FsWrite, async (event, payload: unknown) => {
     const guard = assertFromMainWindow(event);
     if (!guard.ok) return guard;
@@ -182,6 +234,13 @@ export function registerFsIpc(deps: {
 // Helper: liefert den globalen Templates-Pfad (configurePaths legt ihn beim Start an).
 export function templatesDirFromUserData(userDataDir: string): string {
   return path.join(userDataDir, 'templates');
+}
+
+// Phase-2 Season-2: Ablage-Ordner für gedroppte Screenshots — bewusst außerhalb
+// der Projekte, damit keine Repo-Vermüllung entsteht und keine .gitignore-Pflege
+// nötig wird (siehe ENTSCHEIDUNGEN.md-Eintrag der Season).
+export function screenshotsDirFromUserData(userDataDir: string): string {
+  return path.join(userDataDir, 'screenshots');
 }
 
 // Bereich-4-Review (W-2): Projekt-Lookup + Anti-Traversal-Resolve in einem

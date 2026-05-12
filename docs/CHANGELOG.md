@@ -17,6 +17,21 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-12 — Phase 2 Season 2: Screenshot-Drag-and-Drop ins Terminal
+
+### Was jetzt geht
+
+- **Bild aus dem Explorer ins Terminal-Pane ziehen — der absolute Pfad landet als Bracketed-Paste im xterm.** Claude liest das Bild via Read-Tool, der Drag-Workflow ersetzt das manuelle Tippen des Pfads. Quoting greift automatisch bei Pfaden mit Whitespace (`"C:\Users\Max Mustermann\…"`), mehrere gedroppte Dateien werden mit Leerzeichen verbunden.
+- **Direkt-Bilder ohne Disk-Datei** (Drag aus Snipping Tool, Drag aus einer Webseite) werden ins App-eigene `<userData>/screenshots/screenshot-<UTC-Zeitstempel>.<ext>` gespeichert und ebenfalls als Pfad gepastet. Kein Projekt wird mit Screenshots vermüllt; keine `.gitignore`-Pflege nötig.
+- **Clipboard-Image-Paste in derselben Bewegung.** `Win+Shift+S` → Snip im Clipboard → `Ctrl+Shift+V` im Terminal → das Bild wird gespeichert wie ein Direkt-Drop und der Pfad gepastet. Der bestehende Copy/Paste-Key-Handler aus Sprint 3.5 prüft jetzt zuerst Image, fällt sonst auf Text-Paste zurück (Regressions-Schutz).
+- **Dezentes Drop-Overlay** während des Drags (gestrichelter Rahmen + Hint-Text mittig); MIME-Whitelist auf PNG/JPEG/GIF/WebP (SVG bewusst ausgeschlossen — XSS-Vektor + Read-Tool braucht es nicht).
+
+### Architektur-Notiz
+
+Pure-Logik (`terminalDropHandler.ts`, `pathQuoting.ts`, `screenshotSave.ts`) liegt strikt getrennt von Render-/IPC-/FS-Glue — 55 neue/erweiterte Unit-Tests decken Klassifikation, Quoting, base64-Round-Trip und den Image-First-Paste-Pfad ab, ohne Browser oder Disk zu brauchen. Neuer IPC `fs:save-screenshot` mit base64-Payload und MIME-Whitelist; Preload-Bridge nutzt `webUtils.getPathForFile` (Electron 32 hat `File.path` entfernt). Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md).
+
+---
+
 ## 2026-05-12 — Hotfix: Ctrl+C kopiert wieder Selection im Terminal
 
 ### Was jetzt geht

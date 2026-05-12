@@ -200,6 +200,26 @@ export const FsListTreeInputSchema = z.object({
   maxDepth: z.number().int().min(0).max(10).optional(),
 });
 
+// Phase-2 Season-2: Screenshot-Drop. Renderer schickt die Image-Bytes als
+// base64-String (contextBridge clont Buffer/ArrayBuffer nicht stabil über
+// die Sandbox-Grenze; base64 ist verlustfrei und langweilig zu validieren).
+//
+// MIME-Whitelist auf die vier Browser-Standard-Image-Formate, die ein Snipping-
+// Tool, ein Snip-aus-Browser oder ein File-Drag liefert. SVG ist NICHT erlaubt
+// (XSS-Vektor bei Inline-Render, und claude-code braucht es nicht).
+//
+// Cap auf 25 MiB als Roh-Bytes ≈ 33 MiB base64 — schließt Bildschirm-Snipshots
+// (4K-PNG ≈ 6–10 MiB) bequem ein, kappt aber einen versehentlichen
+// Mega-Screenshot oder einen unbounded Buffer-Pfad vom Renderer.
+export const FsSaveScreenshotInputSchema = z.object({
+  mime: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
+  // Roh-Bytes als base64. Validierung der Form (gültiges base64) lassen wir
+  // Buffer.from machen — eine invalide Eingabe produziert weniger Bytes, der
+  // Decode-Loss wird im Handler nicht weiter geprüft (Trust-Boundary ist die
+  // MIME-Whitelist + Größen-Cap, nicht die Bytes-Korrektheit).
+  base64: z.string().min(1).max(33 * 1024 * 1024),
+});
+
 // --- Git (Sprint 7) --------------------------------------------------
 
 // git:status / git:diff laufen immer gegen ein bekanntes Projekt. Renderer schickt

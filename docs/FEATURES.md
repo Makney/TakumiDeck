@@ -152,6 +152,12 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 | `Volle State-Detection`              | ✅      | 2026-05-12 (Phase-2-Season-1) — versionierte TUI-Patterns (`cc-1.x`) auf serialisiertem xterm-Buffer im Renderer, JSONL-Timestamp-Loop im Main; Renderer pusht `waiting`/`permission-prompt`, Loop schreibt `running`/`idle`. Box-Layout-Toleranz (`^\s*`) für Claude-Code-2.x-Input-Box mit eingerücktem `? for shortcuts`. |
 | `Trigger-Phrasen-Schnellbuttons`     | ⛔      | Dynamische Buttons aus `workbench.trigger_phrases` |
 
+### Terminal (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Screenshot-Drag-and-Drop`           | ✅      | 2026-05-12 (Phase-2-Season-2) — Drag-Drop von Image-Files ins Terminal-Pane pastet den absoluten Pfad (Quoting bei Whitespace); Direkt-Bilder ohne Disk-Pfad und Clipboard-Images (Ctrl+Shift+V nach Win+Shift+S) werden nach `<userData>/screenshots/` gespeichert. MIME-Whitelist PNG/JPEG/GIF/WebP, neuer IPC `fs:save-screenshot`, Preload-Bridge `webUtils.getPathForFile`. Nicht aus PHASE2.md — User-Trigger. |
+
 ### Projekt-Verwaltung (Phase 2)
 
 | Feature                              | Status | Bemerkung |

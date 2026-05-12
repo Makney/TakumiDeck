@@ -50,6 +50,10 @@ export const Channels = {
   FsWrite: 'fs:write',
   FsListTemplates: 'fs:list-templates',
   FsListTree: 'fs:list-tree',
+  // Phase-2 Season-2: Screenshot-Drop ins Terminal. Renderer speichert
+  // Image-Bytes über diesen Channel in <userData>/screenshots/, bekommt
+  // den absoluten Pfad zurück und pastet ihn ins xterm.
+  FsSaveScreenshot: 'fs:save-screenshot',
 
   // Settings (Sprint 1)
   SettingsGet: 'settings:get',

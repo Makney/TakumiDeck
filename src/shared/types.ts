@@ -306,6 +306,20 @@ export interface FsWriteResult {
   bytesWritten: number;
 }
 
+// Phase-2 Season-2: Screenshot-Drop. Renderer übergibt Mime + base64-Bytes,
+// Main schreibt die Datei in <userData>/screenshots/ und liefert den
+// absoluten Pfad zurück, der dann ins Terminal gepastet wird.
+export interface FsSaveScreenshotInput {
+  mime: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  base64: string;
+}
+
+export interface FsSaveScreenshotResult {
+  absolutePath: string;
+  fileName: string;
+  bytesWritten: number;
+}
+
 // --- Git (Sprint 7) --------------------------------------------------
 
 // Status-Codes aus simple-git's Single-Char-Codes auf semantisches Vokabular gemappt.
@@ -547,6 +561,17 @@ export interface RendererApi {
     write: (input: FsWriteInput) => Promise<IpcResult<FsWriteResult>>;
     // Sprint 7, Phase 5: hierarchischer Datei-Browser-Tree für den Right-Pane.
     listTree: (input: FsListTreeInput) => Promise<IpcResult<FsTreeNode[]>>;
+    // Phase-2 Season-2: Screenshot ins userData/screenshots/ ablegen,
+    // absoluten Pfad zurückbekommen (wird im Terminal als Text gepastet,
+    // damit claude-code das Bild via Read-Tool erreichen kann).
+    saveScreenshot: (
+      input: FsSaveScreenshotInput,
+    ) => Promise<IpcResult<FsSaveScreenshotResult>>;
+    // Phase-2 Season-2: Bridge zu Electron's webUtils.getPathForFile —
+    // File.path wurde in Electron 32 entfernt. Liefert leeren String,
+    // wenn das File keine Disk-Repräsentation hat (z.B. Clipboard-
+    // Image oder Browser-Drag).
+    getPathForFile: (file: File) => string;
   };
   git: {
     // Sprint 7: Branch + geänderte Files für Pre-Commit-Panel + Diff-Tab.

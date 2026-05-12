@@ -20,6 +20,30 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 2 — Screenshot-Drag-and-Drop ins Terminal
+
+**Ziel:** Bilder per Drag-and-Drop ins Terminal-Pane einfügen, sodass Claude sie ohne manuelles Pfad-Tippen lesen kann. Feature stand nicht in der Roadmap — User-Trigger als „Daily-Driver-Komfort, hätte ich auch in Produktiv". Scope: Drag aus Explorer + Drag von Direkt-Bildern (Snipping Tool, Browser).
+
+**Ergebnis:** Variante C wurde umgesetzt (Drag + Clipboard-Image-Paste in einem). Drag-Drop für Image-Files und Direkt-Bilder läuft, MIME-Whitelist auf PNG/JPEG/GIF/WebP, Direkt-Bilder landen in `<userData>/screenshots/`, Pfade werden bracketed-pasted ins xterm (Quoting bei Whitespace). `Ctrl+Shift+V` mit Bild in der Zwischenablage greift den Image-First-Branch und pastet ebenfalls den Pfad — der Win+Shift+S-Workflow ist dadurch identisch zum Drag-Workflow. Dezentes Drop-Overlay (gestrichelter Rahmen + Hint), Live-Test mit echter Image-Beschreibung durch Claude bestätigt. Tests: 55 neue/erweiterte Unit-Tests grün (Pure-Logik in `terminalDropHandler.ts` / `pathQuoting.ts` / `screenshotSave.ts` strikt vom Render/IPC/FS-Glue getrennt); Bestand (Schemas-Test) unverändert grün.
+
+**Gut gelaufen:**
+
+- **Variants-Vorpass hat den Scope geweitet, ohne ihn aufzublähen.** Erste Lesung des Briefings hätte nur Drag-Drop produziert (Variante A). Variants-Tabelle hat den Clipboard-Image-Pfad als realen Daily-Driver-Workflow sichtbar gemacht — User hat Variante C gewählt, Test-Schreibaufwand stieg nur um eine Datei (`tests/renderer/clipboard-key-handler.test.ts`-Erweiterung um 5 Cases), weil der Image-First-Branch sauber als optionaler Driver in den existierenden Handler eingehängt wurde. Sprint 3.5-Bestandstests laufen unverändert weiter (Regressions-Schutz war explizit).
+- **Pure-Logik-Aufteilung vor dem ersten Renderer-Edit.** Klassifikation (Drop-Source), Pfad-Quoting und Filename-Generierung sind drei kleine pure Module — alles testbar ohne `jsdom`, Electron, Disk. Der Renderer-Edit in `TerminalTab.tsx` bleibt dünn (Wiring + Drop-Handler + Overlay-State), die Klassifizier-Logik ist 1-zu-1 spiegelbar im Test. Hätte man den Klassifizierer direkt im JSX gehabt, wäre der Test ein React-Testing-Library-Renderer geworden.
+- **Webutils-Fund vor Code-Schreibphase.** Vor dem ersten Preload-Edit wurde `electron.d.ts` auf `webUtils.getPathForFile` geprüft (`File.path` ist seit Electron 32 weg). Hätte ich blind `file.path` gelesen, wäre der Drop in der Live-Sitzung mit `undefined` durchgelaufen und ich hätte das im Test nicht gesehen, weil der Test den Driver injiziert.
+
+**Gebremst durch:**
+
+- **TS-Typ-Inferenz mit `vi.fn(async () => …)`.** Erste Test-Iteration nutzte `vi.fn` für den `saveScreenshot`-Saver mit objektliteraler Rückgabe; tsc inferierte den Mock-`calls`-Tuple als leer und verwarf den `[0]?.[0]?.mime`-Zugriff. Fix war trivial (plain async function statt Mock + lokales `seenMimes`-Array), aber kostete einen Typecheck-Roundtrip. Lehre: bei Mock-Funktionen mit komplexem Return-Typ entweder explizit `vi.fn<Args, Return>()` typisieren oder den Mock ganz weglassen und eine handgeschriebene Fake-Funktion mit eigenem Side-Effect-Recorder nutzen — letzteres ist im Renderer-Test-Stil dieses Repos ohnehin Standard (siehe `tests/renderer/clipboard-key-handler.test.ts`).
+- **CSP-img-src war ein Pseudo-Risiko.** Beim Lesen der `main.ts`-CSP-Sektion stand kurz die Frage im Raum, ob für eine Preview-Anzeige `blob:` in `img-src` ergänzt werden müsste. Die Feature-Anforderung hat keine Preview — Pfad-only-Insert. Die Frage war Over-Engineering-Anflug; das Verwerfen kostete eine Minute Lesen, aber half, die Simplicity-First-Linie zu halten.
+
+**Für nächste Season:**
+
+- Wenn die `<userData>/screenshots/`-Ablage über die Zeit wächst, einen Manual-Clear-Button in den Settings (Tab Workspace oder Allgemein) ergänzen — oder TTL-basiertes Auto-Cleanup. Aktuell kein UI-Hook, weil im Daily-Use noch unbekannt, wie schnell der Ordner wächst.
+- Drop-Overlay ist heute ein statisches CSS-`::after`-Rahmen + Hint-Text. Wenn der visuelle Hint zu dezent wirkt, würde ein kurzer Fade-In (CSS-Transition auf `opacity`) reichen — Klassen-Toggle ist bereits da (`is-drop-target`).
+
+---
+
 ## Phase 2 Season 1 — Volle State-Detection
 
 **Ziel:** Phase-2-Skelett-Eintrag „Volle State-Detection" produktiv machen. Status-Pille soll auf `waiting` (gelb) wechseln, sobald Claude geantwortet hat und der Input-Prompt sichtbar ist. `permission-prompt`-Erkennung sollte schon im Skelett funktionieren, war im Daily-Use aber zweitrangig.

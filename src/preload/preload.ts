@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import type {
   AppSettings,
@@ -8,6 +8,8 @@ import type {
   FsListTreeInput,
   FsReadInput,
   FsReadResult,
+  FsSaveScreenshotInput,
+  FsSaveScreenshotResult,
   FsTreeNode,
   FsWriteInput,
   FsWriteResult,
@@ -122,6 +124,16 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.FsWrite, input) as Promise<IpcResult<FsWriteResult>>,
     listTree: (input: FsListTreeInput) =>
       ipcRenderer.invoke(Channels.FsListTree, input) as Promise<IpcResult<FsTreeNode[]>>,
+    saveScreenshot: (input: FsSaveScreenshotInput) =>
+      ipcRenderer.invoke(Channels.FsSaveScreenshot, input) as Promise<
+        IpcResult<FsSaveScreenshotResult>
+      >,
+    // Phase-2 Season-2: File.path wurde in Electron 32 entfernt. webUtils.getPathForFile
+    // ist die offizielle Bridge — synchron, läuft im Preload-Process (hat Disk-Zugriff
+    // im sandboxed Mode), und reicht nur einen String zurück (kein File-Klon über die
+    // contextBridge). Leerer String = das File ist kein Disk-File (Clipboard-Image,
+    // Browser-Drag ohne Datei) → Caller fällt auf saveScreenshot zurück.
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
   },
   git: {
     status: (input: GitStatusInput) =>

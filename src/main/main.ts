@@ -12,7 +12,7 @@ import { registerSessionIpc } from './ipc/session';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
 import { createUsagePusher, registerUsageIpc } from './ipc/usage';
 import { setMainWebContentsResolver } from './ipc/sender-guard';
-import { registerFsIpc, templatesDirFromUserData } from './ipc/fs';
+import { registerFsIpc, screenshotsDirFromUserData, templatesDirFromUserData } from './ipc/fs';
 import { registerGitIpc } from './ipc/git';
 import { realGitDriver } from './git/driver';
 import { PtyManager } from './pty/manager';
@@ -204,6 +204,7 @@ void app.whenReady().then(async () => {
     registerFsIpc({
       projects: projectRepo,
       templatesDir: templatesDirFromUserData(getDataDir()),
+      screenshotsDir: screenshotsDirFromUserData(getDataDir()),
       log: logger,
     });
     registerGitIpc({

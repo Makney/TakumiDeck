@@ -22,6 +22,7 @@ export function configurePaths(): void {
   ensureDir(path.join(app.getPath('userData'), 'logs'));
   ensureDir(path.join(app.getPath('userData'), 'templates'));
   ensureDir(path.join(app.getPath('userData'), 'cache'));
+  ensureDir(path.join(app.getPath('userData'), 'screenshots'));
 }
 
 export function getDataDir(): string {

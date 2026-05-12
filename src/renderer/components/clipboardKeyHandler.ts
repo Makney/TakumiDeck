@@ -35,6 +35,19 @@ export interface TerminalLike {
   clearSelection(): void;
 }
 
+// Phase-2 Season-2: Clipboard-Image-Paste. Wenn der Driver gesetzt ist, prüft
+// der Handler bei jedem Paste-Trigger ZUERST, ob die Zwischenablage ein Bild
+// enthält — wenn ja, wird es gespeichert und der absolute Pfad als Text gepastet
+// (Quote-Logik via pathQuoting.ts). Bei null oder Fehler fällt der Pfad auf
+// den klassischen Text-Paste zurück, damit der Standard-Workflow nicht
+// regressiert.
+export interface ImagePasteSaver {
+  // Liest die Zwischenablage, sucht das erste image/*-Item, speichert es via
+  // fs:save-screenshot und liefert den fertig zitierten Pfad-Insert-Text.
+  // null = kein Bild in der Zwischenablage; '' = Bild da, Save fehlgeschlagen.
+  tryReadAndSaveAsPathInsert: () => Promise<string | null>;
+}
+
 export interface ClipboardKeyHandlerDeps {
   clipboard: ClipboardLike;
   getTerminal: () => TerminalLike | null;
@@ -42,6 +55,9 @@ export interface ClipboardKeyHandlerDeps {
   // Default: silent — die typische Failure-Mode ist „User hatte gerade keine
   // Schreibberechtigung" und kein Bug, der Aufmerksamkeit braucht.
   log?: (msg: string, error?: unknown) => void;
+  // Phase-2 Season-2: Driver für Image-Paste-Pfad. Optional — fehlt der Driver
+  // (z.B. in den Sprint-3.5-Bestandstests), läuft alles wie bisher.
+  imagePasteSaver?: ImagePasteSaver;
 }
 
 // Returnt einen Handler, der xterms `attachCustomKeyEventHandler`-Vertrag erfüllt:
@@ -50,7 +66,7 @@ export interface ClipboardKeyHandlerDeps {
 export function createCopyPasteKeyHandler(
   deps: ClipboardKeyHandlerDeps,
 ): (event: KeyboardEvent) => boolean {
-  const { clipboard, getTerminal, log = () => undefined } = deps;
+  const { clipboard, getTerminal, log = () => undefined, imagePasteSaver } = deps;
 
   return (event) => {
     // Nur keydown auswerten — keyup/keypress laufen sonst doppelt durch und würden
@@ -97,17 +113,40 @@ export function createCopyPasteKeyHandler(
     if (isPasteTrigger) {
       const term = getTerminal();
       if (!term) return true;
-      void clipboard
-        .readText()
-        .then((text) => {
+      // Phase-2 Season-2: Image-First. Wenn ein imagePasteSaver gesetzt ist,
+      // prüfen wir die Zwischenablage zuerst auf ein Bild (typischer Workflow:
+      // Win+Shift+S → Snip im Clipboard → Ctrl+Shift+V). Liefert er einen
+      // Pfad-Insert-String, pasten wir den. Andernfalls (kein Bild, oder
+      // Save-Fehler, oder Driver fehlt) fallen wir auf den Text-Pfad zurück.
+      void (async () => {
+        if (imagePasteSaver !== undefined) {
+          try {
+            const pathInsert = await imagePasteSaver.tryReadAndSaveAsPathInsert();
+            if (pathInsert !== null && pathInsert.length > 0) {
+              term.paste(pathInsert);
+              return;
+            }
+            // pathInsert === '' → Bild war da, Save schlug fehl. Nicht auf
+            // Text fallen — sonst pastet der User unter Umständen Junk.
+            if (pathInsert === '') return;
+          } catch (e) {
+            // navigator.clipboard.read() wirft, wenn die Permission fehlt
+            // oder das Document nicht fokussiert ist — wir loggen und
+            // fallen auf den Text-Pfad zurück, damit Standard-Paste nicht
+            // regressiert.
+            log('clipboard.read (image) fehlgeschlagen', e);
+          }
+        }
+        try {
+          const text = await clipboard.readText();
           if (text.length === 0) return;
           // terminal.paste() schickt automatisch im Bracketed-Paste-Mode
           // (\x1b[200~...\x1b[201~), damit claude den Block nicht zeilenweise interpretiert.
           term.paste(text);
-        })
-        .catch((e) => {
+        } catch (e) {
           log('clipboard.readText fehlgeschlagen', e);
-        });
+        }
+      })();
       return false;
     }
 

@@ -317,3 +317,97 @@ describe('createCopyPasteKeyHandler — Edge-Cases', () => {
     expect(clipboard.writes).toEqual(['inhalt']);
   });
 });
+
+// Phase-2 Season-2: Image-First-Paste-Pfad. Wenn ein imagePasteSaver gesetzt
+// ist, prüft der Handler beim Paste-Trigger ZUERST die Zwischenablage auf
+// ein Bild und pastet den fertig zitierten Pfad statt des Text-Inhalts.
+describe('createCopyPasteKeyHandler — Image-Paste (Phase-2 Season-2)', () => {
+  it('Ctrl+Shift+V mit Bild in der Zwischenablage pastet den Pfad statt den Text', async () => {
+    const clipboard = makeClipboardFake('soll-nicht-erscheinen');
+    const terminal = makeTerminalFake();
+    const saver = vi.fn(async () => '"C:\\Users\\m\\screenshots\\snap.png"');
+    const handler = createCopyPasteKeyHandler({
+      clipboard,
+      getTerminal: () => terminal,
+      imagePasteSaver: { tryReadAndSaveAsPathInsert: saver },
+    });
+
+    handler(makeKeyEvent({ key: 'V', ctrlKey: true, shiftKey: true }));
+    // Drei Mikro-Ticks: async-IIFE → await saver → terminal.paste.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(saver).toHaveBeenCalledTimes(1);
+    expect(terminal.pastes).toEqual(['"C:\\Users\\m\\screenshots\\snap.png"']);
+  });
+
+  it('Saver liefert null (kein Bild im Clipboard) → Text-Pfad läuft normal', async () => {
+    const clipboard = makeClipboardFake('git status');
+    const terminal = makeTerminalFake();
+    const saver = vi.fn(async () => null);
+    const handler = createCopyPasteKeyHandler({
+      clipboard,
+      getTerminal: () => terminal,
+      imagePasteSaver: { tryReadAndSaveAsPathInsert: saver },
+    });
+
+    handler(makeKeyEvent({ key: 'v', ctrlKey: true, shiftKey: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(saver).toHaveBeenCalledTimes(1);
+    expect(terminal.pastes).toEqual(['git status']);
+  });
+
+  it('Saver liefert "" (Bild da, Save fehlgeschlagen) → kein Text-Fallback', async () => {
+    const clipboard = makeClipboardFake('soll-nicht-erscheinen');
+    const terminal = makeTerminalFake();
+    const saver = vi.fn(async () => '');
+    const handler = createCopyPasteKeyHandler({
+      clipboard,
+      getTerminal: () => terminal,
+      imagePasteSaver: { tryReadAndSaveAsPathInsert: saver },
+    });
+
+    handler(makeKeyEvent({ key: 'v', ctrlKey: true, shiftKey: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(terminal.pastes).toEqual([]);
+  });
+
+  it('Saver wirft (z.B. Permission-Denied) → Text-Pfad läuft als Fallback, Fehler wird geloggt', async () => {
+    const clipboard = makeClipboardFake('echo hi');
+    const terminal = makeTerminalFake();
+    const saver = vi.fn(async () => {
+      throw new Error('NotAllowedError');
+    });
+    const log = vi.fn();
+    const handler = createCopyPasteKeyHandler({
+      clipboard,
+      getTerminal: () => terminal,
+      imagePasteSaver: { tryReadAndSaveAsPathInsert: saver },
+      log,
+    });
+
+    handler(makeKeyEvent({ key: 'v', ctrlKey: true, shiftKey: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(terminal.pastes).toEqual(['echo hi']);
+    expect(log).toHaveBeenCalled();
+    expect(log.mock.calls[0]?.[0]).toMatch(/image/);
+  });
+
+  it('ohne imagePasteSaver bleibt der Text-Paste-Pfad unverändert', async () => {
+    // Regressions-Schutz für Sprint 3.5: alte Tests müssen weiterlaufen.
+    const clipboard = makeClipboardFake('ls -la');
+    const terminal = makeTerminalFake();
+    const handler = createCopyPasteKeyHandler({ clipboard, getTerminal: () => terminal });
+
+    handler(makeKeyEvent({ key: 'v', ctrlKey: true, shiftKey: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(terminal.pastes).toEqual(['ls -la']);
+  });
+});
