@@ -17,6 +17,19 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-12 — Hotfix: Ctrl+C kopiert wieder Selection im Terminal
+
+### Was jetzt geht
+
+- **Ctrl+C kopiert markierten Terminal-Text wieder in die Zwischenablage.** Bisher passierte sichtbar nichts, weil `navigator.clipboard.writeText()` im stillen `void`-`catch`-Pfad des `clipboardKeyHandler` an einem fehlenden Permission-Grant scheiterte. Ctrl+Shift+C ebenfalls. Ctrl+V lief weiterhin, aber nur durch xterms nativen `paste`-DOM-Event-Pfad, der die Permission-Pipeline umgeht — das hatte den Bug maskiert.
+- **Bei leerer Selection bleibt Ctrl+C wie bisher SIGINT-Durchlass** — Smart-Ctrl+C-Verhalten unverändert.
+
+### Ursache
+
+Der default-deny Permission-Handler aus dem MVP-Pre-Release-Hardening (siehe vorigen Eintrag) hob Chromes Auto-Grant für `clipboard-sanitized-write` mit auf. Fix: schmale Whitelist (`clipboard-sanitized-write` + `clipboard-read`) im Permission-Request- und Permission-Check-Handler; alle anderen Permissions bleiben default-deny. Siehe Amendment in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md) zur ursprünglichen Hardening-Entscheidung.
+
+---
+
 ## 2026-05-12 — Phase 2 Season 1: Volle State-Detection
 
 ### Was jetzt geht
