@@ -3,7 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;" />
+    <!--
+      CSP-Hinweis: Der Production-Meta-Tag wird vom Vite-Plugin in
+      `vite.renderer.config.ts` beim Build injiziert. Im Dev-Modus bleibt er
+      bewusst draußen, weil @vitejs/plugin-react ein inline Module-Script
+      (Fast-Refresh-Preamble) einfügt, das mit `script-src 'self'` kollidiert.
+      Dev-Hardening läuft stattdessen über den HTTP-Header in main.ts
+      (relaxiert für Vite-HMR).
+    -->
     <title>TakumiDeck</title>
   </head>
   <body>

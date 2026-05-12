@@ -364,16 +364,30 @@ app.on('ready', () => {
   session.defaultSession.setPermissionCheckHandler(() => false);
 
   // Hardening — header-basierte CSP (Electronegativity CSP_GLOBAL_CHECK):
-  // Der Renderer-HTML-Meta-Tag setzt bereits dieselbe CSP, header-basiert ist aber
-  // robuster (greift VOR dem ersten Script-Tag, gilt auch für file://-Loads). Die
-  // Werte sind identisch zum Meta-Tag in src/renderer/index.html — bei Änderung
-  // beide Stellen anpassen.
-  const csp =
+  // In Production lädt der Renderer via file://, dort wirkt nur der Meta-Tag aus
+  // index.html (vom Vite-Plugin `productionCspMetaPlugin` beim Build injiziert).
+  // Im Dev-Modus läuft der Renderer über den Vite-Devserver (http://localhost:5173)
+  // — wir setzen die CSP als HTTP-Header und müssen `'unsafe-inline'`/`'unsafe-eval'`
+  // für script-src zulassen, weil @vitejs/plugin-react ein inline Fast-Refresh-
+  // Preamble-Script einfügt und HMR via eval läuft. connect-src erlaubt zusätzlich
+  // den WebSocket des Devservers.
+  // Bei Änderung der Production-Werte: Konstante PRODUCTION_CSP in
+  // vite.renderer.config.ts parallel anpassen.
+  const isDev = !app.isPackaged;
+  const cspProd =
     "default-src 'self'; " +
     "script-src 'self'; " +
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data:; " +
     "font-src 'self' data:;";
+  const cspDev =
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; " +
+    "font-src 'self' data:; " +
+    "connect-src 'self' ws://localhost:5173 http://localhost:5173;";
+  const csp = isDev ? cspDev : cspProd;
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
