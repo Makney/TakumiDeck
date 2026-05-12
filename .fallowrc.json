@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.fallow.tools/schema.json",
+  "entry": [
+    "src/main/main.ts",
+    "src/preload/preload.ts",
+    "src/renderer/main.tsx",
+    "*.config.ts",
+    "*.config.mjs",
+    "tests/**/*.test.ts"
+  ],
+  "ignorePatterns": [
+    "docs/**",
+    ".vite/**",
+    "out/**",
+    ".fallow-reports/**"
+  ]
+}

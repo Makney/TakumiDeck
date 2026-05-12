@@ -24,6 +24,22 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Electron auf 41 statt 42 (Code-Review Build/Konfig)
+
+**Entscheidung:** Electron-Security-Bump landet auf 41.5.1, nicht auf der zum Review-Zeitpunkt aktuellen 42.0.1. Behebt die 18 High-CVEs aus dem npm-audit, ohne den Native-Module-Build-Pfad lokal zu brechen.
+
+**Varianten:**
+
+- **A** Electron 42.0.1 mit Source-Rebuild von `better-sqlite3` — scheitert lokal, weil kein VS Build Tools installiert ist (Memory-Eintrag „Dev-Umgebung Windows 11"). Source-Build erfordert MSVC-Toolchain.
+- **B** Electron 41.5.1 mit Prebuilt-Binary von `better-sqlite3` 12.9.0 (ABI v145) — gewählt.
+- **C** Electron 33 lassen — verworfen, trägt 18 High-CVEs.
+
+**Grund:** Variante A würde entweder VS Build Tools lokal installieren (~5 GB, Maintenance-Aufwand für eine private Dev-Umgebung) oder einen Cloud-CI-Build-Pfad für Native-Module gegen Electron-42-Headers aufsetzen. Beides ist Aufwand, der nicht in den Code-Review-Scope gehört. `better-sqlite3` 12.9.0 hat Prebuilts bis Electron-ABI v145 (= Electron 41); v147+ für Electron 42 kommt mit dem nächsten better-sqlite3-Release. Variante B kostet einen Minor-Electron-Versionsschritt — und alle 18 gemeldeten CVEs sind in `electron <= 39.8.4`, also durch B vollständig abgedeckt.
+
+**Konsequenz:** Beim nächsten `better-sqlite3`-Release mit Electron-42-Prebuilds (oder beim Schritt auf eine SQLite-Library mit weniger Build-Toolchain-Ballast) kann der Electron-Bump auf 42 nachgeholt werden — als isolierter Maintenance-Pass. Slot offen in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md).
+
+---
+
 ## UsageBar als Vorlage-treue Zeile statt Card (Sprint 9, Variant A)
 
 **Entscheidung:** UsageBar im PlanPane rendert ohne eigenen Border und Card-Background — nur Label-Zeile + Track. Click-Target ist die ganze Zeile, Hover signalisiert Klickbarkeit ausschließlich über Color-Wechsel auf accent.

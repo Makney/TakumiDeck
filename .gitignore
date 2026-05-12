@@ -9,6 +9,10 @@
 out/
 forge.env.d.ts
 
+# Code-Review-Tooling Reports (Fallow etc.)
+.fallow-reports/
+.fallow/
+
 # Env (lokale Secrets niemals committen)
 .env
 .env.*

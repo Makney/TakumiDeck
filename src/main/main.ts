@@ -110,7 +110,7 @@ function createMainWindow(): void {
   });
 }
 
-app.whenReady().then(async () => {
+void app.whenReady().then(async () => {
   try {
     const settings = SettingsStore.initialize(getSettingsPath());
     const db = openDatabase(getDatabasePath());

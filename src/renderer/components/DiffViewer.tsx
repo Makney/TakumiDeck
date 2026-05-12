@@ -181,7 +181,7 @@ function DiffPaneSingleFile({ projectId, relPath }: DiffPaneProps) {
     setHead(null);
     setWorking(null);
     setError(null);
-    Promise.all([
+    void Promise.all([
       window.api.git.show({ projectId, relPath }),
       window.api.fs.read({ projectId, relPath }),
     ]).then(([showRes, readRes]) => {

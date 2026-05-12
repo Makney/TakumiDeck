@@ -12,11 +12,13 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     name: 'TakumiDeck',
+    appBundleId: 'dev.takumideck.app',
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({ name: 'TakumiDeck' }),
-    new MakerZIP({}, ['darwin', 'win32']),
+    // Nur win32 — TakumiDeck ist Win11-Target (siehe CLAUDE.md).
+    new MakerZIP({}, ['win32']),
   ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
@@ -48,6 +50,8 @@ const config: ForgeConfig = {
       [FuseV1Options.EnableNodeCliInspectArguments]: false,
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
+      // Hardening: prozess-spezifische V8-Snapshots deaktivieren (Single-Snapshot-Modus).
+      [FuseV1Options.LoadBrowserProcessSpecificV8Snapshot]: false,
     }),
   ],
 };

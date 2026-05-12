@@ -30,6 +30,52 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## `exactOptionalPropertyTypes: false` (Code-Review Build/Konfig)
+
+**Bereich:** `tsconfig.json`
+
+**Was:** Die Compiler-Option `exactOptionalPropertyTypes` steht auf `false`. Die Build-Konfig-Review hatte den Soll-Wert `true` benannt (strenge Trennung zwischen `prop?: T` und `prop: T | undefined`), die Umstellung aber bewusst aufgeschoben.
+
+**Warum so:** Das Flippen auf `true` kaskadiert über alle optional-Properties im Bestand — vermutlich dutzende Type-Fehler quer durch Renderer, Main und Schemas. Ein sauberer Migrations-Pass müsste alle betroffenen Stellen einzeln durchgehen, oft mit echten Semantik-Entscheidungen pro Stelle (ist das hier `?:` oder `| undefined`?).
+
+**Risiko:** Schwammige Optional-Property-Typen — `setProp(undefined)` und „Property nicht gesetzt" sind nicht klar getrennt. In der Praxis bisher kein konkreter Bug, aber strukturell weniger Typ-Sicherheit als möglich.
+
+**Auflösung:** Eigene Story in Phase 1 oder 2: Flag flippen, durch die entstehenden Type-Fehler durchgehen, pro Stelle entscheiden ob `?:` oder `| undefined`. Vermutlich ~halber Tag bei dem aktuellen Codebase-Umfang.
+
+---
+
+## Electron-Bump auf 42 blockiert durch fehlende `better-sqlite3`-Prebuilds (Code-Review Build/Konfig)
+
+**Bereich:** `package.json` (`electron`, `better-sqlite3`), Native-Rebuild-Pfad
+
+**Was:** Electron steht auf 41.5.1 statt der zum Review-Zeitpunkt aktuellen 42.0.1. Grund: `better-sqlite3` 12.9.0 liefert Prebuilts bis Electron-ABI v145 (= Electron 41). Für Electron 42 (ABI v147+) müsste das Native-Modul aus Source gebaut werden — was lokal an fehlenden VS Build Tools scheitert (siehe Memory-Eintrag „Dev-Umgebung Windows 11").
+
+**Warum so:** Siehe [ENTSCHEIDUNGEN.md „Electron auf 41 statt 42"](./ENTSCHEIDUNGEN.md). Variante A (Source-Build) erforderte VS-Toolchain-Setup, Variante C (Electron 33 belassen) trug 18 High-CVEs. Variante B (41 mit Prebuilts) ist der Kompromiss.
+
+**Risiko:** Falls zwischen Electron 41 und 42 weitere CVEs in den Chromium-/Node-Komponenten auftauchen, wachsen sie an. Ohne CI-Pipeline für Native-Module bleibt der Bump-Pfad an die `better-sqlite3`-Prebuild-Velocity gekoppelt.
+
+**Auflösung:** Bei jedem `better-sqlite3`-Release prüfen, ob Electron-42-Prebuilds dabei sind (`npx prebuild-install --runtime=electron --target=42.x` testen). Bei Erfolg: `npm install electron@^42 && npm install better-sqlite3@<neue-Version> && npx electron-rebuild -f -o better-sqlite3 && npm run package` als Smoke-Pass. Alternativer Pfad: Migration auf eine SQLite-Library ohne C-Extensions (`@vlcn.io/crsqlite-wasm` o.ä.) — größerer Eingriff, würde aber das gesamte Build-Toolchain-Bottleneck wegnehmen.
+
+---
+
+## Build-Toolchain-CVE-Tail ohne Upstream-Fix (Code-Review Build/Konfig)
+
+**Bereich:** `node_modules/` transitive Deps via `@electron-forge/*`, `@inquirer/prompts`, `better-sqlite3`-Tarball
+
+**Was:** `npm audit` meldet nach den Electron- und Vite-Bumps weiterhin 28 Vulnerabilities (6 low, 22 high), **keine** in Production-Code-Pfaden. Drei Quellen:
+
+1. **`tar` ≤ 7.5.10** (6 CVEs, Pfad-Traversal/Race-Conditions) — transitiv über `@electron-forge/core-utils`, `@electron-forge/core`, `@electron/node-gyp`, `cacache`. Upstream `electron-forge` pinnt eine alte `tar`-Version.
+2. **`tmp` ≤ 0.2.3** (Symlink-Traversal) — transitiv über `@inquirer/prompts` → `external-editor`. Upstream-Fix ausstehend.
+3. **`better-sqlite3`-Tarball-Ballast.** Der 12.9.0-Tarball schiebt nested `node_modules` mit `mocha`, `sqlite3`, `nw-gyp`, `cmake-js`, `prebuild`, `serialize-javascript` mit (sieht aus wie eingecheckte devDeps oder ein Publish-Versehen des Maintainers). Diese Pakete landen physisch im `node_modules`-Tree und werden vom Audit gescannt, obwohl sie nicht im Application-Bundle landen.
+
+**Warum so:** Keine eigene Wahl — alle drei sind Upstream-Maintainer-Probleme. Workarounds (eigener `electron-forge`-Fork, eigener `better-sqlite3`-Fork) wären deutlich teurer als der akzeptierte CVE-Tail.
+
+**Risiko:** Die `tar`-CVEs greifen nur beim Auspacken eines maliziösen Archivs — Build-Pipeline-Surface, nicht Runtime. Praktisch tritt das nur ein, wenn Forge-Tooling ein präpariertes Archiv von einem nicht-vertrauten Mirror zieht. Solange `npm`-Registry und Electron-Distribution-URLs vertraut sind, niedrige Eintrittswahrscheinlichkeit.
+
+**Auflösung:** Periodisch `npm audit` re-laufen. Sobald `electron-forge` seine `tar`-Dep aktualisiert (Issue-Tracker beobachten) oder `better-sqlite3` einen sauberen Tarball ohne Build-Cruft publiziert, fallen die meisten Findings ohne eigene Arbeit weg. Falls der Tail länger als zwei Phasen bleibt: ggf. Migration auf eine alternative SQLite-Library prüfen (siehe Eintrag „Electron-Bump auf 42 blockiert").
+
+---
+
 ## Reset-Berechnung im usage:window-Aggregat fehlt (Sprint 9 UI-Slot)
 
 **Bereich:** `src/main/usage/window.ts` (oder analog `usage:bucket`-Aggregat)

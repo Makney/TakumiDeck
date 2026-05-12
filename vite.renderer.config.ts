@@ -8,6 +8,8 @@ import { resolve } from 'node:path';
 // im Project-Root liegt. Architektur 6.0 platziert sie aber unter src/renderer/.
 export default defineConfig({
   root: resolve(__dirname, 'src/renderer'),
+  // Relative Asset-Pfade — Electron lädt im Production-Build via file://.
+  base: './',
   plugins: [react()],
   resolve: {
     alias: {

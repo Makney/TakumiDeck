@@ -17,6 +17,30 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-12 — Code-Review Build/Konfig + Security-Upgrade (Electron 41, Vite 6)
+
+### Was jetzt geht
+
+- **Electron-Hardening durchgängig.** Fuse `LoadBrowserProcessSpecificV8Snapshot: false` ergänzt (Single-Snapshot-Modus, aus dem Review-Auftrag-Soll). MakerZIP-Plattformliste auf `['win32']` reduziert — CLAUDE.md-Target war immer Win11, darwin-ZIP produzierte ungetestete Artefakte. `packagerConfig.appBundleId: 'dev.takumideck.app'` gesetzt, Architektur-1-Naming-Lücke geschlossen.
+- **Vite-Configs sicherer.** `vite.renderer.config.ts` setzt `base: './'` — Production-Bundle lädt Assets relativ, kompatibel mit Electron-`file://`-Protokoll auch bei Forge-Plugin-Default-Drift. `vite.main.config.ts` externalisiert zusätzlich `chokidar`, `simple-git`, `gray-matter`, `js-yaml` — Main-Prozess-Deps mit Node-Built-In-Anhängigkeiten werden zur Laufzeit aus `node_modules` geladen statt fragil gebündelt.
+- **ESLint deckt alle Source-Pfade.** `forge.config.*` und `vite.*.config.*` aus dem Ignore-Block raus, neuer Block mit Node-Globals für Build-Configs. `@typescript-eslint/no-empty-object-type` von `off` auf `warn` gehoben — Pre-Commit-`--max-warnings=0` erzwingt jetzt Fix bei neuen Stellen.
+- **Type-aware ESLint aktiviert.** `parserOptions.projectService: true` (TS-ESLint-v8-API) mit `allowDefaultProject` für Top-Level-Build-Configs. Drei scharfe Regeln: `no-floating-promises` (Error), `no-misused-promises` (Error, mit `checksVoidReturn.attributes: false` für React-`onClick={async...}`-Handler), `await-thenable` (Error). Zwei echte Floating-Promises gefixt: `src/main/main.ts:113` (`app.whenReady().then(...)`) und `src/renderer/components/DiffViewer.tsx:184` (`Promise.all([...]).then(...)`) — beide idiomatisch mit `void`-Prefix als fire-and-forget markiert.
+- **Electron 33.2.0 → 41.5.1.** Behebt 18 High-CVEs aus dem npm-audit (ASAR-Bypass, IPC-Spoofing, Use-after-free in Permission-Callbacks, HTTP-Response-Header-Injection u.v.m. — alle in `electron <= 39.8.4`). Native-Module mitgezogen: `better-sqlite3` 11.5.0 → 12.9.0 (für Electron-41-Prebuilts, ABI v145); `@lydell/node-pty` als NAPI-Modul ohne Rebuild übernommen. `npx electron-rebuild -f -o better-sqlite3` lief sauber über die Prebuilts durch — kein VS-Build-Toolchain-Bedarf.
+- **Vite 5.4.11 → 6.4.2 + Vitest 2.1.5 → 3.2.4.** Behebt die esbuild-Dev-Server-CVE (`@vitejs/plugin-react` 4.3.3 → 4.7.0 wurde mitgezogen). Alle 398 Tests grün, `npm run package` baut Vite-Bundles, Native-Deps und das Win32-x64-Package sauber durch.
+- **Dependency-Hygiene.** Ungenutzte `codemirror`-Umbrella-Dependency entfernt (alle Sub-Pakete `@codemirror/*` sind weiter direkt deklariert, der Umbrella-Re-Export war tot). `@electron-forge/shared-types` als explizite devDep aufgenommen — wurde vorher nur transitiv durch Forge-CLI bereitgestellt, der Type-Import in `forge.config.ts:1` ist jetzt sauber aufgelöst.
+
+### Umgesetzte Entscheidungen
+
+- **Electron 41 statt 42.** Siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md). `better-sqlite3` 12.9.0 hat noch keine Prebuilts für die Electron-42-ABI (v147+), und ein Source-Build scheitert lokal an fehlenden VS Build Tools. Electron 41 deckt alle 18 gemeldeten CVEs ab — der Bump auf 42 wartet auf neue Prebuilts.
+- **`exactOptionalPropertyTypes: true` aufgeschoben.** Aus dem Review-Auftrag-Soll. Vermutete Type-Error-Kaskade über den Bestand — eigene Story mit Migrations-Pass. Eintrag in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md).
+- **Type-aware Lint mit `projectService` statt explizitem `parserOptions.project`.** Moderne TS-ESLint-v8-API, Auto-Discovery der Tsconfigs, kein manuelles Pflegen der project-Liste. `allowDefaultProject`-Whitelist deckt die fünf Top-Level-Build-Configs ab (`forge.config.ts`, `vite.*.config.ts`, `vitest.config.ts`, `*.config.mjs`).
+
+### Restrisiken (npm audit)
+
+28 Vulnerabilities verbleiben (6 low, 22 high) — **keine** Production-Code-Pfade, alle transitiv über die Build-Toolchain (`tar`, `tmp`, plus Build-Tools im `better-sqlite3`-Tarball). Upstream-Fixes ausstehend. Siehe [TECH_SCHULDEN.md](./TECH_SCHULDEN.md) für Details und Wartungsweg.
+
+---
+
 ## 2026-05-11 — Code-Review Bereich 8: Modals + Components
 
 ### Was jetzt geht
