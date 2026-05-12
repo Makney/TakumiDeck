@@ -17,6 +17,48 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-12 — Code-Review-Pass MVP-Pre-Release abgeschlossen
+
+Die neun Bereiche aus [docs/code-review/REVIEW_PLAN.md](./code-review/REVIEW_PLAN.md) sind durch. Bereiche 1–3 + 7–9 bereits in den Vortagen (Commits `ebe2c90`, `257c752`, `850bc79`, `5dc33d0`, Hotfix `ecdca93`), Bereich 4 + 5 heute (siehe die zwei folgenden Detail-Blöcke). Status-Matrix in REVIEW_PLAN.md auf den tatsächlichen Stand bereinigt; OFFEN_BUILD.md für Bereich 9 nachgeholt (DevDep-CVE-Tail, E42-Blocker, `exactOptionalPropertyTypes`-Slot, `electron-winstaller`-Pin-Anker, Husky-Test-Scope — alle als Design-by-Choice mit klaren Trigger-Bedingungen).
+
+---
+
+## 2026-05-12 — Code-Review Bereich 5 (Preload-Bridge)
+
+### Was jetzt geht
+
+- **Externe Links öffnen sicher im System-Browser statt im App-Fenster.** `setWindowOpenHandler` öffnet http(s)-Ziele jetzt explizit via `shell.openExternal` (statt nur stumm zu denyen); andere Schemata (`file:`, `javascript:`, `data:`) werden weiter blockiert — keine Sniff-Vektoren via target="_blank".
+- **In-Place-Navigation aus dem Renderer wird geblockt.** Neuer `will-navigate`-Handler verhindert, dass z.B. ein versehentliches `location.href = '…'` den Renderer auf eine fremde Origin schickt; HTTP(S)-Ziele werden stattdessen extern geöffnet (Electronegativity LIMIT_NAVIGATION_GLOBAL_CHECK).
+- **Permission-Requests werden default-deny abgewiesen.** `session.setPermissionRequestHandler` + `setPermissionCheckHandler` lehnen alle Browser-Permissions (Mikrofon, Geolocation, Notifications, MIDI, …) ab; TakumiDeck braucht keine davon und kann sie bei Bedarf in einem zukünftigen Sprint explizit whitelisten (Electronegativity PERMISSION_REQUEST_HANDLER_GLOBAL_CHECK).
+- **CSP greift jetzt auch als HTTP-Header, nicht nur als Meta-Tag.** `webRequest.onHeadersReceived` setzt dieselbe CSP wie der Renderer-HTML-Meta-Tag zusätzlich als Header — robuster als Meta-only (greift vor dem ersten Script-Tag, gilt auch für file://-Loads). Werte sind identisch zum Meta-Tag und bei Änderung an beiden Stellen zu pflegen (Electronegativity CSP_GLOBAL_CHECK).
+
+### Review-Befund-Stand
+
+- **Echte Bugs/Warnings im Preload:** keine — die Bridge ist sauber. Ausschließlich `contextBridge.exposeInMainWorld`, keine Node-API durchgereicht, jeder Wrapper macht genau einen IPC-Call gegen einen existierenden Channel mit Handler, Listener-Wrapper liefern saubere Unsubscribe-Handles (kein Leak), keine internen Electron-Objekte queren die Bridge-Grenze.
+- **Channel-Abdeckung:** alle 31 Channels in `ipc-channels.ts` haben entweder einen `ipcMain.handle`-Handler (`src/main/ipc/*`) oder werden als Push-Channel (`pty:data`, `pty:exit`, `usage:update`) aus dem ipc-Layer heraus gesendet. Keine toten Channels.
+- **Gefixt im Main-Prozess** (Bereich-3-Folge, schmaler Scope ≤ 30 Zeilen ohne Whitelist-Pflege): die 3 Electronegativity-Global-Findings — siehe „Was jetzt geht".
+- **Design-by-Choice** in [docs/code-review/OFFEN_PRELOAD.md](./code-review/OFFEN_PRELOAD.md) (vorbestehender `api.notes`-Phase-2-Stub-Eintrag bleibt unverändert).
+
+---
+
+## 2026-05-12 — Code-Review Bereich 4 (IPC-Handler)
+
+### Was jetzt geht
+
+- **Konsistentes Error-Code-Schema in `app:*`-Handlern.** `app:get-version` und `app:open-data-folder` setzen jetzt explizite Code-Konstanten (`APP_GET_VERSION`, `APP_OPEN_DATA_FOLDER`) im `errFromUnknown`-Fallback — bisher kamen Internal-Errors dort ohne Code zurück. Der Renderer kann jetzt für alle Handler einheitlich auf `result.code` switchen, statt die App-Handler als Sonderfall behandeln zu müssen.
+
+### Review-Befund-Stand
+
+- **Echte Bugs:** keine neuen Funde — die in den Inline-Kommentaren der Handler dokumentierten Vorgänger-Befunde (B-1 ended_at-Patch, B-2 Sender-Guard, B-3 Pfad-Leak-Replace, B-4 realpath-Anti-Traversal, B-5 cwd-aus-Project, B-6 String-Size-Caps) sind alle bereits umgesetzt.
+- **Warning:** Code-Konstante in `app:*`-Handlern ergänzt (siehe oben).
+- **Design-by-Choice + Verbesserungen** in [docs/code-review/OFFEN_IPC.md](./code-review/OFFEN_IPC.md) dokumentiert: zod-Message-Leak-Restpfad in app/settings (Single-User-Tool-Setting), `usage:heatmap`-Stub ohne try/catch (kein Side-Effect), unvalidierter `--model`-ARGV-Wert (keine Shell-Eval), `pty:create`-Re-throw statt `return err` (Stilistik), `session:update` mit leerem Rest-Patch (Micro-Optimization). Komplexitäts-Hotspots aus dem Fallow-`health`-Vor-Pass sind verifiziert und als nicht-aufteilbar dokumentiert.
+
+### Validierung
+
+- `npm run typecheck` grün, `npm run lint` grün, `npx vitest run` grün (398/398 Tests).
+
+---
+
 ## 2026-05-12 — Hotfix: Electron-Range konsistent auf 41 (Start-Block aufgelöst)
 
 ### Was jetzt geht

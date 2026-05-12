@@ -1,6 +1,6 @@
 # Code-Review-Plan
 
-**Stand:** 2026-05-10
+**Stand:** 2026-05-12
 **Scope:** Pre-Release-QA für TakumiDeck v0.1 (MVP-Stabilisierung nach Sprint 9)
 **Quelle:** [TEMPLATE.md](./TEMPLATE.md) · [OFFEN_TEMPLATE.md](./OFFEN_TEMPLATE.md)
 
@@ -204,15 +204,15 @@ Pro Bereich wird genau **ein** Review-Pass nach diesem Ablauf ausgeführt:
 
 | # | Bereich | Tooling-Pass | Review-Pass | OFFEN-Datei | Notiz |
 |---|---|---|---|---|---|
-| 1 | Shared | ⛔ | ⛔ | ⛔ | — |
-| 2 | DB | ⛔ | ⛔ | ⛔ | — |
-| 3 | Main-Services | ⛔ | ⛔ | ⛔ | ggf. splitten |
-| 4 | IPC-Handler | ⛔ | ⛔ | ⛔ | — |
-| 5 | Preload | ⛔ | ⛔ | ⛔ | `electronegativity` Pflicht |
-| 6 | Stores | ⛔ | ⛔ | ⛔ | Selector-Memory-Regel beachten |
-| 7 | Panels | ⛔ | ⛔ | ⛔ | StrictMode-Guard-Memory-Regel |
-| 8 | Modals + Components | ✅ | ✅ | ✅ | abgeschlossen 2026-05-11 |
-| 9 | Build + Config | ⛔ | ⛔ | ⛔ | `npm audit` Pflicht |
+| 1 | Shared | ✅ | ✅ | ✅ | abgeschlossen 2026-05-11 (OFFEN_SHARED.md) |
+| 2 | DB | ✅ | ✅ | ✅ | abgeschlossen 2026-05-11, 7/14 Befunde gefixed (OFFEN_DB.md) |
+| 3 | Main-Services | ✅ | ✅ | ✅ | abgeschlossen 2026-05-11 (OFFEN_MAIN_SERVICES.md) |
+| 4 | IPC-Handler | ✅ | ✅ | ✅ | abgeschlossen 2026-05-12 (Commit `ebe2c90`-Folge, OFFEN_IPC.md) |
+| 5 | Preload | ✅ | ✅ | ✅ | abgeschlossen 2026-05-12, inkl. main.ts-Hardening (CSP-Header, will-navigate, PermissionHandler); OFFEN_PRELOAD.md |
+| 6 | Stores | ✅ | ✅ | — | abgeschlossen 2026-05-11 (Commit `ebe2c90`); keine offenen Befunde, daher keine OFFEN-Datei |
+| 7 | Panels | ✅ | ✅ | ✅ | abgeschlossen 2026-05-11 (Commit `257c752` + OFFEN_PANELS.md) |
+| 8 | Modals + Components | ✅ | ✅ | ✅ | abgeschlossen 2026-05-11 (Commit `850bc79` + OFFEN_MODALS.md) |
+| 9 | Build + Config | ✅ | ✅ | ✅ | abgeschlossen 2026-05-12 (Commit `5dc33d0` + Hotfix `ecdca93`, OFFEN_BUILD.md) |
 
 Status-Symbole: ⛔ offen · 🟡 läuft · ✅ abgeschlossen
 

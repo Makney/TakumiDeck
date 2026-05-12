@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { configurePaths, getDataDir, getDatabasePath, getSettingsPath } from './paths';
@@ -325,9 +325,63 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Verbietet das Laden externer Inhalte als BrowserWindow — zusätzliche Hardening-Schicht.
+// Hardening — Navigation/Window-Handling (Electronegativity LIMIT_NAVIGATION_GLOBAL_CHECK):
+//   1. setWindowOpenHandler → externe Links via window.open / target="_blank" werden
+//      geblockt; HTTP(S)-Ziele werden stattdessen im Standard-Browser des Users
+//      geöffnet (sicherer als ein eigenes BrowserWindow ohne Hardening).
+//   2. will-navigate → fängt In-Place-Navigation (location.href, Form-Submit) ab.
+//      Erlaubt bleibt nur die initial geladene URL (Dev: Vite-Devserver, Prod: file://-
+//      Renderer-Bundle). Alle anderen Ziele werden geblockt und ggf. extern geöffnet.
 app.on('web-contents-created', (_event, contents) => {
-  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.setWindowOpenHandler(({ url }) => {
+    // Nur http(s) extern öffnen — sonstige Schemata (file:, javascript:, data:) stumm
+    // ignorieren, damit kein Sniff-Vektor existiert.
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+  contents.on('will-navigate', (event, url) => {
+    const initialUrl = contents.getURL();
+    if (url !== initialUrl) {
+      event.preventDefault();
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        void shell.openExternal(url);
+      }
+    }
+  });
+});
+
+// Hardening — Permission-Request-Handler (Electronegativity PERMISSION_REQUEST_HANDLER_GLOBAL_CHECK):
+// Default-Deny für alle Permissions (media, geolocation, notifications, midi, …).
+// TakumiDeck braucht in Phase 1 keine davon; ein Whitelist-Eintrag käme erst, wenn ein
+// Feature ihn rechtfertigt. Permission-Check ebenfalls deny, damit Synchron-API-Pfade
+// (z.B. Notification.permission) nicht „granted" sehen.
+app.on('ready', () => {
+  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => {
+    callback(false);
+  });
+  session.defaultSession.setPermissionCheckHandler(() => false);
+
+  // Hardening — header-basierte CSP (Electronegativity CSP_GLOBAL_CHECK):
+  // Der Renderer-HTML-Meta-Tag setzt bereits dieselbe CSP, header-basiert ist aber
+  // robuster (greift VOR dem ersten Script-Tag, gilt auch für file://-Loads). Die
+  // Werte sind identisch zum Meta-Tag in src/renderer/index.html — bei Änderung
+  // beide Stellen anpassen.
+  const csp =
+    "default-src 'self'; " +
+    "script-src 'self'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; " +
+    "font-src 'self' data:;";
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    });
+  });
 });
 
 // Sentinel: stellt sicher, dass ipcMain-Imports nicht tree-shaked werden,

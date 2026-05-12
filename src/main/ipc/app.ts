@@ -20,7 +20,10 @@ export function registerAppIpc(deps?: { settings?: SettingsStore }): void {
     try {
       return ok(app.getVersion());
     } catch (e) {
-      return errFromUnknown(e);
+      // Bereich-4-Review (W-A): Code-Konstante explizit setzen, damit der
+      // Renderer bei Internal-Errors einen stabilen Discriminator hat (alle
+      // anderen Handler nutzen den 2. Parameter ebenfalls).
+      return errFromUnknown(e, 'APP_GET_VERSION');
     }
   });
 
@@ -34,7 +37,9 @@ export function registerAppIpc(deps?: { settings?: SettingsStore }): void {
       if (result) return err<string>(result, 'OPEN_FAILED');
       return ok(dir);
     } catch (e) {
-      return errFromUnknown(e);
+      // Bereich-4-Review (W-A): siehe AppGetVersion — explizite Code-Konstante
+      // für konsistentes Discriminator-Pattern.
+      return errFromUnknown(e, 'APP_OPEN_DATA_FOLDER');
     }
   });
 
