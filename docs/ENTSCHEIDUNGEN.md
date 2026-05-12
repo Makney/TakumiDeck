@@ -30,13 +30,13 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 **Varianten:**
 
-- **A** Electron 42.0.1 mit Source-Rebuild von `better-sqlite3` — scheitert lokal, weil kein VS Build Tools installiert ist (Memory-Eintrag „Dev-Umgebung Windows 11"). Source-Build erfordert MSVC-Toolchain.
+- **A** Electron 42.0.1 mit Source-Rebuild von `better-sqlite3` — scheitert auch mit VS Build Tools, weil die Quelle quelltext-inkompatibel mit V8 13.x ist (`v8::External::New/Value` Signatur-Bruch, `cppgc/heap.h` nutzt `__builtin_frame_address` als GCC/Clang-Intrinsic, MSVC kann es nicht auflösen).
 - **B** Electron 41.5.1 mit Prebuilt-Binary von `better-sqlite3` 12.9.0 (ABI v145) — gewählt.
 - **C** Electron 33 lassen — verworfen, trägt 18 High-CVEs.
 
-**Grund:** Variante A würde entweder VS Build Tools lokal installieren (~5 GB, Maintenance-Aufwand für eine private Dev-Umgebung) oder einen Cloud-CI-Build-Pfad für Native-Module gegen Electron-42-Headers aufsetzen. Beides ist Aufwand, der nicht in den Code-Review-Scope gehört. `better-sqlite3` 12.9.0 hat Prebuilts bis Electron-ABI v145 (= Electron 41); v147+ für Electron 42 kommt mit dem nächsten better-sqlite3-Release. Variante B kostet einen Minor-Electron-Versionsschritt — und alle 18 gemeldeten CVEs sind in `electron <= 39.8.4`, also durch B vollständig abgedeckt.
+**Grund:** Variante A scheitert nicht primär an der Build-Toolchain (das ließe sich lösen), sondern an einem **API-Bruch in V8 13.x**: `better-sqlite3` 12.9.0 ruft `v8::External::Value()` ohne `Isolate*`-Argument auf und `v8::Template::SetNativeDataProperty` als mehrdeutige Überladung — beides funktioniert nur gegen Electron-≤-41-Header. Zusätzlich nutzt `cppgc/heap.h` aus dem Electron-42-SDK ein GCC/Clang-Intrinsic, das MSVC nicht kennt. Variante A ist damit blockiert, bis `better-sqlite3` ein Release mit Electron-42-Support liefert (kein Datum, keine Prebuilts auf GitHub für ABI v146). Variante B kostet einen Minor-Electron-Versionsschritt — und alle 18 gemeldeten CVEs sind in `electron <= 39.8.4`, also durch B vollständig abgedeckt.
 
-**Konsequenz:** Beim nächsten `better-sqlite3`-Release mit Electron-42-Prebuilds (oder beim Schritt auf eine SQLite-Library mit weniger Build-Toolchain-Ballast) kann der Electron-Bump auf 42 nachgeholt werden — als isolierter Maintenance-Pass. Slot offen in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md).
+**Konsequenz:** Beim nächsten `better-sqlite3`-Release mit Electron-42-Prebuilds (oder beim Schritt auf eine SQLite-Library mit weniger Build-Toolchain-Ballast) kann der Electron-Bump auf 42 nachgeholt werden — als isolierter Maintenance-Pass. Slot offen in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md). VS-2022-Build-Tools sind seit 2026-05-12 lokal installiert; sie sind als Reserve sinnvoll, lösen den Bump aber nicht — die Inkompatibilität ist in der Quelle, nicht im Compiler.
 
 ---
 

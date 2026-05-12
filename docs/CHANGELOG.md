@@ -17,6 +17,23 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-12 — Hotfix: Electron-Range konsistent auf 41 (Start-Block aufgelöst)
+
+### Was jetzt geht
+
+- **`start-dev.bat` startet wieder.** Der Code-Review-Commit von davor hatte `package.json` auf `"electron": "^42.0.1"` gebumpt, während `package-lock.json` und `node_modules` auf 41.5.1 stehen blieben. `electron-forge start` zog beim Native-Module-Rebuild die Header von Electron 42 (`~/.electron-gyp/42.0.1`) und versuchte `better-sqlite3` aus Source zu bauen — was an zwei Fronten scheiterte: kein Prebuilt-Binary für Electron-ABI v146 und harte V8-13-API-Inkompatibilitäten (`v8::External::New/Value` Signatur-Bruch, `cppgc/heap.h` nutzt `__builtin_frame_address` als GCC/Clang-Intrinsic, MSVC kennt es nicht). Auch eine frische VS-2022-Build-Tools-Installation löste das nicht — die Quelle ist nicht baubar gegen Electron-42-Header.
+- **Konsistenz Range ↔ Lockfile ↔ `better-sqlite3`-Prebuilds.** `electron` auf `^41.5.1` gepinnt (= installierter Stand und Lockfile-Stand), `better-sqlite3` 12.9.0 zieht seinen E41-Prebuilt (ABI v145) sauber. `npx @electron/rebuild -w better-sqlite3 -o better-sqlite3 -v 41.5.1` läuft durch, Forge-Boot grün bis `Launched Electron app`.
+
+### Umgesetzte Entscheidungen
+
+- **Electron-Bump-Regel verschärft.** Vor jedem Electron-Major-Bump muss `npx prebuild-install -r electron -t <ziel>` im `better-sqlite3`-Modul getestet werden — wenn kein Prebuilt verfügbar ist, ist der Bump aktuell nicht möglich, weil die Quelle gegen Electron 42 nicht kompilierbar ist. Eintrag in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md) erweitert; ENTSCHEIDUNGEN-Eintrag „Electron auf 41 statt 42" präzisiert (nicht nur VS-Toolchain-Frage, sondern quelltext-Inkompatibilität).
+
+### Restrisiken
+
+- VS-2022-Build-Tools (Workload VCTools + Win11 SDK 26100) sind jetzt lokal installiert und bleiben als Reserve für künftige Native-Module-Aufgaben — der primäre Pfad bleibt aber Prebuild-Download. Build-Toolchain-Tail aus dem Code-Review-Eintrag unverändert.
+
+---
+
 ## 2026-05-12 — Code-Review Build/Konfig + Security-Upgrade (Electron 41, Vite 6)
 
 ### Was jetzt geht

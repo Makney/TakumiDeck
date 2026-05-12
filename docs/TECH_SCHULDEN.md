@@ -44,17 +44,23 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## Electron-Bump auf 42 blockiert durch fehlende `better-sqlite3`-Prebuilds (Code-Review Build/Konfig)
+## Electron-Bump auf 42 blockiert durch `better-sqlite3`-Inkompatibilität (Code-Review Build/Konfig)
 
 **Bereich:** `package.json` (`electron`, `better-sqlite3`), Native-Rebuild-Pfad
 
-**Was:** Electron steht auf 41.5.1 statt der zum Review-Zeitpunkt aktuellen 42.0.1. Grund: `better-sqlite3` 12.9.0 liefert Prebuilts bis Electron-ABI v145 (= Electron 41). Für Electron 42 (ABI v147+) müsste das Native-Modul aus Source gebaut werden — was lokal an fehlenden VS Build Tools scheitert (siehe Memory-Eintrag „Dev-Umgebung Windows 11").
+**Was:** Electron steht auf 41.5.1 statt der zum Review-Zeitpunkt aktuellen 42.0.1. Zwei gekoppelte Blocker: `better-sqlite3` 12.9.0 liefert keinen Prebuilt für Electron-ABI v146 (GitHub-Release liefert 404 für `better-sqlite3-v12.9.0-electron-v146-win32-x64.tar.gz`), UND die Quelle ist quelltext-inkompatibel mit V8 13.x (Electron 42): `v8::External::New/Value` Signatur-Bruch, `cppgc/heap.h` nutzt `__builtin_frame_address` (GCC/Clang-Intrinsic, MSVC kennt es nicht). Auch eine vollständige VS-2022-Build-Tools-Installation löst das nicht — der Compiler bricht in `addon.cpp`, `database.cpp`, `statement.cpp` u.a. mit C2660/C3861-Fehlern ab.
 
-**Warum so:** Siehe [ENTSCHEIDUNGEN.md „Electron auf 41 statt 42"](./ENTSCHEIDUNGEN.md). Variante A (Source-Build) erforderte VS-Toolchain-Setup, Variante C (Electron 33 belassen) trug 18 High-CVEs. Variante B (41 mit Prebuilts) ist der Kompromiss.
+**Warum so:** Siehe [ENTSCHEIDUNGEN.md „Electron auf 41 statt 42"](./ENTSCHEIDUNGEN.md). Variante A (Source-Build) ist nicht „nur eine Toolchain-Frage", sondern an einen API-Bruch in der Abhängigkeit gebunden — bis `better-sqlite3` ein Release mit V8-13-Support liefert, ist E42 hier nicht möglich. Variante C (Electron 33 belassen) trug 18 High-CVEs. Variante B (41 mit Prebuilts) ist der Kompromiss.
 
-**Risiko:** Falls zwischen Electron 41 und 42 weitere CVEs in den Chromium-/Node-Komponenten auftauchen, wachsen sie an. Ohne CI-Pipeline für Native-Module bleibt der Bump-Pfad an die `better-sqlite3`-Prebuild-Velocity gekoppelt.
+**Risiko:** Falls zwischen Electron 41 und 42 weitere CVEs in den Chromium-/Node-Komponenten auftauchen, wachsen sie an. Ohne CI-Pipeline für Native-Module bleibt der Bump-Pfad an die `better-sqlite3`-Release-Velocity gekoppelt. Zusätzlich: solange das gekoppelt ist, muss bei jedem Electron-Bump in `package.json` proaktiv geprüft werden, ob die Range mit Lockfile und `better-sqlite3`-Prebuilts konsistent ist — der erste Code-Review-Versuch ist genau an dieser Inkonsistenz gescheitert (`^42.0.1` in `package.json`, 41.5.1 im Lockfile, App startete nicht).
 
-**Auflösung:** Bei jedem `better-sqlite3`-Release prüfen, ob Electron-42-Prebuilds dabei sind (`npx prebuild-install --runtime=electron --target=42.x` testen). Bei Erfolg: `npm install electron@^42 && npm install better-sqlite3@<neue-Version> && npx electron-rebuild -f -o better-sqlite3 && npm run package` als Smoke-Pass. Alternativer Pfad: Migration auf eine SQLite-Library ohne C-Extensions (`@vlcn.io/crsqlite-wasm` o.ä.) — größerer Eingriff, würde aber das gesamte Build-Toolchain-Bottleneck wegnehmen.
+**Auflösung:** Bei jedem `better-sqlite3`-Release prüfen, ob Electron-42-Prebuilts dabei sind:
+
+```bash
+cd node_modules/better-sqlite3 && npx prebuild-install -r electron -t 42.0.0
+```
+
+Wenn ein Prebuilt geladen wird: `npm install electron@^42 && npm install better-sqlite3@<neue-Version> && npx @electron/rebuild -w better-sqlite3 -o better-sqlite3 && npm run package` als Smoke-Pass — **ohne** `-f`, damit `@electron/rebuild` den Prebuild-Download nicht überspringt. Alternativer Pfad: Migration auf eine SQLite-Library ohne C-Extensions (`@vlcn.io/crsqlite-wasm` o.ä.) — größerer Eingriff, würde aber das gesamte Build-Toolchain-Bottleneck wegnehmen.
 
 ---
 
