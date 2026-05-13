@@ -67,7 +67,12 @@ export async function listTemplates(
   input: ListTemplatesInput,
   driver: TemplateFsLikeDriver,
 ): Promise<TemplateFile[]> {
-  const globalFiles = await readMdFilesFlat(input.globalDir, 'global', driver);
+  const globalFiles = await readMdFilesFlat(
+    input.globalDir,
+    'global',
+    null,
+    driver,
+  );
   globalFiles.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
 
   const projectFiles: TemplateFile[] = [];
@@ -75,7 +80,9 @@ export async function listTemplates(
     const docsDir = path.join(input.projectPath, 'docs');
     const templatesDir = path.join(docsDir, 'templates');
     // Neue Konvention: docs/templates/*.md
-    projectFiles.push(...(await readMdFilesFlat(templatesDir, 'project', driver)));
+    projectFiles.push(
+      ...(await readMdFilesFlat(templatesDir, 'project', input.projectPath, driver)),
+    );
     // Legacy-Konvention: docs/*_TEMPLATE.md (case-insensitive Suffix-Match).
     const docsEntries = await driver.readdir(docsDir);
     for (const e of docsEntries) {
@@ -87,6 +94,7 @@ export async function listTemplates(
         source: 'project',
         name: e.name,
         path: fullPath,
+        relPath: toForwardSlash(path.relative(input.projectPath, fullPath)),
         content,
       });
     }
@@ -113,6 +121,9 @@ export async function listTemplates(
 async function readMdFilesFlat(
   dir: string,
   source: TemplateFile['source'],
+  // Projekt-Root fuer relPath-Berechnung. null bei globalen Templates — die
+  // liegen in <userData>/templates/ und sind nicht projekt-relativ.
+  projectRoot: string | null,
   driver: TemplateFsLikeDriver,
 ): Promise<TemplateFile[]> {
   const entries = await driver.readdir(dir);
@@ -122,7 +133,17 @@ async function readMdFilesFlat(
     if (!e.name.toLowerCase().endsWith('.md')) continue;
     const fullPath = path.join(dir, e.name);
     const content = await driver.readFile(fullPath);
-    out.push({ source, name: e.name, path: fullPath, content });
+    const relPath = projectRoot
+      ? toForwardSlash(path.relative(projectRoot, fullPath))
+      : null;
+    out.push({ source, name: e.name, path: fullPath, relPath, content });
   }
   return out;
+}
+
+// Renderer-Konvention fuer relPath ist Forward-Slash (siehe FsReadInput-Doku
+// in shared/types.ts). Windows liefert hier `\\` — wir normalisieren ein Mal
+// hier, statt im Renderer.
+function toForwardSlash(p: string): string {
+  return p.split(path.sep).join('/');
 }

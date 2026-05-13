@@ -8,6 +8,10 @@
 //   AUTO     — PROJEKT_NAME, NEXT_SEASON_NR, CURRENT_PHASE_FILE, DATUM
 //   PFLICHT  — FEATURE_NAME, AUFGABE
 //   OPTIONAL — HINWEISE
+// Phase-2 Season-4: drei weitere Auto-Variablen mit Main-Quelle:
+//   LETZTE_SEASON_NAME       — letzte completed Feature-Session (SQLite)
+//   TECH_SCHULDEN_RELEVANT   — Top-3 offene Eintrage aus docs/TECH_SCHULDEN.md
+//   LETZTE_ENTSCHEIDUNGEN    — Top-3 aus docs/ENTSCHEIDUNGEN.md
 // Unbekannte Tokens (z.B. Tippfehler) werden unverändert belassen, damit der User
 // sie im Preview sieht und korrigieren kann (Architektur 6.5: kein In-App-Editor;
 // Korrektur über den Markdown-Editor in Sprint 7).
@@ -16,7 +20,16 @@
 // Strenges Muster verhindert Kollisionen mit normalem Markdown wie {{x}} oder {{1}}.
 const TOKEN_RE = /\{\{([A-Z_]+)\}\}/g;
 
-export const AUTO_VARIABLES = ['PROJEKT_NAME', 'NEXT_SEASON_NR', 'CURRENT_PHASE_FILE', 'DATUM'] as const;
+export const AUTO_VARIABLES = [
+  'PROJEKT_NAME',
+  'NEXT_SEASON_NR',
+  'CURRENT_PHASE_FILE',
+  'DATUM',
+  // Phase-2 Season-4: Werte kommen via IPC (templates:resolve-auto-vars) aus Main.
+  'LETZTE_SEASON_NAME',
+  'TECH_SCHULDEN_RELEVANT',
+  'LETZTE_ENTSCHEIDUNGEN',
+] as const;
 export const REQUIRED_USER_VARIABLES = ['FEATURE_NAME', 'AUFGABE'] as const;
 export const OPTIONAL_USER_VARIABLES = ['HINWEISE'] as const;
 
@@ -99,17 +112,30 @@ export function fillTemplateVariables(
 
 // Helper für die Auto-Variablen, gebündelt aus Project + Frontmatter + Datum.
 // Reine Daten-Funktion, damit das Modal sie testbar wiederverwenden kann.
+//
+// Die drei Phase-2-Season-4-Variablen (LETZTE_SEASON_NAME, TECH_SCHULDEN_RELEVANT,
+// LETZTE_ENTSCHEIDUNGEN) brauchen DB- und Datei-Zugriff und werden vom Renderer
+// via templates:resolve-auto-vars geholt. Sind die Server-Werte noch nicht da
+// (Modal frisch geoffnet), bleiben sie leer — der Filler erlaubt das.
 export function buildAutoVariables(input: {
   projectName: string;
   nextSeasonNumber: number | null;
   currentPhaseFile: string | null;
   date: Date;
+  serverAutoVars?: {
+    letzte_season_name?: string;
+    tech_schulden_relevant?: string;
+    letzte_entscheidungen?: string;
+  };
 }): Record<AutoVariable, string> {
   return {
     PROJEKT_NAME: input.projectName,
     NEXT_SEASON_NR: input.nextSeasonNumber !== null ? String(input.nextSeasonNumber) : '',
     CURRENT_PHASE_FILE: input.currentPhaseFile ?? '',
     DATUM: formatIsoDate(input.date),
+    LETZTE_SEASON_NAME: input.serverAutoVars?.letzte_season_name ?? '',
+    TECH_SCHULDEN_RELEVANT: input.serverAutoVars?.tech_schulden_relevant ?? '',
+    LETZTE_ENTSCHEIDUNGEN: input.serverAutoVars?.letzte_entscheidungen ?? '',
   };
 }
 

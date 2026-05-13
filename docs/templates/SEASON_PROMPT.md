@@ -9,6 +9,12 @@ Dieses Template wird beim Erstellen einer neuen Season-Session verwendet. Takumi
 - `{{CURRENT_PHASE_FILE}}` — aus CLAUDE.md (`workbench.current_phase_file`)
 - `{{DATUM}}` — heute (`YYYY-MM-DD`)
 
+**Optionale Auto-Variablen** (Phase 2 Season 4 — opt-in pro Template):
+
+- `{{LETZTE_SEASON_NAME}}` — letzte completed Feature-Session
+- `{{TECH_SCHULDEN_RELEVANT}}` — Top-3 offene Einträge aus `docs/TECH_SCHULDEN.md`
+- `{{LETZTE_ENTSCHEIDUNGEN}}` — Top-3 aus `docs/ENTSCHEIDUNGEN.md`
+
 **User-Variablen** (im Formular einzugeben):
 
 - `{{FEATURE_NAME}}` — Pflicht

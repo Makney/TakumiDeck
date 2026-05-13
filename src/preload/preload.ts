@@ -38,6 +38,8 @@ import type {
   SessionRow,
   SessionUpdateInput,
   TemplateFile,
+  TemplatesResolveAutoVarsInput,
+  TemplatesResolveAutoVarsResult,
   UsageContextInput,
   UsageContextResult,
   UsageHeatmapResult,
@@ -112,6 +114,12 @@ const api: RendererApi = {
       ipcRenderer.on(Channels.SessionStatusPush, wrapped);
       return () => ipcRenderer.removeListener(Channels.SessionStatusPush, wrapped);
     },
+  },
+  templates: {
+    resolveAutoVars: (input: TemplatesResolveAutoVarsInput) =>
+      ipcRenderer.invoke(Channels.TemplatesResolveAutoVars, input) as Promise<
+        IpcResult<TemplatesResolveAutoVarsResult>
+      >,
   },
   fs: {
     listTemplates: (input: FsListTemplatesInput) =>

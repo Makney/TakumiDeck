@@ -402,10 +402,16 @@ export interface GitShowResult {
 // Q1 + Q2 (B/B): on-demand-Discovery + beide Quellen separat mit source-Tag.
 // `name` ist nur der Dateiname (z.B. "season_prompt.md"), `path` der absolute Pfad
 // für Hover-Anzeige, `content` der rohe Markdown-Inhalt mit {{...}}-Variablen.
+//
+// Phase-2 Season-4: `relPath` ist gefuellt fuer projekt-relative Templates
+// (source='project'), damit der Markdown-Editor im Right-Pane sie direkt
+// oeffnen kann (fs:read/fs:write verlangen projekt-relative Pfade). Bei
+// globalen Templates ist relPath null — sie liegen ausserhalb jedes Projekts.
 export interface TemplateFile {
   source: 'global' | 'project';
   name: string;
   path: string;
+  relPath: string | null;
   content: string;
 }
 
@@ -413,6 +419,28 @@ export interface FsListTemplatesInput {
   // projectId muss in der DB existieren. Bei DEFAULT_PROJECT_ID werden NUR globale
   // Templates geliefert (Default-Project hat keinen eigenen docs-Ordner).
   projectId: string;
+}
+
+// Phase-2 Season-4: Auto-Variablen-Bundle, das Templates aus Quellen abseits
+// des Renderers brauchen — SQLite (LETZTE_SEASON_NAME) und projekt-relative
+// Markdown-Dateien (TECH_SCHULDEN.md + ENTSCHEIDUNGEN.md). Der Renderer
+// produziert die einfacheren Auto-Variablen (PROJEKT_NAME/DATUM/...) weiterhin
+// lokal in buildAutoVariables(); diese hier kommen aus dem Main.
+export interface TemplatesResolveAutoVarsInput {
+  projectId: string;
+}
+
+export interface TemplatesResolveAutoVarsResult {
+  // Format: "Phase X Season Y: <Titel>" (wenn Phase aus current_phase_file
+  // ableitbar) bzw. "Season Y: <Titel>" bzw. nur "<Titel>". Leer, wenn keine
+  // completed Feature-Session existiert.
+  letzte_season_name: string;
+  // Top-N offene Schulden aus docs/TECH_SCHULDEN.md, durch \n\n getrennt.
+  // Leer, wenn die Datei fehlt oder keine offenen Eintraege uebrig sind.
+  tech_schulden_relevant: string;
+  // Top-3 Eintraege aus docs/ENTSCHEIDUNGEN.md, durch \n\n getrennt.
+  // Leer, wenn die Datei fehlt oder keine Eintraege parsbar sind.
+  letzte_entscheidungen: string;
 }
 
 // --- Token-Tracking (Sprint 5) ---------------------------------------
@@ -553,6 +581,14 @@ export interface RendererApi {
     // Phase-2 Season-1: Main pushed Status-Änderungen aktiv; Renderer-Store
     // abonniert und ruft setStatus auf, ohne selbst pollen zu müssen.
     onStatusPush: (handler: (event: SessionStatusPushEvent) => void) => () => void;
+  };
+  templates: {
+    // Phase-2 Season-4: Auto-Variablen, die DB- oder FS-Zugriff brauchen.
+    // Renderer kombiniert das Ergebnis mit den lokalen Auto-Variablen aus
+    // buildAutoVariables() im Modal.
+    resolveAutoVars: (
+      input: TemplatesResolveAutoVarsInput,
+    ) => Promise<IpcResult<TemplatesResolveAutoVarsResult>>;
   };
   fs: {
     listTemplates: (input: FsListTemplatesInput) => Promise<IpcResult<TemplateFile[]>>;

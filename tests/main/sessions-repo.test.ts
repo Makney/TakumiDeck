@@ -106,3 +106,67 @@ describe('SessionRepository.update', () => {
     expect(updated?.status).toBe('completed');
   });
 });
+
+describe('SessionRepository.findLastCompletedFeatureSession', () => {
+  it('liefert die juengste completed Feature-Session des Projekts', () => {
+    const { repo, driver } = makeRepo();
+    const older = repo.create({
+      ...baseInput,
+      id: 'older',
+      title: 'Phase 2 Season 1: Erste Season',
+      season_number: 1,
+    });
+    repo.create({
+      ...baseInput,
+      id: 'newer',
+      title: 'Phase 2 Season 2: Spaeter aber zeitlich davor',
+      season_number: 2,
+    });
+    // Beide auf completed setzen, mit gestaffeltem started_at.
+    driver.patch('older', { status: 'completed' });
+    driver.patch('newer', { status: 'completed' });
+    // Manuell den started_at-Wert manipulieren, damit "newer" wirklich juenger ist
+    // als "older" (ohne realen Timing-Abstand).
+    const rowOlder = repo.findById('older')!;
+    const rowNewer = repo.findById('newer')!;
+    driver['rows'].set('older', { ...rowOlder, started_at: 100 });
+    driver['rows'].set('newer', { ...rowNewer, started_at: 200 });
+
+    const result = repo.findLastCompletedFeatureSession('proj-1');
+    expect(result?.id).toBe('newer');
+    // Sanity-Check: aelterer Eintrag existiert weiterhin und ist NICHT der Treffer.
+    expect(repo.findById(older.id)).not.toBeNull();
+  });
+
+  it('ignoriert Sessions anderer Projekte', () => {
+    const { repo, driver } = makeRepo();
+    repo.create({
+      ...baseInput,
+      id: 'fremd',
+      project_id: 'other-proj',
+      title: 'Fremde Feature-Session',
+    });
+    driver.patch('fremd', { status: 'completed' });
+    expect(repo.findLastCompletedFeatureSession('proj-1')).toBeNull();
+  });
+
+  it('ignoriert non-feature-Typen (bug/review/docs-sync)', () => {
+    const { repo, driver } = makeRepo();
+    repo.create({ ...baseInput, id: 'bug', type: 'bug' });
+    driver.patch('bug', { status: 'completed' });
+    expect(repo.findLastCompletedFeatureSession('proj-1')).toBeNull();
+  });
+
+  it('ignoriert nicht-completed Status (running/interrupted/archived)', () => {
+    const { repo, driver } = makeRepo();
+    repo.create({ ...baseInput, id: 'lauft' });
+    repo.create({ ...baseInput, id: 'abbruch' });
+    driver.patch('abbruch', { status: 'interrupted' });
+    expect(repo.findLastCompletedFeatureSession('proj-1')).toBeNull();
+  });
+
+  it('liefert null, wenn das Projekt keine Sessions hat', () => {
+    const { repo } = makeRepo();
+    expect(repo.findLastCompletedFeatureSession('proj-1')).toBeNull();
+  });
+});

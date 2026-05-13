@@ -110,4 +110,33 @@ describe('buildAutoVariables', () => {
     });
     expect(result.CURRENT_PHASE_FILE).toBe('');
   });
+
+  it('Phase-2-Season-4-Variablen sind "" ohne serverAutoVars', () => {
+    const result = buildAutoVariables({
+      projectName: 'X',
+      nextSeasonNumber: 1,
+      currentPhaseFile: null,
+      date: new Date(),
+    });
+    expect(result.LETZTE_SEASON_NAME).toBe('');
+    expect(result.TECH_SCHULDEN_RELEVANT).toBe('');
+    expect(result.LETZTE_ENTSCHEIDUNGEN).toBe('');
+  });
+
+  it('Phase-2-Season-4-Variablen werden aus serverAutoVars uebernommen', () => {
+    const result = buildAutoVariables({
+      projectName: 'X',
+      nextSeasonNumber: 1,
+      currentPhaseFile: null,
+      date: new Date(),
+      serverAutoVars: {
+        letzte_season_name: 'Phase 2 Season 3: Trigger-Phrasen',
+        tech_schulden_relevant: '- Schuld A\n  Bereich: x',
+        letzte_entscheidungen: '- Entscheidung A',
+      },
+    });
+    expect(result.LETZTE_SEASON_NAME).toBe('Phase 2 Season 3: Trigger-Phrasen');
+    expect(result.TECH_SCHULDEN_RELEVANT).toBe('- Schuld A\n  Bereich: x');
+    expect(result.LETZTE_ENTSCHEIDUNGEN).toBe('- Entscheidung A');
+  });
 });

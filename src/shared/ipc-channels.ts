@@ -49,6 +49,11 @@ export const Channels = {
   FsRead: 'fs:read',
   FsWrite: 'fs:write',
   FsListTemplates: 'fs:list-templates',
+  // Phase-2 Season-4: Auto-Variablen, die DB- oder Datei-Zugriff brauchen
+  // (LETZTE_SEASON_NAME aus SQLite, TECH_SCHULDEN_RELEVANT + LETZTE_ENTSCHEIDUNGEN
+  // aus Markdown-Dateien). Renderer ruft pro Modal-Open einmal; ohne Auflösung
+  // landen die Variablen leer im Prompt (graceful Fallback).
+  TemplatesResolveAutoVars: 'templates:resolve-auto-vars',
   FsListTree: 'fs:list-tree',
   // Phase-2 Season-2: Screenshot-Drop ins Terminal. Renderer speichert
   // Image-Bytes über diesen Channel in <userData>/screenshots/, bekommt

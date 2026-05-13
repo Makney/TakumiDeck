@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 4 — Erweiterte Template-Variablen + In-App-Template-Management
+
+**Ziel:** Phase-2-Roadmap-Eintrag „Erweiterte Template-Variablen" produktiv machen. Drei neue Auto-Variablen (`{{LETZTE_SEASON_NAME}}` aus SQLite, `{{TECH_SCHULDEN_RELEVANT}}` und `{{LETZTE_ENTSCHEIDUNGEN}}` aus den Doku-Markdowns), sodass Templates beim Saison-Start projekt-spezifischen Kontext mitbekommen, ohne dass der User die Werte selbst tippen oder pasten muss. User-Hinweis on the fly: die Preview im Templates-Modal zeigt heute die volle `.md` statt nur des Vorlage-Teils — gehört mit in die Season.
+
+**Ergebnis:** Variante A1 (Body-Extraktion via `## Vorlage`-Konvention mit Voll-Fallback), Variante B1 (LETZTE_SEASON_NAME nur completed Feature-Sessions, Format `Phase X Season Y: <Titel>`) und Variante C2 (Top-3 mit limit-konfigurierbarem Helper, Default hartcodiert) umgesetzt. Server-Pfad: neuer IPC `templates:resolve-auto-vars` bündelt die drei Werte in einem Roundtrip. **Unterwegs-Funde + Mitnahme:** (a) Doku-Parser musste META-Filter bekommen — naive `##`-Section-Splitting hatte `## Unterschied zu anderen Dokumenten` / `## Format pro Eintrag` als Top-3-Einträge in den Prompt geschoben; Filter über das Pflicht-Label im Body (`**Bereich:**` für Schulden, `**Entscheidung:**` für Entscheidungen). (b) Sidebar-Polish wurde nötig, weil mehrzeilige Auto-Var-Werte die Sidebar mit purem `white-space: pre-line` gesprengt haben — kompakter Snippet mit „Mehr"-Toggle. (c) Auf Live-Feedback hin im selben Pass: Template-Management ins UI gebracht (`✎`-Stift pro Eintrag, `+ Neu`-Button mit Stub-Inhalt), nutzt den vorhandenen Phase-1-Markdown-Editor — kein zweiter Editor, kein neuer Persistenz-Layer. Tests: 53 neue Pure-Logik-Tests, Gesamtsuite 541/541 grün.
+
+**Gut gelaufen:**
+
+- **User-Hinweis im Briefing aufgegriffen, statt am Ende vergessen.** Das Briefing-Hinweisfeld enthielt eine UI-Beobachtung („Preview zeigt die komplette .md, soll aber nur den Vorlage-Teil"), die nicht im Variants-Pass auftauchte. Bewusste Aufnahme als Block 1 (Body-Extraktion) mit eigener Variante-Diskussion vor dem Code — A1 hat dann ohne Migrate funktioniert, weil `SEASON_PROMPT.md` die Konvention seit Sprint 6 mitbringt. Hätte ich den Hinweis als „später" abgetan, wäre der Bug-Report einen Roundtrip nach dem Coden zurückgekommen.
+- **Variants-Tabelle mit 3 unabhängigen Entscheidungen, AskUserQuestion statt eines Mega-Plans.** Body-Extraktion, Season-Quelle, Schulden-Filter — drei orthogonale Designfragen. Statt einen monolithischen Plan zu schreiben, drei AskUserQuestion-Felder mit Empfehlung als erster Option (Memory: „konvenient vor traditionell"). User-Entscheidung war ein einziger Klick, kein Mail-Pingpong; danach lief das Coding ohne Zwischenfrage durch.
+- **Pure-Logik-Aufteilung trägt erneut.** `extractTemplateBody`, `parseMarkdownSections`, `formatTechSchuldenRelevant`, `formatLetzteEntscheidungen`, `derivePhaseLabel`, `formatSeasonName` — sechs separate Pure-Funktionen, alle ohne DOM/FS/DB-Abhängigkeit. 53 Unit-Tests ohne Renderer. Der eigentliche Renderer-Edit (Modal + IPC-Wiring) war dünn und das Reagieren auf den User-Screenshot-Feedback („META-Sektionen tauchen auf") ein 5-Zeilen-Filter mit zwei zusätzlichen Tests.
+
+**Gebremst durch:**
+
+- **Default-Vorlage vorschnell erweitert.** Erster Patch hat `SEASON_PROMPT.md` mit allen drei neuen Variablen erweitert; im Live-Test war das visuell überladen und der Erklär-Block der Vorlage hat doppelte Aufgaben übernommen (Doku UND Default-Prompt). Rollback auf die schlanke Original-Vorlage, Server-Variablen wandern in den „Optional"-Header-Block. Lehre: Default-User-Assets nicht in derselben Season verändern, in der das Feature neu ist — der User entscheidet, wann er sie nutzt. Asset-Anpassung war zudem keine Code-Änderung, hätte also nicht ohne Sondertrigger reingehört.
+- **Naive `##`-Section-Splitting ohne Live-Validierung.** Der erste Parser hat jede `##`-Section als Eintrag akzeptiert. Im Unit-Test mit kontrolliertem Sample-Markdown war das grün — im Live-Test gegen die echte `TECH_SCHULDEN.md` aber kollabierte das (METAs aus dem Datei-Kopf landeten im Top-3). Lehre: bei Parser-Logik immer mindestens einen Test mit der echten produktiven Datei laufen, nicht nur mit synthetischen Inputs. Fix war klein (Label-Heuristik), aber die UX-Wirkung im Screenshot war direkt sichtbar.
+
+**Für nächste Season:**
+
+- Top-N für Schulden/Entscheidungen ist hartcodiert (3). Wenn der Daily-Use zeigt, dass das die falsche Zahl ist, in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md) ist die Auflösung skizziert (Settings-Feld + zod-Default).
+- Die `+ Neu`-UX legt heute eine Datei mit Stub-Inhalt an und öffnet sie im Editor — der Sidebar-Eintrag im Modal taucht aber erst beim nächsten Modal-Open auf, weil der Reader on-demand läuft. Im Daily-Use stört das im Moment nicht (man editiert nach dem Anlegen ohnehin im Editor), aber falls der Workflow „neu anlegen → gleich aus dem Modal heraus senden" wichtig wird, müsste der Modal-Reader nach dem Anlegen reloaden (oder das Modal offen bleiben).
+- Globale Templates können heute nur extern editiert werden (`%APPDATA%/TakumiDeck/templates/`). Falls das stört, wäre ein zusätzlicher „nach docs/templates/ kopieren und editieren"-Pfad sinnvoll — Migrations-Snippet, das den Globalkonflikt auflöst.
+
+---
+
 ## Phase 2 Season 3 — Trigger-Phrasen-Schnellbuttons
 
 **Ziel:** Phase-2-Roadmap-Eintrag „Trigger-Phrasen-Schnellbuttons" produktiv machen. Dynamische Pillen in der Action-Bar pro Eintrag aus `workbench.trigger_phrases`, sodass die `docs_update`-Phrase nicht mehr manuell getippt werden muss (`commit` hatte schon einen UI-Pfad). Submit-Verhalten: Klick → Phrase direkt abgeschickt, kein zusätzlicher Enter nötig.

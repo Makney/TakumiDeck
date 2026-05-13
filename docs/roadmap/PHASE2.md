@@ -143,7 +143,7 @@ Globaler Zeit-Filter für Stats-Section.
 
 ## Bereich: Templates
 
-### Feature: Erweiterte Template-Variablen
+### Feature: Erweiterte Template-Variablen ✅
 
 Zusätzliche Auto-Variablen.
 

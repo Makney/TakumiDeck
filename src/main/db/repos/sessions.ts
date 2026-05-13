@@ -53,6 +53,12 @@ export interface SessionDbDriver {
   // zu filtern (resolveTakumiSession aus Sprint 5 deckt nur running/idle für
   // Token-Tracking ab — Backfill darf auch completed/interrupted/error treffen).
   listMissingClaudeSessionId(): SessionRow[];
+  // Phase-2 Season-4: Letzte completed Feature-Session eines Projekts. Liefert
+  // die Row mit dem hoechsten started_at, deren type='feature' und
+  // status='completed' ist. Wird von templates:resolve-auto-vars genutzt, um
+  // die {{LETZTE_SEASON_NAME}}-Variable zu befuellen. null, wenn das Projekt
+  // noch keine erfolgreich gelandete Season hat.
+  findLastCompletedFeatureSession(projectId: string): SessionRow | null;
 }
 
 export interface CreateSessionInput {
@@ -140,6 +146,10 @@ export class SessionRepository {
   listMissingClaudeSessionId(): SessionRow[] {
     return this.driver.listMissingClaudeSessionId();
   }
+
+  findLastCompletedFeatureSession(projectId: string): SessionRow | null {
+    return this.driver.findLastCompletedFeatureSession(projectId);
+  }
 }
 
 function rowFromInsert(row: SessionInsert): SessionRow {
@@ -154,6 +164,7 @@ export class SqliteSessionDriver implements SessionDbDriver {
   private readonly listByStatusStmt: Database.Statement<[string], SessionRow>;
   private readonly setClaudeIdStmt: Database.Statement;
   private readonly listMissingClaudeIdStmt: Database.Statement<[], SessionRow>;
+  private readonly lastCompletedFeatureStmt: Database.Statement<[string], SessionRow>;
   // Statement-Cache für patch(): Cache-Key = sortierte Whitelist-Keys, damit jede
   // Patch-Permutation nur einmal vorbereitet wird. Schützt vor Re-Compile bei
   // Bulk-Patches (z.B. before-quit-Handler über alle running-Sessions).
@@ -190,6 +201,12 @@ export class SqliteSessionDriver implements SessionDbDriver {
     );
     this.listMissingClaudeIdStmt = db.prepare<[], SessionRow>(
       'SELECT * FROM sessions WHERE claude_session_id IS NULL',
+    );
+    // Phase-2 Season-4: einzelne Zeile mit hoechstem started_at, gefiltert auf
+    // type='feature' und status='completed'. LIMIT 1, weil die Variable einen
+    // einzelnen Eintrag liefert (nicht eine Liste).
+    this.lastCompletedFeatureStmt = db.prepare<[string], SessionRow>(
+      "SELECT * FROM sessions WHERE project_id = ? AND type = 'feature' AND status = 'completed' ORDER BY started_at DESC LIMIT 1",
     );
   }
 
@@ -304,6 +321,10 @@ export class SqliteSessionDriver implements SessionDbDriver {
   listMissingClaudeSessionId(): SessionRow[] {
     return this.listMissingClaudeIdStmt.all();
   }
+
+  findLastCompletedFeatureSession(projectId: string): SessionRow | null {
+    return this.lastCompletedFeatureStmt.get(projectId) ?? null;
+  }
 }
 
 // In-Memory-Implementation des Drivers für Tests (analog Migration-Fake-Driver).
@@ -396,6 +417,19 @@ export class InMemorySessionDriver implements SessionDbDriver {
       if (row.claude_session_id === null) out.push({ ...row });
     }
     return out;
+  }
+
+  findLastCompletedFeatureSession(projectId: string): SessionRow | null {
+    let best: SessionRow | null = null;
+    for (const row of this.rows.values()) {
+      if (row.project_id !== projectId) continue;
+      if (row.type !== 'feature') continue;
+      if (row.status !== 'completed') continue;
+      if (best === null || row.started_at > best.started_at) {
+        best = row;
+      }
+    }
+    return best ? { ...best } : null;
   }
 
   // Test-Hilfe: Token-Aggregate für eine Session direkt setzen (ohne MessageRepo).

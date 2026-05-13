@@ -14,6 +14,7 @@ import { createUsagePusher, registerUsageIpc } from './ipc/usage';
 import { setMainWebContentsResolver } from './ipc/sender-guard';
 import { registerFsIpc, screenshotsDirFromUserData, templatesDirFromUserData } from './ipc/fs';
 import { registerGitIpc } from './ipc/git';
+import { registerTemplatesIpc } from './ipc/templates';
 import { realGitDriver } from './git/driver';
 import { PtyManager } from './pty/manager';
 import { realPtySpawn } from './pty/spawn';
@@ -210,6 +211,11 @@ void app.whenReady().then(async () => {
     registerGitIpc({
       projects: projectRepo,
       driver: realGitDriver,
+      log: logger,
+    });
+    registerTemplatesIpc({
+      projects: projectRepo,
+      sessions,
       log: logger,
     });
 

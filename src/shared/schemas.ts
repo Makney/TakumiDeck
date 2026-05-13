@@ -170,6 +170,14 @@ export const FsListTemplatesInputSchema = z.object({
   projectId: z.string().min(1),
 });
 
+// Phase-2 Season-4: templates:resolve-auto-vars — Renderer schickt die projectId,
+// der Main loest sie gegen DB + docs/-Dateien auf und liefert die drei
+// neuen Auto-Variablen als String-Bundle. Schema bleibt minimal: alles
+// Weitere ist Server-Logik.
+export const TemplatesResolveAutoVarsInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
 // --- Filesystem read/write (Sprint 7) ---------------------------------
 
 // fs:read / fs:write laufen ausschließlich relativ zu einem registrierten Projekt.

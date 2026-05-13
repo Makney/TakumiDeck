@@ -72,6 +72,10 @@ describe('listTemplates', () => {
     // der User sieht beide nebeneinander mit ihrem source-Tag.
     expect(global?.name).toBe('season.md');
     expect(project?.name).toBe('season.md');
+    // Phase-2 Season-4: relPath ist nur fuer Projekt-Templates gesetzt
+    // (Edit-Pfad via fs:read/fs:write braucht projekt-relativen Pfad).
+    expect(global?.relPath).toBeNull();
+    expect(project?.relPath).toBe('docs/templates/season.md');
   });
 
   it('Sortierung: globale zuerst (alphabetisch), dann Per-Projekt (alphabetisch)', async () => {
@@ -104,9 +108,10 @@ describe('listTemplates', () => {
       'SEASON_PROMPT_TEMPLATE.md',
       'new.md',
     ]);
-    expect(result.find((t) => t.name === 'SEASON_PROMPT_TEMPLATE.md')?.content).toBe(
-      'legacy content',
-    );
+    const legacy = result.find((t) => t.name === 'SEASON_PROMPT_TEMPLATE.md');
+    expect(legacy?.content).toBe('legacy content');
+    // Legacy-Templates haengen direkt im docs/-Ordner — relPath spiegelt das.
+    expect(legacy?.relPath).toBe('docs/SEASON_PROMPT_TEMPLATE.md');
   });
 
   it('Legacy-Match ist case-insensitive auf das _TEMPLATE.md-Suffix', async () => {

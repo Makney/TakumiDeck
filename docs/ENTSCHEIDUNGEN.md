@@ -24,6 +24,36 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Erweiterte Template-Variablen: Konvention-basierter Body, META-Filter, In-App-Edit über vorhandenen Editor
+
+**Entscheidung:** Die drei neuen Auto-Variablen (`LETZTE_SEASON_NAME`, `TECH_SCHULDEN_RELEVANT`, `LETZTE_ENTSCHEIDUNGEN`) werden serverseitig über einen eigenen IPC `templates:resolve-auto-vars` aufgelöst, weil sie DB- (SessionRepository) und Datei-Zugriff (`docs/TECH_SCHULDEN.md` / `docs/ENTSCHEIDUNGEN.md`) brauchen und damit nicht in den Renderer gehören. Der Template-Body wird nach einer dateigetragenen Konvention extrahiert: erster Code-Fence unter `## Vorlage`, Fallback auf volle Datei. Doku-Parser filtern META-Sektionen über das Pflicht-Label im Body (`**Bereich:**` für Schulden, `**Entscheidung:**` für Entscheidungen) — naives `##`-Section-Splitting hatte die Erklär-Sektionen aus dem Datei-Kopf als Top-3-Einträge ausgegeben. Die In-App-Template-Verwaltung läuft über den bereits in Phase 1 (Sprint 7) gebauten Markdown-Editor: `✎`-Stift im Templates-Modal öffnet die `.md` als File-Tab im Right-Pane, `+ Neu` schreibt einen Stub und öffnet ihn ebenfalls dort.
+
+**Varianten:**
+
+- **A** Renderer-only: Auto-Variablen werden im Renderer befüllt, der Renderer liest die `.md`-Dateien selbst — verworfen, weil der Renderer kein direktes FS hat (Sandbox/contextIsolation) und für SQLite ohnehin auf den Main angewiesen ist.
+- **B** Hybrider IPC pro Auto-Variable (`templates:get-last-season`, `templates:get-schulden`, …) — verworfen wegen Round-Trip-Vervielfachung (3 IPCs pro Modal-Open statt einer), kein Vorteil bei der Boundary-Validierung.
+- **C** Ein gebündelter IPC `templates:resolve-auto-vars`, der alle Server-Werte in einem Roundtrip liefert (gewählt). zod-validiert, einheitliches Error-Handling, Default-Project-Bucket bekommt explizit leere Werte ohne FS-Touch.
+
+Für die **Body-Extraktion**:
+
+- **A1** Konvention „erster Code-Fence unter `## Vorlage`" mit Fallback auf volle Datei (gewählt). `SEASON_PROMPT.md` folgte der Struktur seit Sprint 6, kein Migrate nötig; einfache Templates ohne Erklärtext funktionieren via Fallback weiter.
+- **A2** Explizite Marker-Kommentare (`<!-- TEMPLATE-START -->`/-END) — verworfen, weil alle Bestands-Templates angepasst werden müssten und die Marker im Markdown-Editor sichtbar bleiben (kein Klapp-Verhalten).
+- **A3** YAML-Frontmatter mit `body:`-Feld — verworfen wegen mühsamer Mehrzeilen-Pflege in YAML.
+
+Für das **Template-Management**:
+
+- **M1** Edit-Stift öffnet den vorhandenen Markdown-Editor (gewählt). Nutzt die Phase-1-Editor-Infrastruktur, Templates bleiben als `.md`-Files Git-versionierbar, kein neuer Persistenz-Layer.
+- **M2** In-Place-Editor im Modal (eigene CodeMirror-Instanz) — verworfen, weil eine zweite Editor-Komponente parallel zu warten wäre und Konflikt-Erkennung bei externem Edit mehr Aufwand als Wert liefert.
+- **M3** Templates in eigener SQLite-Tabelle mit voller CRUD-UI — verworfen, weil Git-Versioning entfiele und der Migrationspfad für bestehende `.md`-Templates Aufwand ohne klaren Wert bedeutet.
+
+**Grund:** Variante C bündelt die drei Server-Werte in einem Channel; die zod-Validierung greift an einer Stelle, der Renderer hat nur einen `Promise<Result>` zu verarbeiten. A1 ist der einzige Pfad ohne Datei-Migration und gleichzeitig defensiv durch den Voll-Fallback — Templates, die der Konvention nicht folgen, bleiben weiter funktional. Der META-Label-Filter ist die natürliche Heuristik der Doku-Konvention: Pflicht-Labels markieren echte Einträge, ihre Abwesenheit markiert Erklärtext-Sektionen. M1 nutzt einen Building-Block, der bereits vorhanden ist (Markdown-Editor + File-Tab-Store) und gewinnt damit „kostenlos" Auto-Save, Diff-View beim Editieren und konsistente Tab-Navigation.
+
+**Konsequenz:** Server-Auto-Vars sind explizit opt-in pro Template — `SEASON_PROMPT.md` referenziert sie nicht im Default-Block, weil ein erster Patch die Vorlage zu invasiv erweitert hatte und der Erklär-Block der Datei dadurch eine doppelte Rolle bekam (Doku UND Default-Prompt). Neue Templates können die Tokens jederzeit einbauen; das Modal blendet die zugehörigen Sidebar-Felder dann automatisch ein. Mehrzeilige Auto-Var-Werte werden in der Sidebar als kompakter Snippet mit „Mehr"-Toggle gerendert, weil ein einfaches `white-space: pre-line` die Spalte bei Top-3-Einträgen mit langer Was-Zeile sprengt. Top-N für Schulden und Entscheidungen ist heute hartcodiert auf 3 — falls der Schmerz real wird (z.B. zu wenig oder zu viel Kontext im Prompt), wandert das in `settings.json`; dokumentiert in [TECH_SCHULDEN.md](./TECH_SCHULDEN.md).
+
+**Implementierungsdetail:** `TemplateFile.relPath` ist im Shared-Type ergänzt und vom Main-Reader gefüllt — für Projekt-Templates mit Forward-Slash-Normalisierung (das `fs:read/write`-Schema verlangt Forward-Slashes), für globale Templates `null`. Damit weiß das Modal pro Eintrag, ob der Edit-Pfad verfügbar ist; der Edit-Stift ist für globale Templates disabled mit Tooltip-Hinweis auf den `%APPDATA%/TakumiDeck/templates/`-Ordner. Der Phase-Label-Helper (`derivePhaseLabel`) ist tolerant gegenüber Windows-Pfadtrennern und Case (`docs\\roadmap\\phase2.md` → `Phase 2`) — das `current_phase_file`-Feld kann beides liefern, je nachdem wie der User es geschrieben hat.
+
+---
+
 ## Trigger-Phrasen-Schnellbuttons: dynamisch aus Frontmatter, Submit via separates CR
 
 **Entscheidung:** Die Action-Bar rendert pro Eintrag aus `workbench.trigger_phrases` automatisch eine eigene Pille. Das zod-Schema akzeptiert über `.catchall(z.string().min(1))` beliebige zusätzliche Keys jenseits der zwei Pflicht-Keys (`docs_update` + `commit`). Die `commit`-Phrase wird aus der Pillen-Liste herausgefiltert, weil die bestehende commit-Pille mit PreCommit-Modal weiterläuft. Submit-Enter geht als separates Carriage-Return außerhalb des Bracketed-Paste-Blocks an die PTY, gesteuert über ein opt-in `submit: true`-Flag im `td-template-send`-Event.

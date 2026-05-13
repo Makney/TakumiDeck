@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Top-N für Schulden/Entscheidungen-Auto-Variablen hartcodiert
+
+**Bereich:** `src/main/ipc/templates.ts` (`SCHULDEN_TOP_N`, `ENTSCHEIDUNGEN_TOP_N`)
+
+**Was:** Die Anzahl der ins Template eingefügten Einträge ist auf 3 fest verdrahtet. Der User kann das aktuell nicht aus der UI oder `settings.json` ändern. Wer mehr oder weniger Kontext im Prompt haben möchte, müsste den Wert im Code editieren und neu builden.
+
+**Warum so:** In Phase 2 Season 4 war noch unklar, ob 3 für den Daily-Use die richtige Zahl ist — es gab keine Live-Erfahrung. Eine Settings-Anbindung hätte den Schema-Migrationspfad in `AppSettings` plus UI-Slot im Settings-Dialog plus zod-Default-Handling für bestehende User bedeutet. Erst Schmerz, dann Konfigurierbarkeit.
+
+**Risiko:** Kein Funktionsbruch, nur UX-Steifigkeit. Falls der Top-3-Wert sich empirisch als falsch herausstellt, wird die Variable entweder zu spärlich oder zu voluminös — beides ist kein App-Crash, sondern Prompt-Qualität.
+
+**Auflösung:** Wenn der Schmerz real wird: zwei `number`-Felder in `AppSettings` (`template_schulden_top_n`, `template_entscheidungen_top_n`) mit Default 3, zod-Validation `min(0).max(20)`, ein neues Slot im Settings-Tab „Workspace" oder einem neuen „Templates"-Tab. Etwa ein halber Tag.
+
+---
+
 ## `exactOptionalPropertyTypes: false` (Code-Review Build/Konfig)
 
 **Bereich:** `tsconfig.json`

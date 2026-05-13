@@ -17,6 +17,22 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-13 — Phase 2 Season 4: Erweiterte Template-Variablen + In-App-Template-Management
+
+### Was jetzt geht
+
+- **Drei neue Auto-Variablen im Template-Filler.** `{{LETZTE_SEASON_NAME}}` zieht die zuletzt erfolgreich abgeschlossene Feature-Session aus SQLite (`type='feature'`, `status='completed'`, höchstes `started_at`) und liefert sie als `"Phase X Season Y: <Titel>"` — Phase-Label wird aus `workbench.current_phase_file` der CLAUDE.md best-effort abgeleitet (`PHASE2.md` → „Phase 2"). `{{TECH_SCHULDEN_RELEVANT}}` parst `docs/TECH_SCHULDEN.md` und liefert die Top-3 noch offenen Einträge (Titel + Bereich + Was-Zeile). `{{LETZTE_ENTSCHEIDUNGEN}}` parst `docs/ENTSCHEIDUNGEN.md` und liefert die Top-3 (Titel + Entscheidung-Zeile). Fehlt eine Quelle (keine completed Season, Datei nicht vorhanden, nur META-Sektionen), bleibt die Variable leer im Prompt — Templates referenzieren die drei Variablen explizit, ein leeres Feld bedeutet implizit „kein zusätzlicher Kontext".
+- **Template-Body-Extraktion (Konvention A1).** Der Preview-Pane und der finale Send-Pfad ziehen ab jetzt **nur den Inhalt des ersten Code-Fences unter einer `## Vorlage`-Überschrift** — nicht mehr die komplette `.md`-Datei. Templates ohne `## Vorlage`-Heading fallen auf den vollen Datei-Inhalt zurück (Rückwärtskompatibilität, kein Migrate-Step nötig). `SEASON_PROMPT.md` hatte die Struktur seit Sprint 6 schon; die Konvention ist jetzt der vertraglich erzwungene Pfad.
+- **Edit + Neu im Templates-Modal.** Pro Projekt-Template steht in der Sidebar ein `✎`-Stift, der die `.md` direkt im Markdown-Editor des Right-Panes öffnet (via `useFileTabsStore.openFile`) und das Modal schließt. Im Modal-Header gibt es einen `+ Neu`-Knopf, der ein Inline-Form für den Dateinamen zeigt, eine leere Vorlage-Datei in `docs/templates/<name>.md` anlegt (mit `## Vorlage (Inhalt)`-Stub) und gleich in den Editor lädt. Globale Templates haben den Stift disabled mit Tooltip-Hinweis — sie liegen außerhalb des Projekt-Roots und das `fs:read/write`-Schema verlangt projekt-relative Pfade.
+- **META-Sektion-Filter im Doku-Parser.** TECH_SCHULDEN- und ENTSCHEIDUNGEN-Markdown fangen mit erklärendem Kopf-Material an (`## Unterschied zu anderen Dokumenten`, `## Wann kommt ein Eintrag hier rein?`, `## Format pro Eintrag`). Der Parser ignoriert jetzt Sections ohne `**Bereich:**`/`**Entscheidung:**`-Label — sonst hatten die META-Sektionen den `{{TECH_SCHULDEN_RELEVANT}}`-/`{{LETZTE_ENTSCHEIDUNGEN}}`-Slot mit Erklärtext überschwemmt.
+- **Sidebar-Polish für mehrzeilige Auto-Variablen.** Werte mit mehreren Zeilen (= Server-Auto-Vars) erscheinen als kompakter Snippet (`N Einträge · erste Zeile, getrunkiert`) mit „Mehr"-Toggle — aufgeklappt mit `max-height: 12em` + Scroll. Einzeilige Auto-Vars werden weiter inline gerendert.
+
+### Architektur-Notiz
+
+Pure-Logik (`extractTemplateBody`, `parseMarkdownSections`, `formatTechSchuldenRelevant`, `formatLetzteEntscheidungen`, `derivePhaseLabel`, `formatSeasonName`) liegt strikt getrennt von DB/FS/JSX — 53 neue Unit-Tests decken Body-Extraktion (inkl. Tilde-Fences, Info-Strings, ungeschlossene Fences, mehrere Heading-Level), Section-Parser-Edge-Cases (Code-Fences mit `##` innen, `---`-Trenner, META-Filter), Schulden/Entscheidungen-Format-Snippets und Phase-Label-Ableitung ab. Server-Auto-Vars fließen über einen neuen IPC `templates:resolve-auto-vars` (zod-validiert, Default-Project-Bucket bekommt leere Werte). `TemplateFile.relPath` ist im Shared-Typ ergänzt; Reader normalisiert auf Forward-Slash. Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md).
+
+---
+
 ## 2026-05-13 — Phase 2 Season 3: Trigger-Phrasen-Schnellbuttons in der Action-Bar
 
 ### Was jetzt geht
