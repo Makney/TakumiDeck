@@ -24,13 +24,27 @@ import { estimateTerminalCols } from '../components/estimateTerminalCols';
 // mit einem Hinweis-Banner — der TECH_SCHULDEN-Eintrag „Sprint-2/3-Legacy
 // UI-blind bis Sprint 6" wird damit aufgelöst.
 
-const TYPE_OPTIONS: SessionType[] = ['feature', 'bug', 'review', 'docs-sync'];
+const TYPE_OPTIONS: SessionType[] = ['feature', 'bug', 'review', 'docs-sync', 'custom'];
 const TYPE_LABELS: Record<SessionType, string> = {
   feature: 'Feature',
   bug: 'Bug',
   review: 'Review',
   'docs-sync': 'Docs-Sync',
+  // Phase-2 Season-5: Fallback-Label, falls eine 'custom'-Session ausnahmsweise
+  // ohne `custom_type_label` in der DB landet (sollte durch zod-Schema verhindert
+  // sein, ist aber defensives Rendering).
+  custom: 'Eigene Art',
 };
+
+// Phase-2 Season-5: für 'custom'-Sessions zeigt der Verlauf die freie
+// Bezeichnung statt des generischen „Eigene Art"; bei den vier festen Typen
+// bleibt es bei TYPE_LABELS.
+function resolveTypeLabel(entry: { type: SessionType; custom_type_label: string | null }): string {
+  if (entry.type === 'custom' && entry.custom_type_label) {
+    return entry.custom_type_label;
+  }
+  return TYPE_LABELS[entry.type];
+}
 
 const STATUS_OPTIONS: SessionStatus[] = [
   'running',
@@ -182,6 +196,7 @@ export function HistoryPane({ project, settings }: Props) {
         projectId: entry.project_id,
         title: entry.title,
         type: entry.type,
+        customTypeLabel: entry.custom_type_label,
         model: entry.current_model ?? 'claude-sonnet-4-6',
         initialNotes: entry.notes_md,
       });
@@ -373,7 +388,9 @@ export function HistoryPane({ project, settings }: Props) {
                       ? `#${entry.season_number}`
                       : ''}
                   </td>
-                  <td className="td-history-col-type">{TYPE_LABELS[entry.type]}</td>
+                  <td className="td-history-col-type" title={entry.type === 'custom' ? 'Eigene Art' : undefined}>
+                    {resolveTypeLabel(entry)}
+                  </td>
                   <td>{entry.title}</td>
                   <td>
                     <span className={`td-status-dot ${entry.status}`} aria-hidden />
@@ -473,7 +490,9 @@ function HistoryDetail({
         <div className="td-history-detail-title">
           {entry.type === 'feature' && entry.season_number !== null
             ? `Season #${entry.season_number} · `
-            : ''}
+            : entry.type === 'custom' && entry.custom_type_label
+              ? `${entry.custom_type_label} · `
+              : ''}
           {entry.title}
         </div>
         <div className="td-history-detail-meta">

@@ -44,6 +44,9 @@ function seed(driver: InMemorySessionDriver, input: SeedInput) {
     // also reicht der Default. Spezifische Tests für claude_session_id stehen in
     // tests/main/claude-session-id.test.ts.
     claude_session_id: null,
+    // Phase-2 Season-5: custom_type_label nur fuer 'custom'-Sessions relevant;
+    // bestehende Filter-Tests fahren mit null.
+    custom_type_label: null,
   });
 }
 

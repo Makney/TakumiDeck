@@ -17,6 +17,22 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-13 — Phase 2 Season 5: Eigene Session-Art mit Freitext-Bezeichnung
+
+### Was jetzt geht
+
+- **Fünfter Button „Eigene Art" im NewSessionModal.** Klick blendet ein Freitext-Feld ein; die User-Bezeichnung (z.B. „Refactor", „Spike", „Hotfix") wird zusammen mit `type='custom'` in der DB gespeichert (neue nullable Spalte `sessions.custom_type_label`, Migration 0005). Verlauf-Panel und HistoryActionModal zeigen die freie Bezeichnung statt eines generischen Labels.
+- **Filter-Bucket „Eigene Art" im Verlauf.** Eine einzige Pille sammelt alle `custom`-Sessions — kein Aufblähen der Filter-Liste durch N freie Strings. Die Pillen-Reihe bleibt konstant, egal wie viele freie Bezeichnungen der User vergibt.
+- **Schema-seitige Pflicht-Validierung.** Das `PtyCreateInputSchema` verlangt per `superRefine` ein nicht-leeres `customTypeLabel` (Length-Cap 60 Zeichen) genau dann, wenn `type='custom'` ist — die IPC-Grenze validiert unabhängig vom UI-Submit-Disabled.
+- **xterm-Dimensions-Race im TerminalTab behoben (Nebenfund).** `terminal.open` + Canvas-Addon-Laden + erster Fit laufen jetzt in einem `requestAnimationFrame` statt synchron im `useEffect`. xterm schedult intern ein `setTimeout(0)` auf `Viewport.syncScrollArea`, das `renderer.dimensions` liest — wenn der Container im Modal-Schließen-Moment 0×0 hat, war der Renderer halb-tot, PTY-Daten landeten unsichtbar im Buffer. Pre-existing seit Sprint 1.
+- **StrictMode-Spawn-RAF-Race aus Sprint 9 behoben (Nebenfund).** Im Dev-Mode wurde `pty:create` nie aufgerufen, weil das Spawn-RAF zwischen Mount1 und Mount2 von StrictMode gecancelt wurde, während der `spawnDispatchedRef`-Guard `true` blieb. Cleanup setzt das Flag jetzt zurück, wenn das RAF noch nicht gefeuert hat — Production-Builds ohne Double-Mount waren nicht betroffen, das Symptom war auf Dev-Sessions beschränkt (latent seit Sprint-9-Commit 257c752).
+
+### Architektur-Notiz
+
+Datenmodell: `SessionType` um `'custom'` erweitert, neue Spalte trägt die freie Bezeichnung. `customTypeLabel` zieht durch SessionTab → TerminalTab → pty:create → Repo; HistoryEntry trägt das Feld mit, sodass beim Resume aus dem Verlauf die Bezeichnung in den neu angelegten Tab wandert. Season-Number-Allocation bleibt `feature`-exklusiv — `custom` bekommt keine Nummer (gleiche Regel wie `bug`/`review`/`docs-sync`). 8 neue Schema-Tests für Enum + Pflicht-Label-Validierung. Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md). Eine harmlose `refreshContext`-Console-Warning ist als TECH_SCHULDEN-Eintrag dokumentiert (Phase-Awareness, keine akute Auflösung).
+
+---
+
 ## 2026-05-13 — Templates-Fenster als draggable Non-Modal-Panel (Nachzug Season 4)
 
 ### Was jetzt geht

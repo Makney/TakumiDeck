@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 5 — Eigene Session-Art
+
+**Ziel:** Im NewSessionModal einen fünften Button für eine selbst definierbare Session-Art hinzufügen, sodass der User pro Session eine freie Bezeichnung (z.B. „Refactor", „Spike", „Hotfix") wählen kann. Datenmodell soll typsicher bleiben — keine Enum-Aufweichung, kein Title-Hack. Nicht aus PHASE2.md — User-Trigger.
+
+**Ergebnis:** Variante A (dedizierte `custom_type_label`-Spalte, Migration 0005) umgesetzt. `SessionType` um `'custom'` erweitert, `PtyCreateInputSchema` per `superRefine` mit Pflicht-Label-Check (`min(1).max(60)`), `customTypeLabel` zieht durch SessionTab → TerminalTab → `pty:create` → Repo. Verlauf-Panel und HistoryActionModal rendern die freie Bezeichnung; Filter buckete alle Custom-Sessions in eine Pille „Eigene Art". 8 neue Schema-Tests, Gesamtsuite 549/549 grün. **Unterwegs-Funde + Mitnahme:** Zwei latente Bugs aus Sprint 9 lagen direkt im Pfad und mussten mitgehoben werden, sonst funktioniert das Feature im Dev-Mode nicht: (a) xterm-Dimensions-Race im `TerminalTab` — `terminal.open` schedult intern ein `setTimeout(0)` auf `renderer.dimensions`, das bei 0×0-Container crashed; Fix: `terminal.open` + Canvas-Addon-Laden + erster Fit in einem RAF deferiert. (b) StrictMode-Spawn-RAF — Sprint-9-RAF-Defer für `pty:create` wurde im Dev-Mode durch das StrictMode-Cleanup gekillt, während der Dispatch-Guard `true` blieb; Fix: Cleanup setzt das Flag zurück, wenn das RAF noch nicht gefeuert hat. Eine harmlose `refreshContext`-Console-Warning bleibt offen ([TECH_SCHULDEN.md](./TECH_SCHULDEN.md)), explizit auf User-Wunsch nicht in dieser Season gehoben.
+
+**Gut gelaufen:**
+
+- **Variants-Tabelle in Plain-Language vor dem ersten Edit.** Drei Varianten (dedizierte Spalte / Enum aufweichen / Title-Prefix) ohne Code-Snippets präsentiert, Empfehlung als erste Option. User-Entscheidung war ein einziger Klick; danach lief die Implementierung in einem Strich durch. Die Variants-Diskussion hat auch klar gemacht, warum A trotz Migrations-Overhead die saubere Wahl ist — das Filter-Argument („Pillen-Bucket statt N freier Strings") war in B nicht offensichtlich, bis es ausgesprochen war.
+- **Live-Diagnose mit drei temporären Console-Probes.** Als der User „Claude startet nicht" gemeldet hat, war Schema/Typecheck/Tests grün — der Bug saß außerhalb des Test-Scopes (Dev-Mode-StrictMode-Race). Drei klar gekennzeichnete `[TerminalTab]`-`console.log`-Statements (Spawn-Args, Spawn-Result, PTY-Data-Bytes) haben in <2 Minuten klargestellt, dass `pty:create` nie aufgerufen wurde. Direkt danach war die Diagnose offensichtlich: StrictMode-Cleanup cancelt das RAF, Dispatch-Flag bleibt `true` → never reschedule.
+- **Probes nach Fix sauber entfernt.** Die drei Debug-Logs waren als `SEASON-5-DEBUG (temporaer)` kommentiert und in einem separaten Edit-Pass entfernt — keine Debug-Reste im Production-Code, kein Code-Review-Stolperstein für später.
+
+**Gebremst durch:**
+
+- **Restart-Pingpong zwischen den drei Bugs.** Der ursprüngliche xterm-Dimensions-Fix (RAF-Defer für `terminal.open`) hat den ersten Crash aus DevTools eliminiert, aber das eigentliche Symptom „Claude startet nicht" blieb — der StrictMode-Spawn-RAF-Bug war dahinter versteckt. Hätte ich die Live-Diagnose (DevTools-Probes) früher angesetzt statt zuerst nur am xterm-Init herumzuschrauben, wäre der gesamte Pfad in einem Roundtrip behoben gewesen. Lehre: bei „Tab existiert, Output fehlt"-Symptomen direkt drei Probes (Spawn-Args / Spawn-Result / PTY-Bytes) reinsetzen, statt zuerst auf den Renderer-Pfad zu spekulieren.
+- **Pre-Existing Bugs aus Sprint 9 erst im Season-5-Test entdeckt.** Beide Bugs (xterm-Dimensions + StrictMode-Spawn-RAF) waren seit dem Sprint-9-RAF-Defer-Commit (`257c752`) latent im Code. Im Production-Build hat das niemand bemerkt (Production hat keinen StrictMode-Double-Mount; der xterm-Race ist timing-abhängig und feuert nicht jedes Mal). In Dev-Mode hätte das aber irgendwann jemand gemeldet. Lehre: jeder Code-Review-Pass auf RAF-/`setTimeout`-/Cleanup-Pfade muss explizit StrictMode-Dev-Mode durchspielen, nicht nur Production.
+
+**Für nächste Season:**
+
+- Die `refreshContext`-Race im `ContextSlot` ist als TECH_SCHULDEN dokumentiert mit drei skizzierten Auflösungspfaden (Defer im Slot via CustomEvent / Suppress im Store / Soft-Fail im Main). Falls die Console-Warnings beim nächsten Live-Debugging stören, würde ich die Defer-Variante wählen — entkoppelt sauber, ohne den Empty-State zu ändern.
+- StrictMode-RAF-Pattern ist ein systemisches Risiko, nicht nur an dieser Stelle. Falls in Phase 2/3 weitere RAF-Defer in Effects landen, die mit einem Dispatch-Guard arbeiten, müssen die Cleanups symmetrisch das Flag zurücksetzen. Heute reicht die Awareness und der Why-Kommentar im `TerminalTab` als Anker; eine Code-Review-Checkliste oder ESLint-Rule wäre der nächste Schritt, falls das Pattern mehr als einmal auftaucht.
+- Das neue `custom_type_label`-Feld wird heute nur im Verlauf angezeigt. Falls die Tab-Pille im Tab-Bar später die Bezeichnung als Sub-Label unter dem Title zeigen soll, ist der Tab-Store schon vorbereitet — `SessionTab.customTypeLabel` ist bereits durchgezogen.
+
+---
+
 ## Phase 2 Season 4 — Erweiterte Template-Variablen + In-App-Template-Management
 
 **Ziel:** Phase-2-Roadmap-Eintrag „Erweiterte Template-Variablen" produktiv machen. Drei neue Auto-Variablen (`{{LETZTE_SEASON_NAME}}` aus SQLite, `{{TECH_SCHULDEN_RELEVANT}}` und `{{LETZTE_ENTSCHEIDUNGEN}}` aus den Doku-Markdowns), sodass Templates beim Saison-Start projekt-spezifischen Kontext mitbekommen, ohne dass der User die Werte selbst tippen oder pasten muss. User-Hinweis on the fly: die Preview im Templates-Modal zeigt heute die volle `.md` statt nur des Vorlage-Teils — gehört mit in die Season.

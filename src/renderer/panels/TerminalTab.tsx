@@ -51,8 +51,11 @@ interface Props {
   // hergeleitet — Renderer übergibt keine Working-Directory mehr.
   projectId: string;
   title: string;
-  type: 'feature' | 'bug' | 'review' | 'docs-sync';
+  type: 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom';
   model: string;
+  // Phase-2 Season-5: bei type='custom' die User-Bezeichnung — wird an pty:create
+  // durchgereicht und vom Main in die sessions.custom_type_label-Spalte gespeichert.
+  customTypeLabel: string | null;
   settings: AppSettings;
   isActive: boolean;
   // Wird genau dann auf true gesetzt, wenn dieser Tab gerade frisch im Store erzeugt wurde
@@ -67,6 +70,7 @@ export function TerminalTab({
   projectId,
   title,
   type,
+  customTypeLabel,
   model,
   settings,
   isActive,
@@ -132,11 +136,27 @@ export function TerminalTab({
     terminal.loadAddon(new SearchAddon());
     terminal.loadAddon(new SerializeAddon());
     terminal.loadAddon(new WebLinksAddon());
-    terminal.open(container);
-    // Canvas-Renderer erst NACH .open() laden — sonst kein Canvas-Element zum Anhängen.
-    terminal.loadAddon(new CanvasAddon());
 
-    safeFit(fit);
+    // Phase-2 Season-5 Bugfix: terminal.open + CanvasAddon erst im naechsten
+    // Animation-Frame ausfuehren. xterms Viewport-Konstruktor schedult intern
+    // ein setTimeout(0, syncScrollArea), das `renderer.dimensions` liest —
+    // wenn der Container in dem Moment 0x0 hat (Modal-Schliessen direkt vor
+    // dem Tab-Mount), ist der RenderService noch nicht voll initialisiert, der
+    // Timer wirft "Cannot read properties of undefined (reading 'dimensions')",
+    // und der Viewport ist halb-tot: PTY-Daten landen im Buffer, werden aber
+    // nicht mehr gezeichnet (Symptom: Terminal bleibt leer, Claude scheint
+    // nicht zu starten). Das initiale RAF gibt der Browser-Layout-Engine eine
+    // Tick Zeit, den Container final zu vermessen.
+    let initRafHandle: number | null = requestAnimationFrame(() => {
+      initRafHandle = null;
+      // Guard: useEffect-Cleanup koennte zwischen Schedule und Fire bereits
+      // gelaufen sein (StrictMode-Double-Mount oder Tab-Close in <16ms).
+      if (terminalRef.current !== terminal) return;
+      terminal.open(container);
+      // Canvas-Renderer erst NACH .open() laden — sonst kein Canvas-Element zum Anhängen.
+      terminal.loadAddon(new CanvasAddon());
+      safeFit(fit);
+    });
 
     // PTY-Events filtern hart auf sessionId, sodass bei N Tabs jeder nur seine eigenen
     // Daten schreibt. Der Renderer-Bus sendet sonst ein pty:data-Event an alle Tabs.
@@ -209,6 +229,7 @@ export function TerminalTab({
           model,
           cols: terminal.cols,
           rows: terminal.rows,
+          customTypeLabel,
         });
         if (!result.ok) {
           showError(errorRef.current, result.error);
@@ -285,7 +306,22 @@ export function TerminalTab({
     }, TUI_POLL_INTERVAL_MS);
 
     return () => {
-      if (spawnRafHandle !== null) cancelAnimationFrame(spawnRafHandle);
+      if (initRafHandle !== null) cancelAnimationFrame(initRafHandle);
+      if (spawnRafHandle !== null) {
+        cancelAnimationFrame(spawnRafHandle);
+        // Phase-2 Season-5 Bugfix: Die Spawn-RAF wurde noch nicht gefeuert
+        // (Handle wäre sonst im Callback auf null gesetzt worden). Cleanup
+        // läuft also zwischen Schedule und Fire — in der StrictMode-Dev-
+        // Sequenz Mount1→Cleanup1→Mount2 stirbt die RAF in Cleanup1 und
+        // Mount2 würde wegen `spawnDispatchedRef=true` keine neue RAF
+        // schedulen. Resultat: pty:create wird NIE gefeuert, die Session
+        // existiert nur im Renderer-Store, die DB kennt sie nicht. Daher
+        // hier das Flag zurücksetzen, damit der nachfolgende Mount erneut
+        // dispatcht. Im Produktions-Build ohne Double-Mount läuft der
+        // gleiche Pfad ohne Effekt, weil dann gar nicht erst cleanup
+        // dazwischenkommt.
+        spawnDispatchedRef.current = false;
+      }
       clearInterval(tuiTimer);
       offData();
       offExit();

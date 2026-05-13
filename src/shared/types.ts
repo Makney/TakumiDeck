@@ -68,7 +68,10 @@ export interface AppSettings {
 
 // Session-Row laut SQLite-Schema (Architektur Kapitel 4).
 // status-Werte und type-Werte folgen Architektur 6.2.
-export type SessionType = 'feature' | 'bug' | 'review' | 'docs-sync';
+// Phase-2 Season-5: 'custom' fuer User-definierte Session-Arten; die freie
+// Bezeichnung lebt in `custom_type_label` (nullable), damit der Verlauf-Filter
+// alle 'custom'-Sessions in einem Bucket halten kann.
+export type SessionType = 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom';
 // Phase-2 Season-1 ergänzt `permission-prompt`. Treiber ist die volle
 // TUI-State-Detection (siehe src/shared/tui-patterns.ts). DB-Layer ist Text-
 // Column und braucht keine Migration; das Schema-Update in `schemas.ts` reicht.
@@ -100,6 +103,9 @@ export interface SessionRow {
   // Für Legacy-Sessions (Sprint 2/3 + pre-fix Sprint 6) null, bis der JSONL-Watcher
   // sie aus der ersten Zeile rückwirkend befüllt.
   claude_session_id: string | null;
+  // Phase-2 Season-5: freie Bezeichnung fuer type='custom'. Nur dort befuellt;
+  // bei allen anderen Typen null (Migration 0005 setzt NULL als Default).
+  custom_type_label: string | null;
 }
 
 // PTY-IPC-Payloads (Renderer → Main).
@@ -115,6 +121,9 @@ export interface PtyCreateInput {
   model: string;
   cols: number;
   rows: number;
+  // Phase-2 Season-5: nur bei type='custom' gesetzt — freie User-Bezeichnung
+  // (z.B. "Refactor"). Bei den vier festen Typen weglassen oder null.
+  customTypeLabel?: string | null;
 }
 
 export interface PtyWriteInput {
@@ -202,6 +211,8 @@ export interface SessionHistoryEntry {
   project_id: string;
   title: string;
   type: SessionType;
+  // Phase-2 Season-5: freie Bezeichnung fuer type='custom', sonst null.
+  custom_type_label: string | null;
   season_number: number | null;
   status: SessionStatus;
   current_model: string | null;

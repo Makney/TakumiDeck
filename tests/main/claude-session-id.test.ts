@@ -30,6 +30,7 @@ const baseInsert: Omit<SessionInsert, 'id' | 'claude_session_id'> = {
   cwd: 'C:\\test',
   started_at: 1000,
   ended_at: 2000,
+  custom_type_label: null,
 };
 
 describe('SessionRepository.setClaudeSessionId', () => {

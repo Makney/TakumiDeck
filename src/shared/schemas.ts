@@ -57,7 +57,9 @@ export const AppSettingsPatchSchema = AppSettingsSchema.partial();
 
 // --- Session / PTY ----------------------------------------------------
 
-export const SessionTypeSchema = z.enum(['feature', 'bug', 'review', 'docs-sync']);
+// Phase-2 Season-5: 'custom' fuer User-definierte Session-Arten; die freie
+// Bezeichnung liegt im PtyCreate-Payload separat unter customTypeLabel.
+export const SessionTypeSchema = z.enum(['feature', 'bug', 'review', 'docs-sync', 'custom']);
 
 export const SessionStatusSchema = z.enum([
   'running',
@@ -72,21 +74,34 @@ export const SessionStatusSchema = z.enum([
   'error',
 ]);
 
-export const PtyCreateInputSchema = z.object({
-  sessionId: z.string().uuid(),
-  // Sprint-5-Fix: Renderer schickt jetzt das aktive Projekt mit, statt im Main
-  // hart auf DEFAULT_PROJECT_ID zu fallen (Sprint-2-Lifeline). Damit hängen
-  // Sessions am echten Projekt, was Per-Projekt-Aggregate korrekt macht.
-  projectId: z.string().min(1),
-  title: z.string().min(1),
-  type: SessionTypeSchema,
-  model: z.string().min(1),
-  // Bereich-4-Review (2026-05-11): cwd wurde aus dem Schema entfernt und im Main
-  // serverseitig aus projects.getById(projectId).path hergeleitet — damit kein
-  // Renderer-freier Pfad mehr in einen `claude`-Spawn fließt (B-5).
-  cols: z.number().int().positive(),
-  rows: z.number().int().positive(),
-});
+export const PtyCreateInputSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    // Sprint-5-Fix: Renderer schickt jetzt das aktive Projekt mit, statt im Main
+    // hart auf DEFAULT_PROJECT_ID zu fallen (Sprint-2-Lifeline). Damit hängen
+    // Sessions am echten Projekt, was Per-Projekt-Aggregate korrekt macht.
+    projectId: z.string().min(1),
+    title: z.string().min(1),
+    type: SessionTypeSchema,
+    model: z.string().min(1),
+    // Bereich-4-Review (2026-05-11): cwd wurde aus dem Schema entfernt und im Main
+    // serverseitig aus projects.getById(projectId).path hergeleitet — damit kein
+    // Renderer-freier Pfad mehr in einen `claude`-Spawn fließt (B-5).
+    cols: z.number().int().positive(),
+    rows: z.number().int().positive(),
+    // Phase-2 Season-5: freie Bezeichnung fuer type='custom'. Pflicht (min. 1
+    // Zeichen) bei 'custom', bei allen anderen Typen ignoriert/null.
+    customTypeLabel: z.string().min(1).max(60).nullish(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.type === 'custom' && (val.customTypeLabel === null || val.customTypeLabel === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'customTypeLabel ist Pflicht bei type=custom',
+        path: ['customTypeLabel'],
+      });
+    }
+  });
 
 // Bereich-4-Review (B-6): pty:write-Cap auf 1 MiB. Renderer ist Trust-Boundary;
 // eine fehlerhafte Schleife könnte sonst unbounded Buffer an den Main schieben.

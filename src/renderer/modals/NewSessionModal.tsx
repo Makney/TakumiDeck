@@ -3,18 +3,27 @@ import type { SessionType } from '@shared/types';
 
 // NewSessionModal: Sprint-3-Pflicht aus Architektur 6.0.1.
 //
-// Felder: Title (Pflicht), Type (4 Buttons), Modell (Dropdown mit human-readable Labels;
+// Felder: Title (Pflicht), Type (5 Buttons), Modell (Dropdown mit human-readable Labels;
 // die Model-IDs sind die internen claude-Werte). Default-Modell kommt aus settings.default_model;
 // Architektur 6.2 verlangt diese Default-Hierarchie (Per-Projekt > Global), die Per-Projekt-
 // Hierarchie aus CLAUDE.md kommt mit Sprint 4 — bis dahin reicht das globale Setting.
+//
+// Phase-2 Season-5: zusätzlicher 5. Button „Eigene Art" blendet ein Freitext-Feld
+// ein, dessen Inhalt als custom_type_label mitgesendet wird.
 
-const SESSION_TYPES: SessionType[] = ['feature', 'bug', 'review', 'docs-sync'];
+const SESSION_TYPES: SessionType[] = ['feature', 'bug', 'review', 'docs-sync', 'custom'];
 const TYPE_LABELS: Record<SessionType, string> = {
   feature: 'Feature',
   bug: 'Bug',
   review: 'Review',
   'docs-sync': 'Docs-Sync',
+  custom: 'Eigene Art',
 };
+
+// Phase-2 Season-5: gleiche Cap wie das zod-Schema (PtyCreateInputSchema.customTypeLabel).
+// Im Verlauf-Panel rendert das Label in eine schmale Spalte — 60 Zeichen reichen, mehr
+// würde nur per Tooltip lesbar.
+const CUSTOM_TYPE_LABEL_MAX = 60;
 
 // Modell-Dropdown-Optionen: human-readable Labels + interne Model-IDs.
 // Reihenfolge bewusst vom „Daily Driver" (Sonnet 4.6) absteigend zu speziellen Modellen.
@@ -34,14 +43,24 @@ interface Props {
   // (Modal abgebrochen, Spawn-Fehler) sind explizit akzeptiert (Architektur 6.6).
   nextSeasonPreview: number | null;
   onCancel: () => void;
-  onCreate: (input: { title: string; type: SessionType; model: string }) => void;
+  onCreate: (input: {
+    title: string;
+    type: SessionType;
+    model: string;
+    // Phase-2 Season-5: nur gesetzt bei type='custom'.
+    customTypeLabel?: string | null;
+  }) => void;
 }
 
 export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onCreate }: Props) {
   const [title, setTitle] = useState('');
   const [type, setType] = useState<SessionType>('feature');
   const [model, setModel] = useState(defaultModel);
+  // Phase-2 Season-5: separates State-Feld, damit ein Wechsel zwischen 'custom'
+  // und einem festen Typ den eingegebenen Label-Text nicht verliert.
+  const [customLabel, setCustomLabel] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const customLabelRef = useRef<HTMLInputElement>(null);
 
   // Esc schließt, Enter im Title-Feld submittet (wenn Title nicht leer).
   useEffect(() => {
@@ -60,11 +79,27 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
     titleInputRef.current?.focus();
   }, []);
 
-  const canSubmit = title.trim().length > 0;
+  // Phase-2 Season-5: Wechsel auf 'custom' setzt den Fokus aufs Label-Feld, damit
+  // der nächste Tastendruck direkt die freie Bezeichnung tippt.
+  useEffect(() => {
+    if (type === 'custom') {
+      customLabelRef.current?.focus();
+    }
+  }, [type]);
+
+  const trimmedCustomLabel = customLabel.trim();
+  const canSubmit =
+    title.trim().length > 0 &&
+    (type !== 'custom' || trimmedCustomLabel.length > 0);
 
   const submit = () => {
     if (!canSubmit) return;
-    onCreate({ title: title.trim(), type, model });
+    onCreate({
+      title: title.trim(),
+      type,
+      model,
+      customTypeLabel: type === 'custom' ? trimmedCustomLabel : null,
+    });
   };
 
   return (
@@ -123,6 +158,20 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
               ))}
             </div>
           </div>
+
+          {type === 'custom' && (
+            <label className="td-field">
+              <span>Bezeichnung</span>
+              <input
+                ref={customLabelRef}
+                type="text"
+                value={customLabel}
+                onChange={(e) => setCustomLabel(e.target.value)}
+                placeholder="z.B. Refactor, Spike, Hotfix"
+                maxLength={CUSTOM_TYPE_LABEL_MAX}
+              />
+            </label>
+          )}
 
           {type === 'feature' && nextSeasonPreview !== null && (
             <div className="td-field td-form-hint">

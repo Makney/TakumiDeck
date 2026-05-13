@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { AppSettingsSchema, AppSettingsPatchSchema } from '@shared/schemas';
+import {
+  AppSettingsSchema,
+  AppSettingsPatchSchema,
+  PtyCreateInputSchema,
+  SessionTypeSchema,
+} from '@shared/schemas';
 import { buildDefaultSettings } from '../../src/main/settings/defaults';
 
 describe('AppSettings-Schema', () => {
@@ -33,5 +38,63 @@ describe('AppSettingsPatch-Schema', () => {
 
   it('lehnt ungültige Teilfelder ab', () => {
     expect(() => AppSettingsPatchSchema.parse({ theme: 'rainbow' })).toThrow();
+  });
+});
+
+// Phase-2 Season-5: SessionTypeSchema-Enum und PtyCreateInputSchema-Refinement
+// fuer die neue 'custom'-Session-Art. Tests decken die Pflicht-Label-Validierung
+// ab — der UI-Pfad verhindert das Submit zwar bereits, die IPC-Grenze muss aber
+// unabhaengig validieren.
+describe('SessionTypeSchema', () => {
+  it('akzeptiert die vier festen Typen', () => {
+    for (const t of ['feature', 'bug', 'review', 'docs-sync'] as const) {
+      expect(() => SessionTypeSchema.parse(t)).not.toThrow();
+    }
+  });
+
+  it("akzeptiert 'custom'", () => {
+    expect(() => SessionTypeSchema.parse('custom')).not.toThrow();
+  });
+
+  it('lehnt unbekannte Typen ab', () => {
+    expect(() => SessionTypeSchema.parse('refactor')).toThrow();
+  });
+});
+
+describe('PtyCreateInputSchema', () => {
+  const base = {
+    sessionId: '11111111-1111-1111-1111-111111111111',
+    projectId: 'p1',
+    title: 'Title',
+    model: 'claude-sonnet-4-6',
+    cols: 80,
+    rows: 24,
+  } as const;
+
+  it("akzeptiert type='feature' ohne customTypeLabel", () => {
+    expect(() => PtyCreateInputSchema.parse({ ...base, type: 'feature' })).not.toThrow();
+  });
+
+  it("akzeptiert type='custom' mit customTypeLabel", () => {
+    expect(() =>
+      PtyCreateInputSchema.parse({ ...base, type: 'custom', customTypeLabel: 'Refactor' }),
+    ).not.toThrow();
+  });
+
+  it("lehnt type='custom' ohne customTypeLabel ab", () => {
+    expect(() => PtyCreateInputSchema.parse({ ...base, type: 'custom' })).toThrow();
+  });
+
+  it("lehnt type='custom' mit leerem customTypeLabel ab", () => {
+    expect(() =>
+      PtyCreateInputSchema.parse({ ...base, type: 'custom', customTypeLabel: '' }),
+    ).toThrow();
+  });
+
+  it('lehnt zu langes customTypeLabel ab (>60 Zeichen)', () => {
+    const tooLong = 'x'.repeat(61);
+    expect(() =>
+      PtyCreateInputSchema.parse({ ...base, type: 'custom', customTypeLabel: tooLong }),
+    ).toThrow();
   });
 });

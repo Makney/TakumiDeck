@@ -68,6 +68,7 @@ export function HistoryActionModal({ entry, defaultModel, onClose }: Props) {
           projectId: entry.project_id,
           title: entry.title,
           type: entry.type,
+          customTypeLabel: entry.custom_type_label,
           model: entry.current_model ?? defaultModel ?? 'claude-sonnet-4-6',
           initialNotes: entry.notes_md,
         });
@@ -155,7 +156,9 @@ export function HistoryActionModal({ entry, defaultModel, onClose }: Props) {
               <span className="td-history-action-meta-value">
                 {entry.season_number !== null
                   ? `Season ${entry.season_number}`
-                  : entry.type}
+                  : entry.type === 'custom' && entry.custom_type_label
+                    ? entry.custom_type_label
+                    : entry.type}
               </span>
             </div>
             <div>

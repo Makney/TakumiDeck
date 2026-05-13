@@ -19,6 +19,9 @@ export interface SessionTab {
   projectId: string;
   title: string;
   type: SessionType;
+  // Phase-2 Season-5: bei type='custom' die User-definierte Bezeichnung, sonst null.
+  // TerminalTab schickt das Feld beim Spawn an pty:create durch.
+  customTypeLabel: string | null;
   model: string;
   status: SessionStatus;
   // Renderer-Draft der Notizen (vor dem nächsten Debounce-Save).
@@ -34,6 +37,9 @@ export interface AddTabInput {
   type: SessionType;
   model: string;
   initialNotes?: string;
+  // Phase-2 Season-5: bei type='custom' Pflicht-Bezeichnung. Bei den vier festen
+  // Typen weglassen — der Store setzt dann null.
+  customTypeLabel?: string | null;
 }
 
 interface SessionStoreState {
@@ -110,6 +116,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       projectId: input.projectId,
       title: input.title,
       type: input.type,
+      customTypeLabel: input.customTypeLabel ?? null,
       model: input.model,
       status: 'running',
       notesDraft: input.initialNotes ?? '',

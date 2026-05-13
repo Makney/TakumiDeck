@@ -1,0 +1,12 @@
+-- Phase 2 Season 5: Freier Typ-Label fuer 'custom'-Sessions.
+--
+-- Hintergrund: Bis Phase 2 Season 4 war sessions.type ein festes Enum
+-- (feature/bug/review/docs-sync). Mit Season 5 kommt ein fuenfter Wert 'custom'
+-- dazu, dessen menschliche Bezeichnung der User pro Session frei waehlt
+-- (z.B. "Refactor", "Spike", "Hotfix"). Die Bezeichnung lebt in einer
+-- eigenen Spalte, damit das Datenmodell sauber bleibt und der Verlauf-Filter
+-- alle 'custom'-Sessions in einem Bucket halten kann.
+--
+-- Spalte ist nullable, weil sie nur fuer type='custom' befuellt wird. Alle
+-- bestehenden Rows (feature/bug/review/docs-sync) lassen das Feld auf NULL.
+ALTER TABLE sessions ADD COLUMN custom_type_label TEXT;

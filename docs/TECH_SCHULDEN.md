@@ -30,6 +30,26 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## `useUsageStore.refreshContext` schießt vor dem deferierten Spawn-IPC los
+
+**Bereich:** `src/renderer/panels/TabContainer.tsx` (`ContextSlot`-`useEffect`), `src/renderer/stores/usage.ts`
+
+**Was:** Beim Mount eines frisch erzeugten Tabs feuert der `ContextSlot` in der Action-Bar sofort einen `usage:context`-IPC gegen die DB, um den initialen Token-Verbrauch der neuen Session zu laden. `pty:create` läuft aber in einem deferierten `requestAnimationFrame` (Sprint-9-Race-Fix für korrekte `cols`/`rows`), das erst im nächsten Animation-Frame feuert — die DB-Session existiert in diesem Moment noch nicht. Der IPC-Handler antwortet mit „Session nicht gefunden", der Renderer-Store loggt eine `console.warn`, die UI fällt auf den Empty-State-`ctx`-Slot zurück. Beim nächsten `usage:update`-Event nach echtem Token-Verbrauch holt sich der Slot die korrekten Werte. Sichtbarer Nebeneffekt: zwei `console.warn`-Zeilen pro Tab-Anlegen im Dev-Build (eine pro StrictMode-Mount-Iteration), eine im Production-Build.
+
+**Warum so:** Die Warning ist harmlos — kein UI-Defekt, kein State-Schaden, kein Daten-Verlust. Die naheliegende Lösung wäre ein Delay/Retry im `refreshContext`-Pfad, ein „warte bis Session existiert"-Signal über den Tab-Store oder ein Suppress-on-first-mount-Flag. Jede dieser Optionen koppelt aber den Token-Store an das Spawn-Lifecycle des Tabs, was bisher sauber entkoppelt war. Im Trade-off „zwei harmlose Console-Lines vs. neue Kopplung" hat die saubere Trennung gewonnen — in Season 5 explizit als „irgendwann mal angehen" eingestuft.
+
+**Risiko:** Console-Lines pro Tab-Open lenken bei Diagnose anderer Probleme als Rauschen ab. Strukturell ist die Race latent für alle weiteren IPCs, die unmittelbar auf eine Session-ID losgehen, bevor das deferierte `pty:create` durch ist — aktuell ist es nur `refreshContext`, aber jeder neue Session-Initial-Fetch in einem `useEffect` würde denselben Pfad treffen.
+
+**Auflösung:** Drei sinnvolle Pfade, alle ~halber Tag:
+
+- **Defer im `ContextSlot`:** Auf eine `td-session-created`-CustomEvent warten, die der `TerminalTab` nach erfolgreichem `pty:create` feuert; vorher kein IPC-Call. Saubere Entkopplung, keine Store-Änderung.
+- **Suppress im Renderer-Store:** `refreshContext` schluckt `SESSION_NOT_FOUND` als Soft-Fehler still, keine `console.warn`. Minimaler Eingriff, aber versteckt das Symptom ohne die Race aufzulösen — wenn später ein anderer Code-Pfad denselben Error legitimerweise auslöst, sieht man ihn nicht mehr.
+- **Suppress im Main:** Bei nicht existenter Session ein `ok({tokens: 0, limit: 0, percent: 0})`-Pseudo-Result statt eines Errors zurückgeben — der UI-Empty-State wäre derselbe. Vermischt allerdings „Session existiert nicht" mit „Session hat 0 Tokens" semantisch.
+
+Empfehlung wenn der Schmerz real wird: Defer-im-Slot-Variante, weil sie genau die Race auflöst und keinen Pfad versteckt.
+
+---
+
 ## Top-N für Schulden/Entscheidungen-Auto-Variablen hartcodiert
 
 **Bereich:** `src/main/ipc/templates.ts` (`SCHULDEN_TOP_N`, `ENTSCHEIDUNGEN_TOP_N`)

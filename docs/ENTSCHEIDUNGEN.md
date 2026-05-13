@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Custom-Session-Typ: dedizierte Label-Spalte statt Enum-Aufweichung
+
+**Entscheidung:** Der fünfte Session-Typ „Eigene Art" landet als neuer Enum-Wert `'custom'` in `SessionType`, die freie Bezeichnung lebt in einer eigenen nullable Spalte `sessions.custom_type_label` (Migration 0005). Der Verlauf-Filter bündelt alle `custom`-Sessions in eine einzige Pille „Eigene Art" statt einer Pille pro vergebenem freien String.
+
+**Varianten:**
+
+- **A** Neuer Typ `'custom'` + dedizierte Label-Spalte (gewählt). Datenmodell bleibt streng typisiert, Filter ist deterministisch, freie Bezeichnung ist semantisch von `title` getrennt.
+- **B** Enum aufweichen, freier String wird selbst zum `sessions.type`-Wert. Keine Migration, aber Tippfehler-Risiko (`"Refactor"` vs `"refactor"` → zwei Buckets), Filter-Liste explodiert mit jedem neuen freien String, zod verliert seine Schutzfunktion an der IPC-Grenze.
+- **C** Freier Text wandert als Prefix in den Titel (`[Refactor] Auth-Cleanup`). Null Migration, aber die Bezeichnung kollidiert semantisch mit echten Titeln und Anzeige-/Filter-Logik müsste Titles parsen.
+
+**Grund:** A ist die einzige Variante, die das Datenmodell sauber hält — eine zusätzliche Spalte kostet einmalig eine triviale Migration und liefert dafür deterministisches Filtering, klare Typ-Validierung (zod-`superRefine` macht das Label bei `type='custom'` zur Pflicht und ignoriert es anderwärts) und keine Title-Sondersemantik. B löst das eigentliche Problem nicht — eine offene String-Domain in `sessions.type` würde sofort Filter-Explosion und Migrations-Bedarf nach hinten verschieben, sobald der erste User merkt, dass „Refactoring" und „Refactor" als zwei Buckets erscheinen. C bricht die Title-Eindeutigkeit und macht Anzeige-Refactors anfällig, weil jede Title-Anzeige zwei Pfade kennen muss.
+
+**Konsequenz:** Season-Number-Allocation bleibt `feature`-exklusiv — `custom` bekommt keine Nummer (gleiche Regel wie für `bug`/`review`/`docs-sync`). HistoryActionModal und HistoryPane zeigen bei `type='custom'` die `custom_type_label`-Bezeichnung statt des generischen Mappings; das Fallback-Label „Eigene Art" greift nur, falls eine Session unerwartet ohne Label in der DB landet (sollte durch das zod-`superRefine` ausgeschlossen sein, ist aber defensives Rendering). Verlauf-Filter-Pille „Eigene Art" bündelt alle Custom-Sessions absichtlich — würde der User später viele Bezeichnungen vergeben, bleibt die Pillenliste konstant. Eine „pro freier Bezeichnung eine eigene Pille"-UX wäre erst sinnvoll, wenn der User wirklich nach einer Sub-Kategorie filtern will, was im Daily-Use unwahrscheinlich ist.
+
+**Implementierungsdetail:** Der `superRefine`-Pflicht-Check sitzt an der IPC-Grenze, nicht nur am Submit-Button — der User kann das UI-Disable durch DevTools manipulieren, der Main-Handler lehnt ungültige Payloads trotzdem ab. Length-Cap auf 60 Zeichen entspricht der Verlauf-Spalten-Breite (mehr wäre via Tooltip lesbar, nicht in der Tabellen-Zelle). `customTypeLabel` zieht im Renderer als optionale Prop durch SessionTab → TerminalTab → `pty:create`; beim Resume aus dem Verlauf nehmen HistoryPane und HistoryActionModal die Bezeichnung aus dem `SessionHistoryEntry` mit in den neu angelegten Tab, damit der Wiederaufgriff dieselbe Anzeige trägt.
+
+---
+
 ## Templates-Fenster ist kein Modal mehr, sondern ein draggable Tool-Panel
 
 **Entscheidung:** Das Templates-Fenster verliert den `td-modal-backdrop`-Wrapper und wird als `position: fixed`-Panel direkt auf dem Viewport gerendert, mit einem Drag-Griff am Header. `aria-modal` entfällt — `role="dialog"` bleibt für Screenreader. Click-Outside-Close gibt es nicht mehr (es gibt kein Outside-Element mehr, das den Trigger trägt); Esc und `×` schließen weiter. Position-State liegt im Component (`useState<{x,y}>`), Initial-Wert in einem Mount-Effect (Viewport-Zentrierung).

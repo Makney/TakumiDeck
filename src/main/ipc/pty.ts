@@ -90,9 +90,9 @@ export function registerPtyIpc(deps: {
       const { resolvedBinary } = pre.data;
 
       // 1. Sprint 6: Counter atomar allozieren (Q6 Variante B). Nur für 'feature' —
-      //    Bug/Review/Docs-Sync bleiben ohne season_number. Wenn das Project nicht
-      //    existiert (sollte beim Sprint-4-Filter im Renderer nicht passieren, ist
-      //    aber als Defense-in-Depth korrekt), bekommt die Session keine Nummer.
+      //    Bug/Review/Docs-Sync/Custom bleiben ohne season_number. Wenn das Project
+      //    nicht existiert (sollte beim Sprint-4-Filter im Renderer nicht passieren,
+      //    ist aber als Defense-in-Depth korrekt), bekommt die Session keine Nummer.
       let seasonNumber: number | null = null;
       if (input.type === 'feature') {
         seasonNumber = projects.allocateSeasonNumber(input.projectId);
@@ -107,6 +107,10 @@ export function registerPtyIpc(deps: {
       //    Sprint-6-Hotfix: claude_session_id = sessionId, weil wir den Spawn unten
       //    mit --session-id <sessionId> machen. Damit ist die Session ab dem ersten
       //    Tick resume-fähig (Variante A des Hotfix-Plans).
+      //
+      //    Phase-2 Season-5: bei type='custom' speichert das Repo die freie
+      //    Bezeichnung in custom_type_label; bei den vier festen Typen verwerfen
+      //    wir einen versehentlich mitgeschickten Wert.
       const row = sessions.create({
         id: input.sessionId,
         project_id: input.projectId,
@@ -116,6 +120,8 @@ export function registerPtyIpc(deps: {
         cwd,
         season_number: seasonNumber,
         claude_session_id: input.sessionId,
+        custom_type_label:
+          input.type === 'custom' ? (input.customTypeLabel ?? null) : null,
       });
 
       // 3. PTY spawnen. Wenn das fehlschlägt (Binary nicht gefunden, cwd ungültig),

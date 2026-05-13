@@ -184,7 +184,13 @@ export function TabContainer({ settings }: Props) {
   );
 
   const handleNewSession = useCallback(
-    (input: { title: string; type: 'feature' | 'bug' | 'review' | 'docs-sync'; model: string }) => {
+    (input: {
+      title: string;
+      type: 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom';
+      model: string;
+      // Phase-2 Season-5: bei type='custom' Pflicht-Bezeichnung, sonst null.
+      customTypeLabel?: string | null;
+    }) => {
       if (!activeProjectId || !activeProject) return;
       // Bereich-4-Review (B-5): cwd wird im Main aus projects.getById(projectId).path
       // hergeleitet — Renderer übergibt die Working-Directory nicht mehr.
@@ -193,6 +199,7 @@ export function TabContainer({ settings }: Props) {
         title: input.title,
         type: input.type,
         model: input.model,
+        customTypeLabel: input.customTypeLabel ?? null,
       });
       // Diesen Tab als spawn-pflichtig markieren — TerminalTab feuert dann pty:create.
       setSpawnedIds((prev) => {
@@ -255,6 +262,7 @@ export function TabContainer({ settings }: Props) {
               projectId={tab.projectId}
               title={tab.title}
               type={tab.type}
+              customTypeLabel={tab.customTypeLabel}
               model={tab.model}
               settings={settings}
               isActive={tab.sessionId === activeId}

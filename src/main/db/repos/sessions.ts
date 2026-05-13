@@ -69,12 +69,15 @@ export interface CreateSessionInput {
   model: string;
   cwd: string;
   // Sprint 6: vom pty:create-Handler gesetzt — atomar aus projects.next_season_number
-  // alloziert (nur für type='feature'). Für Bug/Review/Docs-Sync immer null.
+  // alloziert (nur für type='feature'). Für Bug/Review/Docs-Sync/Custom immer null.
   season_number?: number | null;
   // Sprint-6-Hotfix: vom pty:create-Handler gleich `id` gesetzt, weil der Spawn
   // mit --session-id <id> läuft. Hier optional, damit Tests mit Default null
   // weiter funktionieren.
   claude_session_id?: string | null;
+  // Phase-2 Season-5: freie Bezeichnung fuer type='custom'. Bei den vier festen
+  // Typen weglassen — der Repo setzt dann null.
+  custom_type_label?: string | null;
 }
 
 // Whitelist für PATCH-Keys: schützt davor, dass jemand über die Schema-Boundary
@@ -108,6 +111,7 @@ export class SessionRepository {
       started_at: Date.now(),
       ended_at: null,
       claude_session_id: input.claude_session_id ?? null,
+      custom_type_label: input.custom_type_label ?? null,
     };
     this.driver.insert(row);
     return rowFromInsert(row);
@@ -181,10 +185,12 @@ export class SqliteSessionDriver implements SessionDbDriver {
     this.insertStmt = db.prepare(
       `INSERT INTO sessions (
         id, project_id, title, type, season_number, status, current_model,
-        worktree_branch, notes_md, cwd, started_at, ended_at, claude_session_id
+        worktree_branch, notes_md, cwd, started_at, ended_at, claude_session_id,
+        custom_type_label
       ) VALUES (
         @id, @project_id, @title, @type, @season_number, @status, @current_model,
-        @worktree_branch, @notes_md, @cwd, @started_at, @ended_at, @claude_session_id
+        @worktree_branch, @notes_md, @cwd, @started_at, @ended_at, @claude_session_id,
+        @custom_type_label
       )`,
     );
     this.selectStmt = db.prepare<[string], SessionRow>(
@@ -386,6 +392,7 @@ export class InMemorySessionDriver implements SessionDbDriver {
         project_id: row.project_id,
         title: row.title,
         type: row.type,
+        custom_type_label: row.custom_type_label,
         season_number: row.season_number,
         status: row.status,
         current_model: row.current_model,
