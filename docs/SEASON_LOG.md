@@ -20,6 +20,30 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 3 — Trigger-Phrasen-Schnellbuttons
+
+**Ziel:** Phase-2-Roadmap-Eintrag „Trigger-Phrasen-Schnellbuttons" produktiv machen. Dynamische Pillen in der Action-Bar pro Eintrag aus `workbench.trigger_phrases`, sodass die `docs_update`-Phrase nicht mehr manuell getippt werden muss (`commit` hatte schon einen UI-Pfad). Submit-Verhalten: Klick → Phrase direkt abgeschickt, kein zusätzlicher Enter nötig.
+
+**Ergebnis:** Variante B (dynamische Pillen-Reihe mit Schema-Lockerung) umgesetzt. `trigger_phrases` akzeptiert via `.catchall(z.string().min(1))` jetzt beliebige zusätzliche Keys; bekannte Keys haben handgepflegte Labels (`docs_update` → „Doku-Update"), unbekannte fallen auf Title-Case-mit-Bindestrich zurück. `commit` ist aus der Pillen-Liste ausgeklammert, damit die PreCommit-Modal-Pille nicht mit einer Direkt-Send-Pille konkurriert. **Unterwegs-Fund + Mitnahme:** Submit-Enter via Newline im Bracketed-Paste-Block funktioniert in Claude Codes TUI nicht — der Newline wird wie Shift+Enter behandelt. Fix als opt-in `submit: true`-Flag im `td-template-send`-Event; `TerminalTab` schickt nach dem Paste ein separates `\r` an die PTY. PreCommitModal hatte denselben latenten Bug und wurde im selben Pass mitgehoben. Tests: 12 neue (10 Pure-Logik in `triggerPhrasePills.ts` + 2 Frontmatter-Parser), Gesamtsuite 494 grün.
+
+**Gut gelaufen:**
+
+- **Variants-Tabelle vor dem ersten Edit, Memory-Default-Empfehlung respektiert.** Drei Varianten (Light-Pille / dynamische Reihe / Dropdown-Pille) plain-language präsentiert; Empfehlung war Variante B in Übereinstimmung mit dem Auto-Memory „konvenient vor traditionell". User hat B gewählt — keine Zwischen-Diskussion, sauberer Scope-Start. C war als „erst sinnvoll ab ~5 Phrasen" qualifiziert, das schließt die Tür für Phase 4 nicht zu.
+- **Pure-Logik-Aufteilung wieder zahlt sich aus.** `humanizeTriggerKey` + `buildTriggerPillList` in einer eigenen Datei, nullzeilig im JSX — 10 Tests ohne React, ohne DOM, sub-20-ms-Suite. Sort-Bug (`\x00`-Prefix wird von `localeCompare` Intl-konform ignoriert) ist im Test sofort sichtbar geworden, statt in der App live debuggen zu müssen.
+- **Submit-Fix im Daily-Driver-Test gefunden, nicht im Test-Suite.** Der erste Klick auf die neue Pille im laufenden Build hat den Bracketed-Paste-Submit-Gap gezeigt (Phrase steht im Eingabefeld, kein Enter). Hätte ich ohne den Live-Test commitet, wäre der Bug erst beim ersten produktiven Trigger aufgefallen — und PreCommitModal hätte denselben Bug latent bis Phase 3 mitgeschleppt. Die „UI-Changes vor Reporting in einem Browser testen"-Regel aus den globalen Working-Rules war hier load-bearing.
+
+**Gebremst durch:**
+
+- **Naiver Sortier-Trick mit Control-Char-Prefix.** Erste Implementierung nutzte `'\x00docs_update'` als Sort-Key, weil NUL-Bytes typischerweise lexikographisch vor allen Print-Chars stehen. `String.prototype.localeCompare` mit Intl-Default ignoriert NUL-Bytes aber. Lehre: bei Sort-Prioritäten nicht über String-Prefixes tricksen — direkt eine numerische `compare`-Funktion schreiben mit explizitem `if (a === 'docs_update') return -1`. Test hat den Bug auf den ersten Lauf gefunden, Kosten waren ein Re-Run.
+- **Forge-Background-Start in der Conversation.** Erster `npm start` lief via `run_in_background`, die App startete, aber durch stdin-Close hat sich der Forge-Wrapper-Prozess sofort beendet und das Electron-Window mitgenommen. Lösung: `Start-Process powershell -NoExit` als detached Fenster. Lehre für Conversation-Tooling: Electron-Forge-Dev-Server muss in einem TTY-fähigen, vom Conversation-Lifecycle losgelösten Fenster laufen — `run_in_background` ist die falsche Form.
+
+**Für nächste Season:**
+
+- Pillen-Reihe wird heute breit, wenn der User viele Phrasen einträgt — die Action-Bar wrappt via Sprint-9-Trick (`flex: 1 1 240px` min-width), aber visuell kann das nach 4+ Pillen unruhig wirken. Falls das im Daily-Use stört, das Dropdown-Modell (Variante C aus dieser Season) als Phase-3-Migration nachziehen.
+- `humanizeTriggerKey`-Fallback produziert `Pr-Ready`, `Deploy-Staging` etc. — funktional, aber etwas hölzern. Falls ein User mehrere „eigenwillige" Keys einträgt, könnte ein optionaler `label`-Override im Frontmatter (`trigger_phrases.pr_ready: { phrase: "…", label: "PR-Bereit" }`) sinnvoll werden. Aktuell nicht nötig, kommt zurück, wenn der Schmerz real wird.
+
+---
+
 ## Phase 2 Season 2 — Screenshot-Drag-and-Drop ins Terminal
 
 **Ziel:** Bilder per Drag-and-Drop ins Terminal-Pane einfügen, sodass Claude sie ohne manuelles Pfad-Tippen lesen kann. Feature stand nicht in der Roadmap — User-Trigger als „Daily-Driver-Komfort, hätte ich auch in Produktiv". Scope: Drag aus Explorer + Drag von Direkt-Bildern (Snipping Tool, Browser).

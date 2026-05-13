@@ -268,10 +268,17 @@ export const ClaudeMdFrontmatterSchema = z.object({
     project_name: z.string().min(1).optional(),
     default_model: z.string().optional(),
     current_phase_file: z.string().optional(),
-    trigger_phrases: z.object({
-      docs_update: z.string().min(1),
-      commit: z.string().min(1),
-    }),
+    // Phase-2 Season-3: `trigger_phrases` erlaubt zusätzlich zu den zwei Pflicht-
+    // Keys (`docs_update` + `commit`) beliebige weitere `<key>: <phrase>`-Paare.
+    // Die Action-Bar rendert pro Eintrag eine Schnellzugriffs-Pille; das Schema-
+    // Catchall hält die zod-Validierung an einer Stelle, statt die Pflicht-Keys
+    // hartzucodieren und Extra-Keys per `passthrough()` ungeprüft durchzuwinken.
+    trigger_phrases: z
+      .object({
+        docs_update: z.string().min(1),
+        commit: z.string().min(1),
+      })
+      .catchall(z.string().min(1)),
     on_demand_files: z.array(ClaudeMdOnDemandFileSchema).optional(),
   }),
 });

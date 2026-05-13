@@ -150,7 +150,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
 | `Volle State-Detection`              | ✅      | 2026-05-12 (Phase-2-Season-1) — versionierte TUI-Patterns (`cc-1.x`) auf serialisiertem xterm-Buffer im Renderer, JSONL-Timestamp-Loop im Main; Renderer pusht `waiting`/`permission-prompt`, Loop schreibt `running`/`idle`. Box-Layout-Toleranz (`^\s*`) für Claude-Code-2.x-Input-Box mit eingerücktem `? for shortcuts`. |
-| `Trigger-Phrasen-Schnellbuttons`     | ⛔      | Dynamische Buttons aus `workbench.trigger_phrases` |
+| `Trigger-Phrasen-Schnellbuttons`     | ✅      | 2026-05-13 (Phase-2-Season-3) — dynamische Pillen-Reihe in der Action-Bar pro `trigger_phrases`-Eintrag. Schema-Catchall erlaubt beliebige Extra-Keys jenseits von `docs_update`/`commit`. Send via `td-template-send`-CustomEvent mit neuem `submit: true`-Flag; TerminalTab schickt nach dem Bracketed-Paste ein separates `\r` an die PTY, weil Newlines im Paste-Block vom Claude-TUI als Shift+Enter behandelt werden. `commit` bleibt aus der dynamischen Liste ausgeklammert (PreCommit-Modal-Pille bleibt). |
 
 ### Terminal (Phase 2)
 

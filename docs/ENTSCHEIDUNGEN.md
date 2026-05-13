@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Trigger-Phrasen-Schnellbuttons: dynamisch aus Frontmatter, Submit via separates CR
+
+**Entscheidung:** Die Action-Bar rendert pro Eintrag aus `workbench.trigger_phrases` automatisch eine eigene Pille. Das zod-Schema akzeptiert über `.catchall(z.string().min(1))` beliebige zusätzliche Keys jenseits der zwei Pflicht-Keys (`docs_update` + `commit`). Die `commit`-Phrase wird aus der Pillen-Liste herausgefiltert, weil die bestehende commit-Pille mit PreCommit-Modal weiterläuft. Submit-Enter geht als separates Carriage-Return außerhalb des Bracketed-Paste-Blocks an die PTY, gesteuert über ein opt-in `submit: true`-Flag im `td-template-send`-Event.
+
+**Varianten:**
+
+- **A** Eine schlanke Pille hartcoded für `docs_update`, kein Schema-Touch. Roadmap-Beschreibung wäre nicht erfüllt — eine spätere dritte Phrase bräuchte ein zweites Mal Code.
+- **B** Dynamische Pillen-Reihe mit Schema-Lockerung, alle Phrasen als eigene Pille sichtbar (gewählt).
+- **C** Eine einzelne „▾ Phrasen"-Pille mit Dropdown-Menü — verworfen, weil bei den heute realistischen 2–3 Phrasen ein unnötiger Extra-Klick pro Send anfällt. Sinnvoll erst ab ~5 Phrasen.
+
+**Grund:** B löst genau das Roadmap-Versprechen („dynamische Buttons aus `workbench.trigger_phrases`") und skaliert ohne Refactor. Die Schema-Catchall ist die natürliche zod-Form für „zwei Pflicht-Keys + offene Erweiterung" — eine spätere Migration auf `Record<string, string>` ohne Pflicht-Keys wäre unnötig, weil die zwei Standard-Keys von den Working-Rules referenziert werden und nicht wegfallen dürfen. C wäre eine Investition in UI-Mechanik (Popover, Outside-Click, ESC, Pfeil-Tastatursteuerung), die sich erst rentiert, sobald die Pillen-Reihe wirklich breit wird.
+
+**Konsequenz:** `commit` ist als HIDDEN_KEY explizit in `triggerPhrasePills.ts` ausgeklammert — eine Sicherheits-Whitelist, kein Free-for-all-Filter (Why-Kommentar im Code). Wenn in einer späteren Phase weitere Pflicht-Phrasen mit eigenem Modal-Workflow dazukommen (z.B. ein `release`-Wizard), wandern sie zusätzlich in die Whitelist. Pillen-Sortierung: `docs_update` zuerst (Standard-Daily-Driver), danach alphabetisch — neue User-Phrasen reihen sich also vorhersehbar ein.
+
+**Implementierungsdetail:** Submit-Enter via separates `\r` an die PTY ist nicht kosmetisch — Claude Codes TUI behandelt einen Newline **innerhalb** eines Bracketed-Paste-Blocks `\x1b[200~ … \x1b[201~` als „Newline im Eingabefeld einfügen" (Shift+Enter-Verhalten), nicht als Submit. Das CR muss zwingend außerhalb des Blocks ankommen, damit das TUI es als Tastatur-Enter erkennt. PreCommitModal hatte denselben latenten Bug (Phrase mit `\n` im Paste-Text) und wurde im selben Pass auf das `submit: true`-Flag umgestellt — der dortige „nach Send Modal schließen"-Pfad hat den Bug bisher kosmetisch maskiert, real wurde der commit-Trigger im TUI nie automatisch abgesendet. Templates absichtlich **nicht** auf `submit: true` — lange Prompts mit User-Variablen will man vor dem Send oft noch im Eingabefeld inspizieren.
+
+---
+
 ## Screenshot-Drop: Ablage außerhalb des Projekts, Clipboard-Image-Paste mitgenommen
 
 **Entscheidung:** Gedroppte und gepastete Direkt-Bilder werden in `<userData>/screenshots/` abgelegt, nicht in den aktiven Projektordner. Der eingefügte Text ist immer ein roher absoluter Dateipfad (mit Quotes nur bei Whitespace). Zusätzlich zum Drag-Drop greift derselbe Pfad bei `Ctrl+Shift+V` mit einem Bild in der Zwischenablage (Image-First im bestehenden `clipboardKeyHandler`).

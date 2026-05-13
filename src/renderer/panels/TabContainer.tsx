@@ -11,6 +11,11 @@ import { PreCommitModal } from '../modals/PreCommitModal';
 import { displayProjectName } from '../components/displayProjectName';
 import { fmtTokens } from '../components/fmtTokens';
 import { estimateTerminalCols } from '../components/estimateTerminalCols';
+import {
+  buildTriggerPillList,
+  type TriggerPhrasePill,
+} from '../components/triggerPhrasePills';
+import type { ClaudeMdFrontmatter } from '@shared/types';
 // Sprint 7 (Q8 Variante A): NotesFooter ist hier weg — Notes leben jetzt im
 // RightPane (panels/RightPane.tsx → components/NotesPanel.tsx). Ein klarer Ort
 // statt zwei (sonst Sync-Bugs + Konflikt mit der commit-Pill in der Action-Bar).
@@ -272,6 +277,7 @@ export function TabContainer({ settings }: Props) {
             status={activeTab.status}
             warnThresholds={settings.token_warning_thresholds}
             canCommit={activeProject !== null}
+            triggerPhrases={activeProjectFrontmatter?.workbench.trigger_phrases ?? null}
             onOpenTemplates={() => setShowTemplatesModal(true)}
             onOpenPreCommit={() => setShowPreCommitModal(true)}
           />
@@ -429,6 +435,10 @@ interface ActionBarProps {
   warnThresholds: AppSettings['token_warning_thresholds'];
   // false → commit-Pill ist disabled (kein aktives Projekt → kein Trigger sinnvoll).
   canCommit: boolean;
+  // Phase-2 Season-3: Trigger-Phrasen aus dem CLAUDE.md-Frontmatter. null, wenn
+  // kein Frontmatter geladen ist (z.B. Project ohne CLAUDE.md). Die Pillen
+  // werden dann ohne Trigger-Reihe gerendert.
+  triggerPhrases: ClaudeMdFrontmatter['workbench']['trigger_phrases'] | null;
   onOpenTemplates: () => void;
   onOpenPreCommit: () => void;
 }
@@ -439,10 +449,18 @@ function ActionBar({
   status,
   warnThresholds,
   canCommit,
+  triggerPhrases,
   onOpenTemplates,
   onOpenPreCommit,
 }: ActionBarProps) {
   const modelLabel = ACTION_BAR_MODEL_LABELS[model] ?? model;
+  // Memo-Stabilität: ohne useMemo würde jede Render-Schleife eine neue
+  // Pillen-Liste produzieren, was die nachgelagerten `.map()`-Children
+  // unnötig neu mountet.
+  const triggerPills = useMemo(
+    () => buildTriggerPillList(triggerPhrases),
+    [triggerPhrases],
+  );
   return (
     <div className="td-term-bar">
       <span
@@ -459,6 +477,16 @@ function ActionBar({
       >
         <span aria-hidden>⌘</span> Templates
       </button>
+      {/* Phase-2 Season-3: Trigger-Phrasen-Schnellbuttons. Jede Pille schickt
+          die wörtliche Phrase aus dem Frontmatter als Bracketed-Paste an die
+          aktive PTY — gleicher 'td-template-send'-Kanal wie Templates/PreCommit
+          (Sprint 6 + 7), Newline anhängen, damit Claude den Prompt direkt
+          verarbeitet statt auf manuelles Enter zu warten. Die `commit`-Phrase
+          wird in buildTriggerPillList ausgefiltert, weil die rechts danach
+          folgende commit-Pille bereits den Pre-Commit-Workflow trägt. */}
+      {triggerPills.map((pill) => (
+        <TriggerPhrasePillButton key={pill.key} pill={pill} />
+      ))}
       {/* Sprint-7-Phase-8: commit-Pill öffnet PreCommitModal. Trigger-Phrase
           aus workbench.trigger_phrases.commit wird per Bracketed-Paste an
           die aktive PTY geschickt — die App committed selbst nicht
@@ -549,3 +577,35 @@ function ContextSlot({ sessionId, thresholds }: ContextSlotProps) {
 
 /* Sprint 9 (L5) — `fmtTokens` ist in components/fmtTokens.ts gewandert,
    damit StatsPane und Action-Bar denselben Helper nutzen. */
+
+// Phase-2 Season-3: einzelne Trigger-Phrasen-Pille in der Action-Bar. Click
+// schickt die Phrase als Bracketed-Paste an die aktive PTY — gleicher
+// 'td-template-send'-Kanal wie TemplatesModal/PreCommitModal. Newline am
+// Ende, damit Claude den Prompt direkt verarbeitet (ohne manuelles Enter).
+interface TriggerPhrasePillButtonProps {
+  pill: TriggerPhrasePill;
+}
+
+function TriggerPhrasePillButton({ pill }: TriggerPhrasePillButtonProps) {
+  const handleClick = useCallback(() => {
+    // submit: true → TerminalTab schickt nach dem Bracketed-Paste ein separates
+    // \r an die PTY, weil ein Newline IM Bracketed-Paste-Block von claude-codes
+    // TUI als „Newline einfügen" (Shift+Enter) interpretiert wird, nicht als
+    // Absende-Enter. Phrase ohne \n pasten, damit keine Leerzeile davor steht.
+    window.dispatchEvent(
+      new CustomEvent<{ text: string; submit: boolean }>('td-template-send', {
+        detail: { text: pill.phrase, submit: true },
+      }),
+    );
+  }, [pill.phrase]);
+  return (
+    <button
+      type="button"
+      className="td-pill td-pill-button"
+      onClick={handleClick}
+      title={`Sende „${pill.phrase}" an aktive Session`}
+    >
+      <span aria-hidden>→</span> {pill.label}
+    </button>
+  );
+}

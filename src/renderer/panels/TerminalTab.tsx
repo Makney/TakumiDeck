@@ -324,16 +324,26 @@ export function TerminalTab({
   // erkennt das und verarbeitet den Block als ein Eingabe-Event (genau wie der
   // Copy/Paste-Pfad aus Sprint 3.5). Listener mit unsubscribe-Cleanup, kein
   // useRef-Guard nötig (Memory: Guard nur für Server-Mutationen).
+  //
+  // Phase-2 Season-3: optional `submit: true` im Event-Detail. Claude-codes TUI
+  // behandelt Newlines INNERHALB eines Bracketed-Paste-Blocks wie Shift+Enter
+  // (Newline im Eingabefeld einfügen), nicht wie Enter (Prompt absenden). Für
+  // Trigger-Phrasen-Pillen wollen wir „echtes Enter" — daher zusätzlich zum
+  // Paste ein separates Carriage-Return direkt an die PTY, AUSSERHALB des
+  // Bracketed-Paste-Blocks. Der CR landet im TUI-Input wie ein Tastatur-Enter.
   useEffect(() => {
     if (!isActive) return;
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ text: string }>).detail;
+      const detail = (e as CustomEvent<{ text: string; submit?: boolean }>).detail;
       if (!detail || typeof detail.text !== 'string') return;
       terminalRef.current?.paste(detail.text);
+      if (detail.submit === true) {
+        void window.api.pty.write({ sessionId, data: '\r' });
+      }
     };
     window.addEventListener('td-template-send', handler);
     return () => window.removeEventListener('td-template-send', handler);
-  }, [isActive]);
+  }, [isActive, sessionId]);
 
   // Hot-Update der Schriftart, wenn der User die Settings ändert.
   useEffect(() => {

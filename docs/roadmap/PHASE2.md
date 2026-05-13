@@ -21,7 +21,7 @@ Erweitert die reduzierte Detection aus Phase 1.
 
 **Trigger:** Wenn empirisch wichtig — wenn häufig Permission-Prompts vergessen werden.
 
-### Feature: Trigger-Phrasen-Schnellbuttons
+### Feature: Trigger-Phrasen-Schnellbuttons ✅
 
 Buttons in der App für die in CLAUDE.md definierten Trigger-Phrasen.
 

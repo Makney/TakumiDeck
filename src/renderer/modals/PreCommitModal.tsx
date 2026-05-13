@@ -121,11 +121,13 @@ export function PreCommitModal({
 
   const handleSend = (): void => {
     // Trigger-Phrase ans aktive Terminal schicken via Bracketed-Paste-Event.
-    // Newline anhängen, damit claude den Prompt direkt verarbeitet, statt darauf
-    // zu warten, dass der User Enter drückt.
+    // Phase-2 Season-3: submit: true → TerminalTab feuert nach dem Paste ein
+    // separates \r an die PTY. Ein Newline IM Bracketed-Paste-Block wird von
+    // claude-codes TUI als Shift+Enter (Newline einfügen) interpretiert, nicht
+    // als Absende-Enter — daher Phrase ohne \n pasten und CR außerhalb senden.
     window.dispatchEvent(
-      new CustomEvent<{ text: string }>('td-template-send', {
-        detail: { text: `${triggerPhrase}\n` },
+      new CustomEvent<{ text: string; submit: boolean }>('td-template-send', {
+        detail: { text: triggerPhrase, submit: true },
       }),
     );
     setSent(true);

@@ -17,6 +17,21 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-13 — Phase 2 Season 3: Trigger-Phrasen-Schnellbuttons in der Action-Bar
+
+### Was jetzt geht
+
+- **Dynamische Pillen in der Action-Bar pro Trigger-Phrase aus `workbench.trigger_phrases`.** Bisher musste man die Doku-Update-Phrase „ist korrekt umgesetzt" manuell tippen — die `commit`-Phrase hatte schon eine Pille (mit Pre-Commit-Modal), `docs_update` aber nicht. Jetzt rendert die Action-Bar für jeden Eintrag aus dem Frontmatter eine eigene Pille zwischen Templates und commit. Klick → Phrase landet als Bracketed-Paste in der aktiven PTY und wird direkt abgeschickt.
+- **Frontmatter-Schema akzeptiert beliebige zusätzliche Trigger-Phrasen.** `trigger_phrases` hat weiterhin zwei Pflicht-Keys (`docs_update` + `commit`), kann aber jetzt zusätzlich `<key>: <phrase>`-Paare tragen (z.B. `pr_ready`, `deploy_staging`). Die Pille erscheint ohne Code-Touch, sobald die CLAUDE.md neu geladen ist (Projekt-Wechsel oder App-Restart). Pille-Label = humanisierter Key (`docs_update` → „Doku-Update", `pr_ready` → „Pr-Ready"), Tooltip zeigt die exakte Phrase.
+- **`commit` bleibt aus der dynamischen Liste ausgeklammert.** Die bestehende commit-Pille mit PreCommit-Modal (Sensitive-File-Warnung, Branch-Anzeige, Liste der geänderten Dateien) trägt Phase-1-Mehrwert — eine zweite Direkt-Send-Pille daneben würde den User verwirren.
+- **Bracketed-Paste-Submit-Fix für Trigger-Phrasen + PreCommit.** Claude Codes TUI behandelt einen Newline **innerhalb** eines Bracketed-Paste-Blocks wie Shift+Enter (Zeilenumbruch im Eingabefeld), nicht wie ein Submit-Enter. Der `td-template-send`-Kanal hat jetzt ein opt-in `submit: true`-Flag — `TerminalTab` schickt nach dem Paste ein separates `\r` direkt an die PTY, das im TUI als Tastatur-Enter ankommt. Trigger-Phrasen-Pillen und PreCommit nutzen das Flag; Templates absichtlich nicht (lange Prompts will man vor dem Submit oft noch prüfen).
+
+### Architektur-Notiz
+
+Pure-Logik in `triggerPhrasePills.ts` (`humanizeTriggerKey`, `buildTriggerPillList`) trennt die Pillen-Daten-Transformation von der JSX-Komponente — 10 neue Unit-Tests decken Sort-Reihenfolge (`docs_update` zuerst, dann alphabetisch), commit-Ausschluss, Defensiv-Filter gegen leere Phrasen und den Title-Case-mit-Bindestrich-Fallback ab. Schema-Lockerung via `.catchall(z.string().min(1))` hält die zod-Validierung an einer Stelle; zwei neue Frontmatter-Parser-Tests sichern, dass zusätzliche Keys akzeptiert, leere Extra-Werte abgelehnt werden. Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md).
+
+---
+
 ## 2026-05-12 — Phase 2 Season 2: Screenshot-Drag-and-Drop ins Terminal
 
 ### Was jetzt geht

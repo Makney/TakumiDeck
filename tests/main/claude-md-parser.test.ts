@@ -134,6 +134,50 @@ Body.
     expect(result.data.frontmatter?.workbench.project_name).toBe('TakumiDeck');
   });
 
+  it('akzeptiert zusätzliche trigger_phrases-Keys jenseits von docs_update/commit (Phase-2 Season-3)', () => {
+    const extra = `---
+workbench:
+  trigger_phrases:
+    docs_update: "ist korrekt umgesetzt"
+    commit: "commit"
+    pr_ready: "pr is ready"
+    deploy_staging: "deploy to staging"
+---
+
+Body.
+`;
+    const result = parseClaudeMd(extra);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const triggers = result.data.frontmatter?.workbench.trigger_phrases;
+    expect(triggers?.docs_update).toBe('ist korrekt umgesetzt');
+    expect(triggers?.commit).toBe('commit');
+    // Catchall-Validierung lässt zusätzliche Keys durch, solange ihr Wert
+    // ein nicht-leerer String ist.
+    expect((triggers as Record<string, string>)['pr_ready']).toBe('pr is ready');
+    expect((triggers as Record<string, string>)['deploy_staging']).toBe(
+      'deploy to staging',
+    );
+  });
+
+  it('lehnt leere zusätzliche trigger_phrases-Werte ab', () => {
+    const emptyExtra = `---
+workbench:
+  trigger_phrases:
+    docs_update: "X"
+    commit: "Y"
+    pr_ready: ""
+---
+
+Body.
+`;
+    const result = parseClaudeMd(emptyExtra);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('CLAUDE_MD_INVALID_FRONTMATTER');
+    expect(result.error).toMatch(/pr_ready/);
+  });
+
   it('akzeptiert on_demand_files als Mix aus Strings und Objekten', () => {
     const mixed = `---
 workbench:
