@@ -75,6 +75,13 @@ export function TemplatesModal({ project, frontmatter, hasActiveTerminal, onClos
   const [newName, setNewName] = useState<string | null>(null);
   const [newError, setNewError] = useState<string | null>(null);
   const openFile = useFileTabsStore((s) => s.openFile);
+  // Phase-2 Season-4 (V2 Draggable): Modal ist kein klassisches Modal mehr,
+  // sondern ein frei verschiebbares Tool-Panel. Backdrop entfaellt, der User
+  // kann waehrend des Modal-Open im Editor lesen und Inhalte rauskopieren.
+  // Position-State wird beim Mount auf den Viewport zentriert. Drag-Offset
+  // ist null, ausser waehrend einer aktiven Drag-Geste.
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
   // Phase-2 Season-4: serverseitige Auto-Variablen (LETZTE_SEASON_NAME etc.)
   // werden einmal pro Project beim Modal-Open via IPC geholt. Solange das
   // Ergebnis nicht da ist, bleiben die drei Variablen leer im Prompt — der
@@ -96,6 +103,59 @@ export function TemplatesModal({ project, frontmatter, hasActiveTerminal, onClos
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  // Phase-2 Season-4 (V2): Initial-Position beim Mount auf Viewport-Mitte.
+  // Geschaetzte Modal-Groesse (820 breit, 80vh hoch) — wir kennen die exakte
+  // Hoehe erst nach Layout, aber fuer das initiale Zentrieren reicht eine
+  // konservative Schaetzung. Mit Math.max(16, ...) verhindern wir, dass das
+  // Modal in einem kleinen Window negative Koordinaten bekommt.
+  useEffect(() => {
+    const modalW = 820;
+    const modalH = Math.min(window.innerHeight * 0.8, 800);
+    setPos({
+      x: Math.max(16, Math.round((window.innerWidth - modalW) / 2)),
+      y: Math.max(16, Math.round((window.innerHeight - modalH) / 2)),
+    });
+  }, []);
+
+  // Phase-2 Season-4 (V2): Drag-Logik. Pointer-Move/Up am window-Objekt, damit
+  // ein schneller Drag, der ueber den Modal-Rand hinaus geht, nicht den Drag
+  // verliert. Listener-Setup ist an dragOffset gekoppelt — nur waehrend einer
+  // aktiven Geste sind sie aktiv (kein dauerhaftes pointermove-Abfangen).
+  useEffect(() => {
+    if (!dragOffset) return;
+    const onMove = (e: PointerEvent) => {
+      // Bounding gegen Viewport: das Modal soll nie ganz aus dem Sichtbereich
+      // verschwinden (sonst kann der User den Drag-Griff nicht mehr greifen).
+      // 60px Header-Streifen muss sichtbar bleiben.
+      const nextX = Math.min(
+        Math.max(-200, e.clientX - dragOffset.x),
+        window.innerWidth - 80,
+      );
+      const nextY = Math.min(
+        Math.max(0, e.clientY - dragOffset.y),
+        window.innerHeight - 60,
+      );
+      setPos({ x: nextX, y: nextY });
+    };
+    const onUp = () => setDragOffset(null);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [dragOffset]);
+
+  const handleHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Buttons im Header (+ Neu, ×) duerfen das Drag NICHT triggern — sonst
+    // wuerde ein Klick auf Schliessen als Mini-Drag interpretiert und das
+    // pointerup auf dem Button kommt nicht durch. closest('button') schliesst
+    // jeglichen Button-Klick aus, auch verschachtelte Icons.
+    if ((e.target as HTMLElement).closest('button')) return;
+    if (!pos) return;
+    setDragOffset({ x: e.clientX - pos.x, y: e.clientY - pos.y });
+  };
 
   // Templates beim Open laden.
   useEffect(() => {
@@ -256,38 +316,56 @@ export function TemplatesModal({ project, frontmatter, hasActiveTerminal, onClos
     onClose();
   };
 
+  // Phase-2 Season-4 (V2): kein Backdrop mehr — alles dahinter bleibt
+  // bedienbar (Editor klickbar, Datei-Browser nutzbar, Terminal scrollbar).
+  // Modal sitzt als position:fixed-Panel auf dem Viewport und ist via Header
+  // verschiebbar. role="dialog" bleibt fuer Screenreader, aber aria-modal
+  // entfaellt — es ist kein modaler Dialog mehr.
+  if (!pos) return null;
+  const dragging = dragOffset !== null;
+
   return (
-    <div className="td-modal-backdrop" onClick={onClose}>
+    <div
+      className="td-modal td-modal-wide td-templates-modal"
+      role="dialog"
+      aria-label="Templates"
+      style={{
+        position: 'fixed',
+        top: pos.y,
+        left: pos.x,
+        zIndex: 100,
+        margin: 0,
+      }}
+    >
       <div
-        className="td-modal td-modal-wide td-templates-modal"
-        role="dialog"
-        aria-label="Templates"
-        onClick={(e) => e.stopPropagation()}
+        className="td-modal-header"
+        onPointerDown={handleHeaderPointerDown}
+        style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+        title="Zum Verschieben ziehen"
       >
-        <div className="td-modal-header">
-          <h2 className="td-modal-title">Templates</h2>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
-            <button
-              type="button"
-              className="td-btn td-btn-ghost"
-              onClick={() => {
-                setNewName('');
-                setNewError(null);
-              }}
-              title="Neues Projekt-Template anlegen (docs/templates/)"
-            >
-              + Neu
-            </button>
-            <button
-              type="button"
-              className="td-modal-close"
-              onClick={onClose}
-              aria-label="Schließen"
-            >
-              ×
-            </button>
-          </div>
+        <h2 className="td-modal-title">Templates</h2>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+          <button
+            type="button"
+            className="td-btn td-btn-ghost"
+            onClick={() => {
+              setNewName('');
+              setNewError(null);
+            }}
+            title="Neues Projekt-Template anlegen (docs/templates/)"
+          >
+            + Neu
+          </button>
+          <button
+            type="button"
+            className="td-modal-close"
+            onClick={onClose}
+            aria-label="Schließen"
+          >
+            ×
+          </button>
         </div>
+      </div>
 
         <div className="td-templates-body">
           <aside className="td-templates-sidebar">
@@ -476,7 +554,6 @@ export function TemplatesModal({ project, frontmatter, hasActiveTerminal, onClos
             An Session senden
           </button>
         </div>
-      </div>
     </div>
   );
 }

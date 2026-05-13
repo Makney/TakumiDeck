@@ -187,6 +187,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
 | `Erweiterte Template-Variablen`      | ✅      | 2026-05-13 (Phase-2-Season-4) — `{{LETZTE_SEASON_NAME}}` aus SQLite (Format `Phase X Season Y: <Titel>`, Phase-Label aus `current_phase_file`), `{{TECH_SCHULDEN_RELEVANT}}` und `{{LETZTE_ENTSCHEIDUNGEN}}` als Top-3-Parser auf `docs/TECH_SCHULDEN.md` und `docs/ENTSCHEIDUNGEN.md` (META-Filter via `**Bereich:**`/`**Entscheidung:**`-Label). Plus Template-Body-Extraktion (nur Code-Fence unter `## Vorlage` wird gepastet, Fallback auf volle Datei), Edit-Stift + `+ Neu`-Button im Templates-Modal mit Markdown-Editor-Integration. Neuer IPC `templates:resolve-auto-vars`. |
+| `Templates-Fenster non-modal/draggable` | ✅   | 2026-05-13 (Nachzug Season 4) — Backdrop entfernt, Click-Outside-Close entfällt; Editor/Datei-Browser/Terminal bleiben bedienbar. Drag-Griff am Header (Pointer-Events, Bounding gegen Viewport). Buttons im Header lösen kein Drag aus (`closest('button')`-Guard). |
 
 ### Docs-Sync (Phase 2)
 

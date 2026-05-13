@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-13 — Templates-Fenster als draggable Non-Modal-Panel (Nachzug Season 4)
+
+### Was jetzt geht
+
+- **Das Templates-Fenster blockiert nicht mehr den Rest der App.** Backdrop ist weg — Editor im Right-Pane, Datei-Browser und Terminal bleiben bei offenem Fenster bedienbar. Der typische Workflow „Modal öffnen → kurz im Editor lesen, Stück Text kopieren → in `{{AUFGABE}}` einfügen → senden" funktioniert ohne Modal-Schließen/Wieder-Öffnen.
+- **Drag-Griff am Header.** Cursor auf dem Header ist `grab` (während des Ziehens `grabbing`). Der User kann das Fenster frei verschieben, falls es genau dort sitzt, wo er lesen möchte. Buttons im Header (`+ Neu`, `×`) lösen kein Drag aus — `closest('button')`-Guard im PointerDown-Handler. Bounding gegen den Viewport-Rand verhindert, dass das Fenster komplett aus dem Sichtfeld verschwindet (Header bleibt immer min. 80 px breit/60 px hoch greifbar).
+- **Click-Outside-Close entfällt** (es gibt keinen Backdrop mehr, der diesen Trigger getragen hätte). Esc und `×`-Button schließen weiter.
+
+### Architektur-Notiz
+
+`role="dialog"` bleibt für Screenreader, aber `aria-modal` entfällt — das Fenster ist nicht mehr modal. Position liegt als `useState<{x,y}>` im Component, Initial-Berechnung in einem Mount-Effect (Viewport-Zentrierung mit konservativer Höhen-Schätzung). Drag läuft über `pointerdown` am Header + `pointermove`/`pointerup` am `window` (Listener nur aktiv, solange `dragOffset` gesetzt ist — kein dauerhaftes Pointer-Event-Abfangen). Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md).
+
+---
+
 ## 2026-05-13 — Phase 2 Season 4: Erweiterte Template-Variablen + In-App-Template-Management
 
 ### Was jetzt geht

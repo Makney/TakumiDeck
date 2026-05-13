@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Templates-Fenster ist kein Modal mehr, sondern ein draggable Tool-Panel
+
+**Entscheidung:** Das Templates-Fenster verliert den `td-modal-backdrop`-Wrapper und wird als `position: fixed`-Panel direkt auf dem Viewport gerendert, mit einem Drag-Griff am Header. `aria-modal` entfällt — `role="dialog"` bleibt für Screenreader. Click-Outside-Close gibt es nicht mehr (es gibt kein Outside-Element mehr, das den Trigger trägt); Esc und `×` schließen weiter. Position-State liegt im Component (`useState<{x,y}>`), Initial-Wert in einem Mount-Effect (Viewport-Zentrierung).
+
+**Varianten:**
+
+- **V1** Minimal: Backdrop weg, Modal bleibt zentral fixiert. Wenn es den Editor verdeckt: Esc + Wieder-Öffnen. Minimaler Aufwand, aber bei der eigentlichen User-Motivation („nebenbei im Editor lesen") immer noch ein Reibungspunkt.
+- **V2** Draggable Tool-Panel (gewählt): Backdrop weg + Drag-Griff am Header. Pointer-Events-basiert (pointerdown/pointermove/pointerup), Bounding gegen Viewport. User kann das Fenster frei verschieben.
+- **V3** Side-Pane: Templates wandert als dauerhafter Pane neben dem Editor ins Layout. Layout-Refactor, größere Implementierungszeit. Verworfen, weil der Use-Case Daily-Driver-Komfort ist, kein neuer Permanent-Slot.
+
+**Grund:** V2 löst das eigentliche Reibungsproblem — Modal-Open hat den Editor blockiert, der User konnte keinen Text aus den `.md`-Files in die Modal-Inputs übernehmen, ohne das Fenster zu schließen. Der Drag-Griff ist die natürliche „Tool-Palette"-UX (vergleichbar mit IDE-Suchfeldern, die man wegschieben kann). V1 wäre Halbgenuss: das Fenster wäre zwar non-blocking, würde aber bei jedem zweiten Workflow im Weg sitzen und der User würde es genauso oft schließen/wieder-öffnen wie heute. V3 wäre Over-Engineering für einen Use-Case, der nicht jeden Tag eintritt — ein Permanent-Slot kostet ständig Screen-Real-Estate, ein Tool-Panel nur on-demand.
+
+**Konsequenz:** Andere Modals (`NewSessionModal`, `PreCommitModal`, `SettingsModal`, `HistoryActionModal`, `UsageDetailModal`) behalten das klassische Backdrop-Verhalten — sie sind tatsächlich modal (User-Entscheidung erzwungen, keine Hintergrund-Interaktion sinnvoll). Templates ist der Sonderfall, weil das Modal mit anderen UI-Elementen kombiniert wird (Editor lesen, dann ins Modal-Form). Falls die Drag-UX später für weitere Tool-Panels nützlich wird, wandert die Logik in einen Shared-Hook (`useDraggablePanel`); aktuell ist sie lokal im TemplatesModal, weil Single-User reicht.
+
+**Implementierungsdetail:** Drag-Listener werden via `useEffect`-Cleanup nur registriert, solange `dragOffset` gesetzt ist — kein dauerhaftes Pointer-Move-Abfangen am Window. Buttons im Header (`+ Neu`, `×`) bekommen kein eigenes Stop-Propagation; stattdessen prüft der PointerDown-Handler via `closest('button')`, ob das Event aus einem Button kommt, und beendet den Drag-Trigger früh. Damit funktioniert ein Klick auf `×` zuverlässig (kein „Mini-Drag" durch ein paar Pixel Maus-Wackeln), und neue Header-Buttons brauchen keinen extra Boilerplate. Bounding-Konstanten (80 px rechts/60 px unten) sind hartcodiert — wenn das Fenster sehr klein wird (z.B. Multi-Monitor mit kleinem Sekundär), müsste das überarbeitet werden, aber im 1080p+-Standard reicht es.
+
+---
+
 ## Erweiterte Template-Variablen: Konvention-basierter Body, META-Filter, In-App-Edit über vorhandenen Editor
 
 **Entscheidung:** Die drei neuen Auto-Variablen (`LETZTE_SEASON_NAME`, `TECH_SCHULDEN_RELEVANT`, `LETZTE_ENTSCHEIDUNGEN`) werden serverseitig über einen eigenen IPC `templates:resolve-auto-vars` aufgelöst, weil sie DB- (SessionRepository) und Datei-Zugriff (`docs/TECH_SCHULDEN.md` / `docs/ENTSCHEIDUNGEN.md`) brauchen und damit nicht in den Renderer gehören. Der Template-Body wird nach einer dateigetragenen Konvention extrahiert: erster Code-Fence unter `## Vorlage`, Fallback auf volle Datei. Doku-Parser filtern META-Sektionen über das Pflicht-Label im Body (`**Bereich:**` für Schulden, `**Entscheidung:**` für Entscheidungen) — naives `##`-Section-Splitting hatte die Erklär-Sektionen aus dem Datei-Kopf als Top-3-Einträge ausgegeben. Die In-App-Template-Verwaltung läuft über den bereits in Phase 1 (Sprint 7) gebauten Markdown-Editor: `✎`-Stift im Templates-Modal öffnet die `.md` als File-Tab im Right-Pane, `+ Neu` schreibt einen Stub und öffnet ihn ebenfalls dort.
