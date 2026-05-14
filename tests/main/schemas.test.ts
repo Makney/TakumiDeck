@@ -6,6 +6,8 @@ import {
   PtyCreateInputSchema,
   SessionHistoryInputSchema,
   SessionTypeSchema,
+  StatsOverviewInputSchema,
+  StatsRangeSchema,
 } from '@shared/schemas';
 import { buildDefaultSettings } from '../../src/main/settings/defaults';
 
@@ -160,6 +162,50 @@ describe('SessionHistoryInputSchema.models', () => {
     expect(() =>
       SessionHistoryInputSchema.parse({ projectId: 'p1', models: [''] }),
     ).toThrow();
+  });
+});
+
+// Phase-2 Season-12: StatsOverviewInputSchema. Scope per nullish-projectId,
+// Range als Enum 'all'|'30d'|'7d', asOf optional fuer Tests.
+describe('StatsOverviewInputSchema', () => {
+  it('akzeptiert range mit projectId', () => {
+    const parsed = StatsOverviewInputSchema.parse({ projectId: 'p1', range: 'all' });
+    expect(parsed.projectId).toBe('p1');
+    expect(parsed.range).toBe('all');
+  });
+
+  it("akzeptiert weggelassenes projectId (Global-Scope)", () => {
+    const parsed = StatsOverviewInputSchema.parse({ range: '30d' });
+    expect(parsed.projectId).toBeUndefined();
+  });
+
+  it('akzeptiert projectId=null (explizit global)', () => {
+    const parsed = StatsOverviewInputSchema.parse({ projectId: null, range: '7d' });
+    expect(parsed.projectId).toBeNull();
+  });
+
+  it('lehnt unbekanntes range ab', () => {
+    expect(() => StatsOverviewInputSchema.parse({ range: '14d' })).toThrow();
+  });
+
+  it('lehnt leere projectId ab', () => {
+    expect(() => StatsOverviewInputSchema.parse({ projectId: '', range: 'all' })).toThrow();
+  });
+
+  it('akzeptiert optionalen asOf-Stichzeitpunkt', () => {
+    const parsed = StatsOverviewInputSchema.parse({
+      projectId: 'p1',
+      range: '7d',
+      asOf: 1_700_000_000_000,
+    });
+    expect(parsed.asOf).toBe(1_700_000_000_000);
+  });
+
+  it('StatsRangeSchema enthaelt alle drei Werte', () => {
+    expect(() => StatsRangeSchema.parse('all')).not.toThrow();
+    expect(() => StatsRangeSchema.parse('30d')).not.toThrow();
+    expect(() => StatsRangeSchema.parse('7d')).not.toThrow();
+    expect(() => StatsRangeSchema.parse('1y')).toThrow();
   });
 });
 

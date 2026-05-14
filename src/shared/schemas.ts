@@ -393,6 +393,23 @@ export const UsageContextInputSchema = z.object({
   sessionId: z.string().min(1),
 });
 
+// --- Stats (Phase-2 Season-12) ---------------------------------------
+
+// Range-Filter fuer die Stats-Cards. `all` = keine Zeit-Einschraenkung,
+// `30d`/`7d` = Sessions/Messages der letzten N Tage (started_at bzw. ts ≥
+// now - N*86400000). Persistenz im localStorage; Default `all`.
+export const StatsRangeSchema = z.enum(['all', '30d', '7d']);
+
+// Scope: aktives Projekt vs. alle Projekte. `projectId=null` heisst global —
+// das Schema modelliert das als optionales Feld, damit der Renderer beim
+// Global-Scope einfach kein projectId mitschickt.
+export const StatsOverviewInputSchema = z.object({
+  projectId: z.string().min(1).nullish(),
+  range: StatsRangeSchema,
+  // Optional: Stichzeitpunkt fuer die Range-Berechnung (Tests). Default = now.
+  asOf: z.number().int().positive().optional(),
+});
+
 // --- App / Window-Controls (Sprint 8) --------------------------------
 
 // Whitelist für app:window-action — sperrt die Renderer-Boundary auf genau drei

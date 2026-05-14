@@ -31,6 +31,8 @@ import type {
   PtyTuiStateInput,
   PtyWriteInput,
   RendererApi,
+  StatsOverviewInput,
+  StatsOverviewResult,
   SessionArchiveInput,
   SessionCloseInput,
   SessionHistoryEntry,
@@ -191,6 +193,12 @@ const api: RendererApi = {
       ipcRenderer.on(Channels.UsageUpdate, wrapped);
       return () => ipcRenderer.removeListener(Channels.UsageUpdate, wrapped);
     },
+  },
+  stats: {
+    overview: (input: StatsOverviewInput) =>
+      ipcRenderer.invoke(Channels.StatsOverview, input) as Promise<
+        IpcResult<StatsOverviewResult>
+      >,
   },
 };
 

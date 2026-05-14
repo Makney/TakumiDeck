@@ -11,6 +11,7 @@ import { registerPtyIpc } from './ipc/pty';
 import { registerSessionIpc } from './ipc/session';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
 import { createUsagePusher, registerUsageIpc } from './ipc/usage';
+import { registerStatsIpc } from './ipc/stats';
 import { setMainWebContentsResolver } from './ipc/sender-guard';
 import { registerFsIpc, screenshotsDirFromUserData, templatesDirFromUserData } from './ipc/fs';
 import { registerGitIpc } from './ipc/git';
@@ -27,6 +28,7 @@ import {
 } from './db/repos/projects';
 import { MessageRepository, SqliteMessageDriver } from './db/repos/messages';
 import { UsageRepository, SqliteUsageDriver } from './db/repos/usage';
+import { StatsRepository, SqliteStatsDriver } from './db/repos/stats';
 import {
   JsonlOffsetRepository,
   SqliteJsonlOffsetDriver,
@@ -132,6 +134,7 @@ void app.whenReady().then(async () => {
     // im Log nachvollziehbar (debug-Level, daher im Default-Loglevel still).
     const lifecycle = new SessionLifecycle(sessions, undefined, logger);
     const usageRepo = new UsageRepository(new SqliteUsageDriver(db));
+    const statsRepo = new StatsRepository(new SqliteStatsDriver(db));
     const jsonlOffsetRepo = new JsonlOffsetRepository(new SqliteJsonlOffsetDriver(db));
     ptyManager = new PtyManager(realPtySpawn);
 
@@ -203,6 +206,10 @@ void app.whenReady().then(async () => {
       messages: messageRepo,
       sessions,
       settings,
+      log: logger,
+    });
+    registerStatsIpc({
+      stats: statsRepo,
       log: logger,
     });
     registerFsIpc({

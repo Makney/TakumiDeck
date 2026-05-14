@@ -20,6 +20,32 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 12 — Stats-Cards + 30d/7d-Filter
+
+**Ziel:** Roadmap-Eintrag „Stats-Cards" aus der Phase-2-Bereich „Stats und Heatmap" produktiv machen: acht Aggregations-Karten pro Projekt (Sitzungen total, Nachrichten total, Tokens gesamt, Aktive Tage, Aktuelle Streak, Längste Streak, Spitzenstunde, Lieblingsmodell). Implizit mit-gedacht: der Sprint-9-UI-Slot „Alle / 30d / 7d" in der Stats-Pane-Header, der bisher statisch war.
+
+**Ergebnis:** Variante A (Lazy-Pull) für die Architektur — neues `StatsRepository` mit SQLite- und InMemory-Driver, neuer IPC `stats:project-overview` mit zod-validiertem `StatsOverviewInputSchema`. Streak-Logik als pure Funktion (`src/main/stats/streak.ts`) mit UTC-Tages-Diff (DST-immun). Renderer bekommt einen neuen `useStatsStore` mit Scope (Aktiv/Global) und Range (Alle/30d/7d), beide in localStorage persistiert. `StatsPane.tsx` umgebaut auf drei Header-Toggle-Gruppen (View/Scope/Range) und ein festes 4×2-Card-Grid. Live-Refresh über den bestehenden `usage:update`-Push-Channel mit 600-ms-Debounce. Plus: der vorgesehene 30d/7d-Toggle wirkt jetzt auf die Karten — die separate Roadmap-Zeile `30d/7d-Filter` ist damit parallel ✅. 32 neue Tests (11 Streak-Pure-Logik inkl. Jahreswechsel und DST-relevanter Edge-Cases, 14 Aggregate-Cases inkl. Scope/Range/Tie-Break/NULL-Modell, 7 Schema-Validierung), Gesamtsuite 632/632 grün, typecheck + lint sauber.
+
+**Gut gelaufen:**
+
+- **Vier Klar-Fragen vor Variants, statt Variants über schon entschiedene Punkte.** Erste Antwort war keine Architektur-Variante, sondern ein `AskUserQuestion` mit Scope/Range/Messages-Definition/Streak-Boundary. Drei der vier Antworten haben den späteren Variants-Block entscheidend gekürzt: Scope-Frage hat den „Aktiv/Global-Toggle" als drittes Header-Element legitimiert, Range-Frage hat den parallelen Roadmap-Punkt mit-erledigt, Messages-Definition hat das spätere SQL-Where eindeutig gemacht. Vermeidet das Anti-Pattern, Architektur-Varianten zu zeigen, deren Tradeoffs schon durch eine UX-Entscheidung kollabieren würden.
+- **Layout-Preview im AskUserQuestion als ASCII-Mockup, nicht als Code.** Drittes-Frage-Set zu „wie sollen die acht Cards angeordnet werden" hatte 4×2- vs. 2×4- vs. Flex-Wrap-Variante mit ASCII-Boxen als Preview. User konnte die Wahl visuell prüfen, ohne dass das Variants-Set einen Code-Snippet brauchte. Working-Rules-Konform („plain language, no variable names"). Das hat die Layout-Entscheidung auf einen Klick reduziert.
+- **Streak-Logik direkt als pure Funktion isoliert, nicht im Repo verbacken.** Reflex wäre gewesen, `computeStreaks` als private Methode im `StatsRepository` zu halten. Eigene Datei `src/main/stats/streak.ts` macht den Test ohne DB-Setup möglich (11 Tests, die nur Strings und ein Date konsumieren). Bei einer späteren Anpassung der Streak-Definition (z.B. „48 h ab letzter Activity" statt Kalendertag) bleibt der Test-Vertrag der Anker, statt einen DB-Roundtrip pro Test-Case zu zahlen.
+- **Driver-Cache-Pattern aus Season-10 wiederverwendet.** `SqliteStatsDriver` hat einen Statement-Cache nach Scope/Range-Kombination (vier Kombinationen: project/global × range/all). Pattern stammt aus `MessageRepository.aggregateModelsForSessions` (IN-Listen-Längen-Cache aus Season 10) — gleicher Mechanismus, eine andere Achse. Konsistente Driver-Lifecycle-Annahmen (Statements einmal compiled, danach wiederverwendet) im ganzen Repo-Layer.
+
+**Gebremst durch:**
+
+- **Initial `messages.project_id` als „existiert vielleicht nicht" angenommen, statt Migration 0002 zu konsultieren.** Beim ersten Code-Plan hatte ich überlegt, ob die Per-Projekt-Aggregation über einen JOIN auf `sessions` läuft, weil `messages` keine eigene `project_id`-Spalte hat. Ein Glob auf den Migration-Ordner hätte sofort gezeigt, dass Sprint 5 die Spalte denormalisiert dazugepackt hat (`0002_jsonl_offsets.sql:16`). Stattdessen erst beim Lesen des `MessageRepository`-Inserts entdeckt. Kostete eine Suchsequenz extra. Lehre: bei „brauche Feld X auf Tabelle Y"-Fragen direkt im Migrations-Ordner per Grep nachsehen, nicht im Repo-Code rückwärts schließen.
+- **`messages.model` wird bei Watcher-Inserts vor Season 10 als NULL geschrieben — Lieblingsmodell-Aggregat blendet diese Rows aus.** Bestandsdaten-Effekt: Sessions, die vor Migration 0006 liefen, haben für ihre messages einen Backfill aus `sessions.current_model`, der ungenau ist (eine Session mit Modell-Wechsel hat in den älteren Rows einen einzigen Wert). Das war bereits in Season 10 als TECH_SCHULDEN dokumentiert — ich habe es für Season 12 nicht erneut erwähnt, weil die Schuld nicht neu ist. Hätte den Effekt aber im Abschluss-Kommentar an den User mit-anmerken können: das Lieblingsmodell der ersten Tage nach dem Watcher-Patch ist potenziell verzerrt, bis genug neue messages.model-Rows da sind. Kein Code-Issue, aber ein User-Erwartungs-Hinweis, der gefehlt hat.
+
+**Für nächste Season:**
+
+- **Heatmap kann den `useStatsStore` als Scope/Range-Quelle wiederverwenden.** Der Toggle-Zustand muss nicht zweimal modelliert werden — die nächste Heatmap-Implementierung subscribed denselben Store und kriegt die Filter-Logik geschenkt. Aggregation-IPC bleibt eigener Channel (eigene SQL-Shape), aber das Filter-Set ist konsistent.
+- **`StatsRepository` lässt sich um Per-Modell-Aufschlüsselung erweitern, ohne den `getOverview`-Vertrag zu brechen.** Eine neue Methode `getPerModelBreakdown(scope, range)` würde an dieselbe Driver-Schnittstelle dranhängen und denselben Statement-Cache nutzen können. Die Roadmap-Feature-Zeile „Modelle-View" wird damit ein ähnlicher Aufwand wie Stats-Cards selbst, weil die Backend-Infrastruktur schon steht.
+- **Bei Stats-Wachstum in Phase 3 ggf. auf Vorab-Aggregat (Variante C) wechseln.** Der `StatsRepository`-Vertrag ist so geschnitten, dass ein neuer `SqliteCachedStatsDriver` einsteigen kann, ohne dass Renderer oder IPC-Layer einen Diff sehen — heute keine Notwendigkeit, aber der Migrations-Pfad ist offen.
+
+---
+
 ## Phase 2 Season 11 — Season-Counter-Fix + Frontmatter-Cache-Bust
 
 **Ziel:** Zwei live im Daily-Use beobachtete Bugs fixen. (1) Der Season-Counter zeigte zu niedrige Nummern — beim Modal-Open wurde „Diese Season wäre #8" angeboten, obwohl in der git-History schon Season 9 / 10 existierten. (2) Das Template-Modal zeigte weiter `docs/roadmap/PHASE1.md` als aktuelle Phase, obwohl `CLAUDE.md` schon auf PHASE2 stand.

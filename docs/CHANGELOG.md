@@ -17,6 +17,21 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-14 — Phase 2 Season 12: Stats-Cards + 30d/7d-Filter
+
+### Was jetzt geht
+
+- **Acht Aggregat-Karten in der Stats-Pane.** „Übersicht"-View zeigt jetzt zwei Reihen à vier Karten: obere Reihe „Volumen" (Sitzungen total · Nachrichten total · Tokens gesamt · Aktive Tage), untere Reihe „Verhalten" (Aktuelle Streak · Längste Streak · Spitzenstunde · Lieblingsmodell). Werte sind kompakt formatiert (`k`/`M`-Abkürzung für große Counts via `fmtTokens`, 24-h-Spitzenstunde, kurze Modell-IDs wie „Opus 4.7"). Aktuelle Streak bekommt einen Accent-Ton, solange sie > 0 ist. Cards leeren auf „—", wenn keine Daten im aktuellen Filter liegen.
+- **Scope-Toggle „Aktiv/Global" zwischen View-Tabs und Range-Toggle.** Dritte Header-Toggle-Gruppe schaltet zwischen „Aktiv" (das aktuell in der Sidebar ausgewählte Projekt) und „Global" (alle Projekte zusammen) um. Wahl wird in localStorage persistiert (`td.statsScope`) und überlebt App-Restarts.
+- **30d/7d/Alle-Range-Toggle ist jetzt aktiv.** Der Sprint-9-UI-Slot wirkt jetzt auf die Stats-Cards: `30d` und `7d` filtern Sitzungen via `started_at ≥ now - N*86400000` und Nachrichten/Tokens/Tage/Streaks/Stunden/Modell via `messages.ts ≥ now - N*86400000`. Auswahl persistiert ebenfalls in localStorage (`td.statsRange`). Eigene Roadmap-Zeile `30d/7d-Filter` ist damit parallel erledigt.
+- **Live-Refresh bei Token-Events.** Stats-Pane abonniert den `usage:update`-Push-Channel; jede Watcher-Aktualisierung triggert einen 600-ms-debounced Refresh, damit Token-Tick-Bursts nicht durchschlagen. Plus Auto-Refresh bei Projekt-Wechsel, Scope-Toggle und Range-Wechsel.
+
+### Architektur-Notiz
+
+Variante A (Lazy-Pull) aus drei vorgestellten Optionen — Renderer pullt die acht Aggregate per IPC, Main aggregiert direkt aus `messages` und `sessions` über die bestehenden Indizes (`idx_messages_project_ts` aus Sprint 5, `idx_messages_session_ts` aus Sprint 1). Keine neue Migration, keine eigene Aggregat-Tabelle. Variante B (Push-Stream über extra Event-Channel) hätte einen zweiten Channel parallel zu `usage:update` gebraucht ohne Mehrwert. Variante C (Vorab-Aggregat-Tabelle mit Doppel-Schreibung im Watcher) wäre überdimensioniert für die jetzige Daten-Größe und hätte Inkonsistenz-Risiko bei Crashes mitten in der Doppel-Schreibung — lohnt sich erst, wenn A messbar zu lahm wird. Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md). Neuer Channel `stats:project-overview` mit `StatsOverviewInputSchema` (Scope per nullish-projectId, Range als Enum). `StatsRepository` mit `SqliteStatsDriver` (Statement-Cache nach Scope/Range-Kombination) und `InMemoryStatsDriver` für Tests. Streak-Logik als pure Funktion (`src/main/stats/streak.ts`) — UTC-basierter Tages-Vergleich, DST-immun. Streak-Definition nach User-Wahl: intakt, wenn der letzte aktive Tag heute oder gestern war (Standard-Github-Logik). 32 neue Tests (11 Streak-Pure-Logik, 14 Aggregate inkl. Scope/Range/Tie-Break/NULL-Behandlung, 7 Schema-Validierung), Gesamtsuite 632/632 grün, typecheck + lint sauber.
+
+---
+
 ## 2026-05-14 — Phase 2 Season 11: Season-Counter-Fix + Frontmatter-Cache-Bust
 
 ### Was jetzt geht

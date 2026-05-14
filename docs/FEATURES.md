@@ -177,11 +177,11 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
-| `Stats-Cards`                        | ⛔      | Sitzungen/Nachrichten/Tokens/Aktive Tage/Streaks/Spitzenstunde/Lieblingsmodell |
+| `Stats-Cards`                        | ✅      | 2026-05-14 (Phase-2-Season-12) — Acht Aggregat-Karten in 4×2-Grid: obere Reihe Volumen (Sitzungen/Nachrichten/Tokens/Aktive Tage), untere Reihe Verhalten (Streak/Längste/Spitzenstunde/Lieblingsmodell). Scope-Toggle Aktiv/Global im Header, Range-Toggle Alle/30d/7d aktiv, beide in localStorage persistiert. Live-Refresh via `usage:update`-Push (600-ms-debounced). Aggregat direkt aus `messages` + `sessions` via neuem `stats:project-overview`-IPC (Variante A Lazy-Pull, keine Migration). Streak-Logik als pure Funktion (UTC-basiert, DST-immun); Definition: intakt bei letztem Tag heute oder gestern. |
 | `Aktivitäts-Heatmap`                 | ⛔      | GitHub-Style 30/52-Wochen-Calendar, CSS-Grid mit color-mix |
 | `Modelle-View`                       | ⛔      | Bar-Chart + Tabelle pro Modell, Phase-1-Skeleton ausbauen |
 | `Easter-Egg-Vergleiche`              | ⛔      | „~31× LotR"-Token-Vergleiche, konfigurierbare Werke |
-| `30d/7d-Filter`                      | ⛔      | Globaler Zeit-Toggle für Stats-Section |
+| `30d/7d-Filter`                      | ✅      | 2026-05-14 (Phase-2-Season-12, parallel zu Stats-Cards) — Range-Toggle Alle/30d/7d in der Stats-Pane-Header-Bar wirkt auf alle acht Stats-Cards; persistiert in localStorage. Heatmap und Modelle-View werden den gleichen Store-State konsumieren, sobald sie gebaut sind. |
 
 ### Templates (Phase 2)
 

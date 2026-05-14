@@ -1528,9 +1528,36 @@ body,
 }
 
 .td-dash-tabs,
-.td-dash-range {
+.td-dash-range,
+.td-dash-scope {
   display: flex;
   gap: 6px;
+}
+
+/* Phase-2 Season-12 — Scope-Toggle (Aktiv/Global) in der dritten Header-Gruppe.
+   Visuell identisch zur Range-Pille rechts; semantisch sitzt sie zwischen
+   View-Tabs (links) und Range (rechts), damit der Lese-Fluss Top-Level →
+   Datenmenge → Zeitfenster bleibt. */
+.td-dash-scope button {
+  background: transparent;
+  border: 1px solid var(--td-line);
+  color: var(--td-text-dim);
+  padding: 3px 8px;
+  font-family: var(--td-mono);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: border-color .12s, color .12s;
+}
+
+.td-dash-scope button:hover {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-dash-scope button.active {
+  color: var(--td-accent);
+  border-color: var(--td-accent-line);
 }
 
 .td-dash-tab {
@@ -1590,6 +1617,24 @@ body,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
+}
+
+/* Phase-2 Season-12 — feste 4×2-Anordnung fuer die acht Aggregat-Karten.
+   Erste Reihe = Volumen (Sitzungen/Nachrichten/Tokens/Aktive Tage), zweite
+   Reihe = Verhalten (Streak/Längste/Spitzenstunde/Lieblingsmodell). Wir
+   verzichten auf auto-fit, weil das bei 8 Items in der schmalen Stats-Pane
+   eine unschoene 3+3+2-Reihen-Verteilung erzeugen kann. Bei sehr kleiner
+   Pane-Breite faellt das Grid via Media-Query auf 2 Spalten zurueck. */
+.td-stats-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .td-stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .td-stat {

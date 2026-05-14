@@ -48,6 +48,12 @@ export const Channels = {
   // Renderer entscheidet anhand des kind-Felds, was er re-fetcht.
   UsageUpdate: 'usage:update',
 
+  // Stats (Phase-2 Season-12): Aggregations-Cards fuer die Stats-Pane.
+  // Renderer ruft beim Projekt-Wechsel, beim Scope/Range-Toggle und nach
+  // jedem usage:update-Push (debounced) — der Main aggregiert direkt aus
+  // messages + sessions ueber die bestehenden Indizes.
+  StatsOverview: 'stats:project-overview',
+
   // Filesystem (Sprint 6/7)
   FsRead: 'fs:read',
   FsWrite: 'fs:write',

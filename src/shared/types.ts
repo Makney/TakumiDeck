@@ -600,6 +600,43 @@ export interface UsageHeatmapResult {
   message: string;
 }
 
+// --- Stats (Phase-2 Season-12) ---------------------------------------
+
+// Range-Filter der Stats-Cards. Eigene Roadmap-Feature-Zeile "30d/7d-Filter"
+// wird mit dieser Season parallel erledigt.
+export type StatsRange = 'all' | '30d' | '7d';
+
+export interface StatsOverviewInput {
+  // null oder weggelassen = global ueber alle Projekte.
+  projectId?: string | null;
+  range: StatsRange;
+  asOf?: number;
+}
+
+// Ergebnis-Shape der acht Cards. Felder mit `_at`-Suffix sind epoch-ms;
+// `null`-Werte signalisieren "keine Daten" (Renderer zeigt Em-Dash).
+export interface StatsOverviewResult {
+  // Erste Reihe — Volumen
+  sessions_total: number;
+  messages_total: number;
+  tokens_total: number;
+  active_days: number;
+  // Zweite Reihe — Verhalten
+  current_streak_days: number;
+  longest_streak_days: number;
+  // 0–23 (lokale Zeitzone des Main-Prozesses). null = keine Messages.
+  peak_hour: number | null;
+  peak_hour_count: number;
+  // Modell-ID wie in messages.model gespeichert. null = keine Messages
+  // mit Modell-Info.
+  favorite_model: string | null;
+  favorite_model_count: number;
+  // Reflektion des Inputs (fuer Debug-Anzeige + Cache-Validierung im Renderer).
+  scope: 'project' | 'global';
+  range: StatsRange;
+  generated_at: number;
+}
+
 export interface UsageWindowInput {
   barId: string;
   asOf?: number;
@@ -719,6 +756,10 @@ export interface RendererApi {
     // Renderer wird über neue Tokens benachrichtigt: 'global' = bestimmte limit_bar
     // wurde aktualisiert, 'context' = Per-Session-Kontext-Bar wurde aktualisiert.
     onUpdate: (handler: (event: UsageUpdateEvent) => void) => () => void;
+  };
+  // Phase-2 Season-12: Stats-Cards aus messages + sessions aggregiert.
+  stats: {
+    overview: (input: StatsOverviewInput) => Promise<IpcResult<StatsOverviewResult>>;
   };
 }
 

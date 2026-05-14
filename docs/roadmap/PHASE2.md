@@ -89,7 +89,7 @@ Zusätzlicher Filter zum Phase-1-Set.
 
 Erweiterung der MVP-Übersicht mit detaillierten Nutzungs-Statistiken.
 
-### Feature: Stats-Cards
+### Feature: Stats-Cards ✅
 
 Detaillierte Aggregations-Statistiken pro Projekt.
 
@@ -131,7 +131,7 @@ Spielerische Token-Vergleiche basierend auf bekannten Werken.
 - Default-Werke: LotR, Bibel, Harry-Potter-Reihe, etc.
 - Update bei jedem Stats-Refresh
 
-### Feature: 30d/7d-Filter
+### Feature: 30d/7d-Filter ✅
 
 Globaler Zeit-Filter für Stats-Section.
 

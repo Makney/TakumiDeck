@@ -24,6 +24,49 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Stats-Cards: Lazy-Pull pro Bedarf statt Vorab-Aggregat-Tabelle
+
+**Entscheidung:** Die acht Stats-Cards werden im Main bei jedem Renderer-Anruf neu aus `messages` und `sessions` aggregiert. Kein eigener Aggregat-Cache, keine neue Tabelle, keine Doppel-Schreibung im Watcher. Der Renderer pullt nach Projekt-Wechsel, Scope/Range-Toggle und auf `usage:update`-Push (600-ms-debounced).
+
+**Varianten:**
+
+- **A** Lazy-Pull pro Bedarf — Main rechnet bei jedem IPC-Aufruf direkt auf den `messages`/`sessions`-Tabellen über die existierenden Indizes (gewählt).
+- **B** Push-Stream über extra Event-Channel — Watcher pushed ein „Stats-veraltet"-Event, Renderer lädt nach. Im Endeffekt das gleiche Pull-Verhalten plus ein redundanter Channel.
+- **C** Vorab-Aggregat-Tabelle (z.B. `stats_daily` mit Project/Tag/Tokens/Counts) — Watcher schreibt beim Insert mit, Stats lesen nur die Aggregat-Tabelle.
+
+**Grund:** Bei realistischen Daten-Größen (Tausende Messages pro Projekt, Indizes vorhanden) liegen die acht Aggregat-Queries deutlich unter 10 ms — ein Pull pro Refresh ist nicht spürbar. C lohnt sich erst, wenn entweder die Daten in den Millionenbereich gehen oder die Stats-Section auf dutzende Metriken anwächst; aktuell sind beide Bedingungen nicht erfüllt. C hätte zusätzlich ein Konsistenz-Risiko bei Crashes mitten in der Doppel-Schreibung (Aggregat-Row vs. messages-Row out of sync) und braucht eine Migration plus einen Backfill. B fügt einen Channel hinzu, ohne den Pull-Trigger zu ersetzen — der Pull-Auslöser ist sowieso „Watcher hat geschrieben", und den haben wir bereits via `usage:update`. Memory-Hinweis „pragmatisch vor invasiv" trug die Wahl.
+
+**Konsequenz:** Falls die Stats-Section in Phase 3 stark wächst (eigene Tabs, Heatmap-Daten, weitere Aggregate) oder die IPC-Latenz spürbar wird, lässt sich C als Drop-in einbauen — die `StatsRepository`-Schnittstelle (`getOverview`) bleibt unverändert, nur der Driver tauscht. Keine Renderer-Änderung nötig. Bis dahin: ein Repo, kein Cache, kein Synchronisations-Code.
+
+## Stats-Cards: Scope als Aktiv/Global-Toggle, nicht hartcodiert
+
+**Entscheidung:** Die Stats-Pane bekommt einen Scope-Toggle „Aktiv/Global" als dritte Header-Gruppe — der User entscheidet pro Klick, ob die Karten das aktiv ausgewählte Projekt oder alle Projekte zusammen zeigen. Wahl persistiert in localStorage.
+
+**Varianten:**
+
+- **A** Hartcodiert auf das aktive Projekt aus der Sidebar (entspricht der Roadmap-Formulierung „pro Projekt" wörtlich genommen).
+- **B** Hartcodiert global über alle Projekte — die Stats-Section ist projekt-unabhängig, der Sidebar-Switch wirkt nicht.
+- **C** Toggle aktiv/global im Header der Section (gewählt).
+
+**Grund:** A blendet im Daily-Use die natürliche Folge-Frage aus („was ist denn insgesamt zusammengekommen?"). B kappt den eigentlichen Roadmap-Spirit, weil die Per-Projekt-Sicht im realen Multi-Projekt-Daily-Use die wichtigere ist. C kostet eine Pille im Header — und die ist mit den bestehenden `td-dash-tab`/`td-dash-range`-Pillen visuell vertraut. Persistenz via localStorage (`td.statsScope`) lehnt sich an den bestehenden `td.activeProjectId`-Pattern an und vermeidet eine eigene Settings-Spalte für zwei kleine UI-Toggles.
+
+**Konsequenz:** Heatmap und Modelle-View (kommende Seasons) bekommen denselben Toggle-Zustand aus dem `useStatsStore` und müssen die Scope-Logik nicht selbst neu modellieren.
+
+## Stats-Streak: heute-oder-gestern statt heute-only
+
+**Entscheidung:** Die aktuelle Streak bleibt intakt, solange der letzte aktive Tag heute ODER gestern war. Erst wenn zwei volle Kalendertage ohne Aktivität vergangen sind, bricht sie auf 0.
+
+**Varianten:**
+
+- **A** Letzter aktiver Tag = heute oder gestern (gewählt).
+- **B** Letzter aktiver Tag muss heute sein — wer am Vormittag noch nichts gemacht hat, sieht Streak = 0.
+
+**Grund:** B würde nach jedem Schlaf bis zur ersten heutigen Aktivität auf 0 stehen und damit täglich einmal die Streak optisch „zerstören", obwohl sie de facto erhalten ist. A ist die etablierte Github-Contribution-Logik und matcht die User-Erwartung an einen Streak-Counter. UTC-Tages-Diff in der pure Streak-Funktion macht den Vergleich DST-immun, lokale Zeit wird nur beim Today-String benutzt.
+
+**Konsequenz:** Tests in `stats-streak.test.ts` decken den heute-oder-gestern-Pfad und den 2-Tage-Lücke-Pfad explizit. Wenn die Heuristik je geändert wird (z.B. „48 h ab letzter Activity" statt Kalendertag), bleibt der Test-Vertrag der Anker.
+
+---
+
 ## Season-Counter: dynamisch aus sessions.season_number statt separater Spalte
 
 **Entscheidung:** Die nächste Season-Nummer eines Projekts wird zur Lesezeit als `COALESCE(MAX(sessions.season_number), 0) + 1` aus der `sessions`-Tabelle abgeleitet — und beim Templates-Send mit `{{NEXT_SEASON_NR}}` atomar auf die aktive Session geschrieben. Die ursprüngliche `projects.next_season_number`-Spalte (Sprint 6) ist damit dead-code und wird im Schema nur noch aus Backwards-Kompatibilität mit Default `1` befüllt.

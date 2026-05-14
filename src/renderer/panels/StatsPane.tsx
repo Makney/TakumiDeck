@@ -1,32 +1,39 @@
-import { useState } from 'react';
-import { useUsageStore } from '../stores/usage';
-import { useSessionStore } from '../stores/sessions';
+import { useEffect, useRef, useState } from 'react';
+import { useUiStore } from '../stores/ui';
+import { useStatsStore, type StatsScope } from '../stores/stats';
+import type { StatsOverviewResult, StatsRange } from '@shared/types';
 import { fmtTokens } from '../components/fmtTokens';
 
-// StatsPane (Sprint 5 Skeleton, Architektur Roadmap PHASE1.md).
+// StatsPane (Phase-2 Season-12).
 //
-// Toggle „Übersicht" / „Modelle" unter dem Terminal-Bereich. Im MVP:
-// - „Übersicht": 3-4 Mini-Token-Stats — aktuelle Session, heute, diese Woche.
-// - „Modelle": Hinweis-Pille „In Phase 2 verfügbar".
-// Volle Heatmap und Per-Modell-Stats-Cards folgen mit Phase 2.
+// Übersicht-View: acht Aggregat-Karten (Volumen-Reihe + Verhalten-Reihe) aus
+// dem Main-Aggregat (stats:project-overview). Im Header drei Toggle-Gruppen:
+// View (Übersicht/Modelle), Scope (Aktiv/Global), Range (Alle/30d/7d).
+// Beide letztgenannten sind in localStorage persistiert.
 //
-// Sprint 9 (C4): Range-Toggle „Alle / 30d / 7d" als UI-Slot vorbereitet
-// (components.jsx 330-334). Lokaler State `range` ist da, aber die Mini-Stats
-// filtern noch nicht — in Phase 2 wird der `range`-Wert an die Token-
-// Aggregation durchgereicht (heatmap.ts + usage:bucket-Filter).
+// Modelle-View bleibt vorerst Phase-2-Hinweis — kommt in der naechsten Season
+// (siehe PHASE2.md, "Modelle-View").
 
 type View = 'overview' | 'models';
-type Range = 'all' | '30d' | '7d';
 
-const RANGE_LABELS: Record<Range, string> = {
+const RANGE_LABELS: Record<StatsRange, string> = {
   all: 'Alle',
   '30d': '30d',
   '7d': '7d',
 };
 
+const SCOPE_LABELS: Record<StatsScope, string> = {
+  project: 'Aktiv',
+  global: 'Global',
+};
+
 export function StatsPane() {
   const [view, setView] = useState<View>('overview');
-  const [range, setRange] = useState<Range>('all');
+  const scope = useStatsStore((s) => s.scope);
+  const range = useStatsStore((s) => s.range);
+  const setScope = useStatsStore((s) => s.setScope);
+  const setRange = useStatsStore((s) => s.setRange);
+
   return (
     <section className="td-dash-pane" aria-label="Statistik">
       <header className="td-dash-head">
@@ -46,16 +53,26 @@ export function StatsPane() {
             Modelle
           </button>
         </div>
-        {/* Sprint 9 (C4) — Range-Toggle, statisch im MVP. Phase 2 reicht
-            den Wert an die Token-Aggregation durch. */}
+        <div className="td-dash-scope" role="group" aria-label="Sichtbereich">
+          {(Object.keys(SCOPE_LABELS) as StatsScope[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={scope === s ? 'active' : ''}
+              onClick={() => setScope(s)}
+              title={s === 'project' ? 'Nur aktives Projekt' : 'Über alle Projekte'}
+            >
+              {SCOPE_LABELS[s]}
+            </button>
+          ))}
+        </div>
         <div className="td-dash-range" role="group" aria-label="Zeitraum">
-          {(Object.keys(RANGE_LABELS) as Range[]).map((r) => (
+          {(Object.keys(RANGE_LABELS) as StatsRange[]).map((r) => (
             <button
               key={r}
               type="button"
               className={range === r ? 'active' : ''}
               onClick={() => setRange(r)}
-              title="Filter ist Phase-2-Slot"
             >
               {RANGE_LABELS[r]}
             </button>
@@ -70,35 +87,87 @@ export function StatsPane() {
 }
 
 function OverviewView() {
-  const activeId = useSessionStore((s) => s.activeId);
-  const contextBySession = useUsageStore((s) => s.contextBySession);
-  const bars = useUsageStore((s) => s.bars);
+  const activeProjectId = useUiStore((s) => s.activeProjectId);
+  const scope = useStatsStore((s) => s.scope);
+  const range = useStatsStore((s) => s.range);
+  const overview = useStatsStore((s) => s.overview);
+  const error = useStatsStore((s) => s.error);
+  const refresh = useStatsStore((s) => s.refresh);
+  // Debounce-Handle fuer den usage:update-Listener: das Watcher-Event feuert
+  // potenziell mehrfach pro Sekunde (Sprint 5: Coalesced auf max. 2/s, aber
+  // wir wollen nicht jeden Token-Tick aggregieren). 600 ms reichen, damit
+  // typische Tipp-Cadences zusammengefasst werden, ohne dass der User die
+  // Verzoegerung spuert.
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activeContext = activeId ? contextBySession[activeId] ?? null : null;
-  // Sprint-5-Mini-Stats: wir greifen die bereits berechneten Bars wieder,
-  // statt eigene Aggregationen zu fahren.
-  const fiveHour = bars['5h'] ?? null;
-  const weekly = bars['weekly_all'] ?? null;
+  useEffect(() => {
+    void refresh(activeProjectId);
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+  }, [refresh, activeProjectId, scope, range]);
+
+  useEffect(() => {
+    const unsubscribe = window.api.usage.onUpdate(() => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        void refresh(activeProjectId);
+      }, 600);
+    });
+    return () => unsubscribe();
+  }, [refresh, activeProjectId]);
+
+  if (error) {
+    return (
+      <div className="td-stats-placeholder">
+        <p>Stats konnten nicht geladen werden</p>
+        <p className="td-stats-placeholder-meta">{error}</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="td-ueb-stats">
-      {/* Sprint 9 (L5) — Werte mit `fmtTokens` (k/M/G), Vorlage-Code
-          components.jsx 13-17. Vermeidet 9-stellige Zahlen, die das
-          Card-Layout pressen. */}
+    <div className="td-stats-cards">
+      <Stat label="Sitzungen" value={overview ? String(overview.sessions_total) : '—'} />
       <Stat
-        label="Aktuelle Session"
-        value={activeContext ? `${fmtTokens(activeContext.tokens.total)} Tokens` : '—'}
-        sub={activeContext?.model ?? null}
+        label="Nachrichten"
+        value={overview ? formatCount(overview.messages_total) : '—'}
       />
       <Stat
-        label="Letzte 5 h"
-        value={fiveHour ? `${fmtTokens(fiveHour.tokens)} Tokens` : '—'}
-        sub={fiveHour ? `${fiveHour.percent.toFixed(0)} % Limit` : null}
+        label="Tokens"
+        value={overview ? fmtTokens(overview.tokens_total) : '—'}
       />
       <Stat
-        label="Letzte 168 h"
-        value={weekly ? `${fmtTokens(weekly.tokens)} Tokens` : '—'}
-        sub={weekly ? `${weekly.percent.toFixed(0)} % Limit` : null}
+        label="Aktive Tage"
+        value={overview ? String(overview.active_days) : '—'}
+      />
+      <Stat
+        label="Streak"
+        value={overview ? `${overview.current_streak_days} Tg` : '—'}
+        sub={overview && overview.current_streak_days > 0 ? 'in Folge' : null}
+        accent={overview ? overview.current_streak_days > 0 : false}
+      />
+      <Stat
+        label="Längste Streak"
+        value={overview ? `${overview.longest_streak_days} Tg` : '—'}
+      />
+      <Stat
+        label="Spitzenstunde"
+        value={overview ? formatHour(overview.peak_hour) : '—'}
+        sub={overview && overview.peak_hour !== null ? `${overview.peak_hour_count}×` : null}
+      />
+      <Stat
+        label="Lieblingsmodell"
+        value={overview ? formatFavoriteModel(overview) : '—'}
+        sub={
+          overview && overview.favorite_model
+            ? `${overview.favorite_model_count} Msgs`
+            : null
+        }
       />
     </div>
   );
@@ -109,18 +178,62 @@ function ModelsPlaceholder() {
     <div className="td-stats-placeholder">
       <p>In Phase 2 verfügbar</p>
       <p className="td-stats-placeholder-meta">
-        Heatmap, Per-Modell-Karten, Modell-Wechsel-Detection — Phase 2 (siehe Architektur 8).
+        Per-Modell-Aufschlüsselung kommt mit der nächsten Season (siehe roadmap/PHASE2.md).
       </p>
     </div>
   );
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub: string | null }) {
+function Stat({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string | null;
+  accent?: boolean;
+}) {
   return (
     <div className="td-stat">
       <div className="lbl">{label}</div>
-      <div className="val">{value}</div>
+      <div className={`val${accent ? ' accent' : ''}`}>{value}</div>
       {sub && <div className="sub">{sub}</div>}
     </div>
   );
+}
+
+// Nachrichten-Count bekommt eigene k/M-Abkuerzung. fmtTokens passt fuer
+// Token-Volumen (k/M/G), Messages-Count ueberspringt G — selbst eine
+// Daily-Heavy-Use-Session erreicht keine Milliarden Messages.
+function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+function formatHour(hour: number | null): string {
+  if (hour === null) return '—';
+  // 24-h-Format mit Doppelpunkt, kompakt: "14:00".
+  return `${String(hour).padStart(2, '0')}:00`;
+}
+
+// Kurzdarstellung der Modell-IDs, damit sie in die schmale Card passen.
+// claude-opus-4-7 → Opus 4.7, claude-sonnet-4-6 → Sonnet 4.6, etc. Unbekannte
+// IDs werden auf die letzten 12 Zeichen gekuerzt — kein hartes Fail bei neuen
+// Modell-Familien.
+function formatFavoriteModel(overview: StatsOverviewResult): string {
+  if (!overview.favorite_model) return '—';
+  return prettyModelId(overview.favorite_model);
+}
+
+export function prettyModelId(id: string): string {
+  const match = id.match(/^claude-(opus|sonnet|haiku)-(\d)-(\d)/i);
+  if (match && match[1] && match[2] && match[3]) {
+    const family = match[1][0]!.toUpperCase() + match[1].slice(1).toLowerCase();
+    return `${family} ${match[2]}.${match[3]}`;
+  }
+  if (id.length <= 14) return id;
+  return `…${id.slice(-12)}`;
 }
