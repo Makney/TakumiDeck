@@ -31,6 +31,66 @@ Buttons in der App für die in CLAUDE.md definierten Trigger-Phrasen.
 
 **Trigger:** Komfort-Wunsch nach Phase 1.
 
+### Feature: JSONL-Watcher Polling-Ring für Live-Token-Updates
+
+Zweiter Mechanismus neben `chokidar.awaitWriteFinish`, um Token-Bars in Echtzeit zu pushen.
+
+- Aktuell pusht der Watcher `change`-Events erst nach 100 ms File-Stabilität — bei einer aktiv laufenden claude-Antwort kommen Updates erst am Antwort-Ende, nicht pro Token
+- Parallel zur bestehenden chokidar-Pipeline ein fs-stat-Polling (~250 ms) auf den Files der aktiven Sessions
+- Polling-Pfad erlaubt partielle Reads und blendet halbe Zeilen aus dem Buffer aus (Schutz gegen JSON-Parse-Errors)
+- `add`-Events bleiben bei chokidar, nur die `change`-Path-Erweiterung kommt dazu
+
+**Trigger:** Wenn der UX-Eindruck „Dashboard ist nicht live" stört — aktuell ist die State-Detection-Loop alle 2 s ein Mitigator, aber bei längeren Antworten bleiben Plan- und Per-Session-Kontext-Bars sichtbar statisch.
+
+### Feature: Claude-UUID-basiertes Session-Mapping
+
+1:1-Mapping zwischen TakumiDeck-Session und claude-Code-Session über die UUID statt der encodeCwd-Heuristik.
+
+- Aktuell matched der Watcher JSONL-Dateien über den encodeCwd des Eltern-Ordners gegen alle running/idle-Sessions im selben cwd — bei Mehrdeutigkeit gewinnt die jüngste Session
+- Beim Spawn die erste JSONL-Zeile lesen (claude-code schreibt sie meist innerhalb von 1–2 s), die `sessionId` aus dem Inhalt extrahieren
+- Neue Tabelle `claude_session_links (takumi_session_id, claude_session_id, file_path)` persistieren
+- Watcher matched dann über `file_path` direkt, kein Heuristik-Pfad mehr nötig
+- Per-Session-Kontext-Bar des „verlierenden" Tabs bei zwei parallelen Sessions im selben Projekt ist dann nicht mehr blind
+
+**Trigger:** Wenn der Edge-Case „zwei Tabs im selben Projekt parallel offen, beide prompten gleichzeitig" im Daily-Use auftritt. Architektur K2 zielt ohnehin auf 2–5 Tabs, parallele Antworten im selben Projekt sind selten — aber die Heuristik ist latent fehlbar.
+
+### Feature: Multi-Session-cwd-Backfill-Migration
+
+Einmaliger Migrations-Pass für resume-tote Sessions mit mehrdeutigem encodeCwd.
+
+- Aktuell mapped der Sprint-6-Resume-Hotfix-Backfill eine claude-UUID aus dem JSONL-Filename auf die jüngste passende TakumiDeck-Session — die anderen bleiben `claude_session_id IS NULL` und damit resume-tot
+- Beim App-Start einmalig alle JSONL-Files in `~/.claude/projects/` durchgehen und UUIDs nach `started_at`-Reihenfolge auf die Kandidaten verteilen
+- Filesystem-stat plus pro-File-Sortierroutine — nur einmalig, kein Daily-Cost
+- Pre-Hotfix-Sessions ohne JSONL bleiben dauerhaft resume-tot (technisch nicht reparabel), Sprint-8-UX-Hint federt das ab
+
+**Trigger:** Wenn der User vor dem Sprint-6-Resume-Hotfix mehrfach im selben Projekt Sessions ohne JSONL-Antwort gespawnt hat. Edge-Case ist eng — 3+ Sessions im selben cwd ohne erste claude-Antwort.
+
+---
+
+## Bereich: Screenshots
+
+### Feature: Screenshot-Drag-and-Drop ins Terminal ✅
+
+Bilder per Drag-and-Drop oder Clipboard-Paste ins Terminal-Pane einfügen.
+
+- Drag aus Explorer + Drag von Direkt-Bildern (Snipping Tool, Browser)
+- Clipboard-Paste-Pfad mit MIME-Whitelist (`PNG`/`JPEG`/`GIF`/`WebP`, SVG bewusst raus)
+- Ablage in `<userData>/screenshots/screenshot-<UTC-Zeitstempel>.<ext>` außerhalb des Projekt-Pfads
+- Pfad wird direkt ins Terminal gepastet, sodass Claude ihn lesen kann
+
+**Trigger:** Daily-Driver-Komfort — entfällt das manuelle Pfad-Tippen für Bild-Inputs. Feature wurde in Phase 2 Season 2 außerhalb der Roadmap implementiert und ist hier rückwirkend erfasst.
+
+### Feature: Screenshot-Retention
+
+Aufräum-Mechanismus für `<userData>/screenshots/`.
+
+- Beim App-Start einmal über das Verzeichnis walken: Files älter als N Tage löschen, plus Cap auf Gesamt-MiB (älteste Files zuerst)
+- Defaults z.B. 30 Tage / 500 MiB als hartcodierte Start-Schwellen
+- Optional Settings-Slot für die Schwellen, sobald die Defaults sich im Daily-Use bewährt haben
+- Alternativ oder zusätzlich: Manual-Clear-Button in Settings
+
+**Trigger:** Aktuell wächst der Ordner unbegrenzt — bei produktivem Daily-Use mit mehreren 4K-PNGs pro Tag sind nach drei Monaten mehrere GiB realistisch. Spätestens, wenn der Disk-Verbrauch das erste Mal auffällt.
+
 ---
 
 ## Bereich: Projekt-Verwaltung
@@ -83,6 +143,17 @@ Zusätzlicher Filter zum Phase-1-Set.
 
 **Trigger:** Wenn relevant.
 
+### Feature: Reset-Schedule-Aggregation im usage:window
+
+Backend-Nachzug für das in Sprint 9 eingeführte UI-Slot `LimitBar.reset_schedule`.
+
+- Aktuell rechnet `usage:window` weiter rolling über `window_hours`, obwohl die Bar im Tooltip „Reset: Montag 00:00 (Phase-2-Backend)" anzeigt
+- Ziel: bei gesetztem `reset_schedule` Window-Start vom letzten Reset-Zeitpunkt rückwärts berechnen statt rolling
+- P90-Schätzung bleibt rolling (Limit-Quelle stabil), nur der Verbrauchs-Counter ändert sich
+- Tooltip-Suffix `(Phase-2-Backend)` entfernen, sobald die Berechnung greift
+
+**Trigger:** UI-Slot ist seit Sprint 9 da, Schema validiert, JSON-Editor kennt das Feld — sobald die User-Erwartung „setze ich Reset auf Montag 00:00, dann zeigt die Bar Verbrauch seit Montag" auf das Rolling-Window prallt.
+
 ---
 
 ## Bereich: Stats und Heatmap
@@ -122,6 +193,26 @@ Per-Modell-Aufschlüsselung als zweiter Tab neben Übersicht.
 - Tabelle: Modell · Sessions · Token total · Durchschnitt pro Session
 - Zeitfilter analog zu Übersicht (7d / 30d / Alle)
 
+### Feature: 30d/7d-Filter ✅
+
+Globaler Zeit-Filter für Stats-Section.
+
+- Toggle-Buttons "Alle / 30d / 7d"
+- Filter wirkt auf Stats-Cards, Heatmap, Modelle-View
+- Persistiert in Settings (zuletzt gewählter Filter)
+
+### Feature: Cache-Hit-Statistik
+
+Getrennte Cache-Token-Spalten + Statistik über die Cache-Hit-Rate.
+
+- Aktuell schreibt der JSONL-Watcher `tokens_in = input_tokens + cache_creation_input_tokens + cache_read_input_tokens` als Summe in eine Spalte — die drei Anteile stehen nicht getrennt zur Verfügung
+- Migration: neue Spalten `tokens_cache_creation INTEGER` + `tokens_cache_read INTEGER` in `messages`
+- Watcher-Patch schreibt ab Migration die Anteile getrennt mit
+- Backfill der historischen Daten: `jsonl_offsets`-Reset für betroffene Sessions, einmaliger Re-Scan-Hit beim nächsten App-Start
+- Stats-Section bekommt einen neuen Slot „Cache-Hit-Rate" (Anteil `cache_read` an `tokens_in_total`) — zeigt, wie effizient der Prompt-Cache greift
+
+**Trigger:** Sobald die Frage „wie viel meiner Tokens kommen aus dem Cache" relevant wird — typischerweise wenn die Plan-Bars im 5h-Window früher voll laufen als erwartet und der User wissen will, ob mehr Cache-Reuse das Problem entschärfen würde.
+
 ### Feature: Easter-Egg-Vergleiche
 
 Spielerische Token-Vergleiche basierend auf bekannten Werken.
@@ -130,14 +221,6 @@ Spielerische Token-Vergleiche basierend auf bekannten Werken.
 - Konfigurierbare Vergleichs-Werke in Settings
 - Default-Werke: LotR, Bibel, Harry-Potter-Reihe, etc.
 - Update bei jedem Stats-Refresh
-
-### Feature: 30d/7d-Filter ✅
-
-Globaler Zeit-Filter für Stats-Section.
-
-- Toggle-Buttons "Alle / 30d / 7d"
-- Filter wirkt auf Stats-Cards, Heatmap, Modelle-View
-- Persistiert in Settings (zuletzt gewählter Filter)
 
 ---
 
@@ -152,6 +235,17 @@ Zusätzliche Auto-Variablen.
 - `{{LETZTE_ENTSCHEIDUNGEN}}` — Top-3-Einträge aus ENTSCHEIDUNGEN.md
 
 **Trigger:** Wenn die Phase-1-Variablen nicht ausreichen.
+
+### Feature: Top-N für Template-Auto-Variablen konfigurierbar
+
+Settings-Slot für die Anzahl der ins Template eingefügten Einträge.
+
+- Aktuell sind `SCHULDEN_TOP_N` und `ENTSCHEIDUNGEN_TOP_N` hartcoded auf 3 — wer mehr oder weniger Kontext im Prompt haben möchte, müsste den Wert im Code editieren und neu builden
+- Zwei `number`-Felder in `AppSettings` (`template_schulden_top_n`, `template_entscheidungen_top_n`) mit Default 3
+- zod-Validation `min(0).max(20)`
+- Neuer Slot im Settings-Tab „Workspace" oder einem neuen „Templates"-Tab
+
+**Trigger:** Wenn der Top-3-Wert sich empirisch als falsch herausstellt — entweder zu spärlich (User braucht mehr Doku-Kontext im Prompt) oder zu voluminös (Token-Kosten zu hoch).
 
 ---
 
@@ -188,6 +282,24 @@ Erweiterung des Toggle-Modes aus Phase 1.
 - Zwei-Panel-Layout, in Settings konfigurierbar
 
 **Trigger:** Wenn Toggle-Mode aus Phase 1 nicht ausreicht.
+
+---
+
+## Bereich: Settings & Persistenz
+
+### Feature: Settings-Schema-Versionierung mit Migrations-Pipeline
+
+Versionierte Settings-Migration analog zum SQLite-Migrations-Runner.
+
+- `SettingsSchema` bekommt ein `version`-Feld (Default 1)
+- Settings-Load liest die Version und führt versionierte Migrations als TypeScript-Funktionen aus
+- Pro Migration: alte Defaults erkennen, auf neue Werte mappen, Version inkrementieren
+- Bekannte Default-Drifts, die eine erste Migration einsammeln würde:
+  - `limit_bars`-Liste (Sprint 9: Claude-Design-Bar entfernt, Sonnet-Label umbenannt)
+  - `default_limit` 1 M → 200 k (Sprint 8: Per-Modell-Limit-Defaults)
+  - Sensitive-Pattern-Defaults
+
+**Trigger:** Wachsende Bestands-User-Liste mit divergierenden Settings. Solange die User-Liste klein bleibt, ist manuelles Editieren von `settings.json` zumutbar — sobald die App weitergegeben wird oder mehrere Defaults parallel driften, wird die Migrations-Pipeline relevant.
 
 ---
 
