@@ -173,7 +173,14 @@ export function registerPtyIpc(deps: {
       // Kein JSONL nötig — der State-Detection-Loop macht den Revert: kommt
       // innerhalb von ~3 s keine neue JSONL-Zeile (versehentlicher Enter),
       // landet die Session automatisch wieder auf waiting.
-      if (input.data.includes('\r') || input.data.includes('\n')) {
+      //
+      // Phase-2 Season-3-Folge: Bracketed-Paste-Bloecke (\x1b[200~ … \x1b[201~)
+      // tragen die eingefuegten Newlines IM Paste-Block — Claude Code wertet die
+      // als Shift+Enter, nicht als Absende-Enter. Wir filtern den Paste-Body
+      // raus und pruefen nur die Newlines ausserhalb (= echter CR vom Submit).
+      // eslint-disable-next-line no-control-regex -- ESC (\x1b) ist Teil der ANSI-Bracketed-Paste-Marker, hier absichtlich.
+      const stripped = input.data.replace(/\x1b\[200~[\s\S]*?\x1b\[201~/g, '');
+      if (stripped.includes('\r') || stripped.includes('\n')) {
         const current = sessions.findById(input.sessionId);
         if (current?.status === 'waiting') {
           const tr = lifecycle.transition(input.sessionId, 'running', 'manual');

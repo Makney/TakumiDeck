@@ -92,17 +92,25 @@ export function TemplatesModal({ project, frontmatter, hasActiveTerminal, onClos
   // read-only — KEIN Guard nötig (StrictMode-Doppelmount lädt zweimal,
   // beide Calls sind idempotent, das State-Setting verliert nichts).
 
-  // Esc schließt das Modal.
+  // Esc schliesst das Modal. Wenn das Neu-Inline-Form offen ist, schliesst
+  // Esc nur das Inline-Form (nicht das ganze Modal). React-Synthetic-Events
+  // stoppen den nativen Bubble nicht — daher loest der Inline-onKeyDown sonst
+  // beide aus.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (newName !== null) {
+          setNewName(null);
+          setNewError(null);
+          return;
+        }
         onClose();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [onClose, newName]);
 
   // Phase-2 Season-4 (V2): Initial-Position beim Mount auf Viewport-Mitte.
   // Geschaetzte Modal-Groesse (820 breit, 80vh hoch) — wir kennen die exakte

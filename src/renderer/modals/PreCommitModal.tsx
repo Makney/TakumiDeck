@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AppSettings,
   ClaudeMdFrontmatter,
@@ -59,6 +59,18 @@ export function PreCommitModal({
     hasGit: true,
   });
   const [sent, setSent] = useState(false);
+  // Auto-Close-Timer-Handle nach erfolgreichem Trigger-Send. Cleanup beim
+  // Unmount, sonst kann der Timer ein neu geoeffnetes Modal versehentlich
+  // schliessen.
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Beim Mount git:status pullen. Read-only IPC, kein useRef-Guard
   // (Memory-Konvention: Guard nur für Server-Mutationen).
@@ -136,8 +148,12 @@ export function PreCommitModal({
     // Rebase, oder Working-Tree-Clean nach Commit). td-git-refresh-Event lädt
     // den Cache nach — billig, weil git:status read-only ist.
     window.dispatchEvent(new CustomEvent('td-git-refresh'));
-    // Nach kurzer Bestätigungs-Anzeige automatisch schließen.
-    setTimeout(() => onClose(), 800);
+    // Nach kurzer Bestaetigungs-Anzeige automatisch schliessen. Handle in
+    // einem Ref halten, damit Unmount den Timer abbricht (s.o.).
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      onClose();
+    }, 800);
   };
 
   return (

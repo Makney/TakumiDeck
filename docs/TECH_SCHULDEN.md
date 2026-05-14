@@ -30,6 +30,48 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Squirrel-Installer ohne setupIcon und Branding
+
+**Bereich:** `forge.config.ts` (`MakerSquirrel`-Konfiguration), Repo-Wurzel (`.ico` fehlt)
+
+**Was:** Der Squirrel-Installer (`TakumiDeck-0.1.0 Setup.exe`) zeigt das Electron-Default-Icon, weil weder `setupIcon` noch `iconUrl` in der MakerSquirrel-Konfig gesetzt sind und das Repo keine `.ico`-Datei trägt. Authors/Description werden aus `package.json` gefallback'ed, sind also funktional korrekt — aber kein eigenes Branding. Setup-Dateiname läuft auf den Default-Generator (`TakumiDeck-0.1.0 Setup.exe`).
+
+**Warum so:** Der Phase-2-Zwischenstand-Pack-Fokus war ASAR-Größe und Bugfixes vor dem Produktiv-Schwenk, nicht Cosmetics. Ein `.ico` müsste designt werden (oder ein einfaches Mono-Icon aus dem 匠-Brand-Glyph generiert), die Toolchain (`png2ico` / Online-Konverter) ist bekannt aber nicht hier. Im privaten Use-Case ist Default-Icon akzeptabel, weil der Installer einmalig läuft und danach nur die Exe selbst sichtbar bleibt.
+
+**Risiko:** Bei Verteilung an Freunde wirkt der Installer „nicht professionell" und triggert eventuell stärkere SmartScreen-Skepsis. Keine Funktions-Auswirkung.
+
+**Auflösung:** `.ico` (mindestens 256×256, idealerweise 16/32/48/64/128/256 in einer Datei) im Repo unter `build/icon.ico` ablegen, `setupIcon: 'build/icon.ico'` in `MakerSquirrel` setzen. Optional gleich `setupExe: 'TakumiDeckSetup.exe'` für saubereren Dateinamen und `loadingGif` für visuellen Mehrwert während der Squirrel-Install-Phase. Erst sinnvoll, wenn der erste echte Release-Tag gemacht wird.
+
+---
+
+## Screenshot-Verzeichnis ohne Retention
+
+**Bereich:** `src/main/fs/screenshotSave.ts`, `<userData>/screenshots/`
+
+**Was:** Drag-and-Drop-Bilder und Clipboard-Pastes (Phase-2 Season 2) werden in `<userData>/screenshots/screenshot-<UTC-Zeitstempel>.<ext>` geschrieben. Es gibt keine Aufräum-Logik — jeder Drop legt eine Datei an, gelöscht wird nichts. Bei produktivem Daily-Use (mehrere Screenshots pro Tag, 4K-PNGs zwischen 6 und 10 MiB) wächst der Ordner unbegrenzt; nach drei Monaten Daily-Use sind mehrere GiB realistisch.
+
+**Warum so:** Phase-2 Season 2 hat die Funktion eingeführt, das Cleanup-Verhalten war im Scope explizit ausgelagert („wir wollen erst sehen, wie viele Screenshots im echten Use entstehen"). Eine sofortige Retention-Strategie ohne Live-Daten würde willkürliche Schwellen festlegen (30 Tage? 100 Files? 500 MiB?), die später ohnehin angepasst werden müssten.
+
+**Risiko:** Disk-Verbrauch wächst unauffällig. User merkt es erst bei niedrigem Disk-Space oder bei manueller Inspektion. Keine Funktions-Beeinträchtigung, kein Daten-Verlust — nur Müll, der sich ansammelt.
+
+**Auflösung:** Beim App-Start einmal über `<userData>/screenshots/` walken: alle Files älter als N Tage löschen, plus Cap auf Gesamt-MiB (älteste Files zuerst). N und MiB als hartcodierter Default (z.B. 30 Tage / 500 MiB), später optional in Settings. Implementierung ~30 LOC in `paths.ts`/`main.ts`, sollte beim ersten Hinweis aus dem Daily-Use angegangen werden.
+
+---
+
+## `SessionPatch.ended_at` driftet zwischen TS-Type und zod-Schema
+
+**Bereich:** `src/shared/types.ts` (`SessionUpdateInput.patch`) ↔ `src/shared/schemas.ts` (`SessionUpdatePatchSchema`)
+
+**Was:** Der TS-Type erlaubt `ended_at?: number | null` im Patch-Objekt, das zod-Schema strippt das Feld aber bewusst raus (kein `ended_at`-Property in `SessionUpdatePatchSchema`). Der Renderer kann ein Patch-Objekt mit `ended_at` typisch korrekt zusammenstellen, an der IPC-Grenze wird das Feld dann stillschweigend verworfen.
+
+**Warum so:** Beim Refactor des Session-Lifecycles wurde `ended_at` aus dem schreibbaren Patch entfernt, weil es ausschließlich von der Lifecycle-Maschine im Main gesetzt werden soll. Der TS-Type wurde nicht synchron mit nachgezogen.
+
+**Risiko:** Niemand schreibt aktuell `ended_at` über `SessionUpdate`-IPCs (Renderer hat keinen Use-Case), aber wenn jemand das später probiert, fällt der Wert ohne Warnung weg — Symptom wäre „ended_at bleibt unverändert obwohl ich es im Patch gesetzt habe".
+
+**Auflösung:** `ended_at` aus dem `patch`-Sub-Type in `SessionUpdateInput` entfernen oder mit `Omit<…, 'ended_at'>` annotieren, mit einem Kommentar warum (= Lifecycle-Owned). Kleine Änderung, ~3 LOC, kein Test-Pfad-Update nötig.
+
+---
+
 ## `useUsageStore.refreshContext` schießt vor dem deferierten Spawn-IPC los
 
 **Bereich:** `src/renderer/panels/TabContainer.tsx` (`ContextSlot`-`useEffect`), `src/renderer/stores/usage.ts`

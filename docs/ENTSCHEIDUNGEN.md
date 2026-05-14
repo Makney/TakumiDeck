@@ -24,6 +24,25 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Seed-basierte Native-Dep-Closure im ASAR-Build statt prune-Vertrauen oder Denylist
+
+**Entscheidung:** Der `ignore`-Filter in `forge.config.ts` lässt von `node_modules/` nur die Pakete durch, die in der transitive Dep-Closure einer expliziten Seed-Liste liegen — und diese Seed-Liste ist exakt die Externals aus `vite.main.config.ts` (heute `better-sqlite3`, `@lydell/node-pty`). Alle anderen prod-Deps werden von Vite ins Main-/Renderer-Bundle inlined und sind im ASAR-`node_modules` redundant.
+
+**Varianten:**
+
+- **A** Kompletter `node_modules`-Pass-through (Status quo vor Phase 2) — verworfen, weil electron-packager dann den `prune`-Schritt nicht greifen ließ und devDeps unbenötigt im ASAR landeten (84.7 MiB statt 24.9 MiB). Auch `prune: true` explizit zu setzen hat in Kombination mit plugin-vite nichts geändert — der Schritt taucht nicht im Pack-Log auf.
+- **B** Hartcodierte Denylist bekannter devDep-Prefixes (`@babel`, `@eslint`, `@vitejs`, …) — verworfen, weil bei jedem neuen devDep der Filter manuell gepflegt werden müsste und das nächste devTool ohne Vorwarnung im Bundle landet.
+- **C** `npm ls --omit=dev` synchron im Forge-Config-Load + Allowlist aus der Output-Liste — verworfen wegen `child_process.execSync` zur Build-Time (langsam, fehleranfällig wenn npm-Version variiert).
+- **D** Seed-basierte Closure aus `package.json`-Lookups (gewählt). Forge-Config liest `package.json` der Seed-Pakete und walked rekursiv über `dependencies` + `optionalDependencies`. Reine JSON-Reads, keine Child-Prozesse, deterministisch.
+
+**Grund:** D ist die einzige Variante, die sowohl den ASAR-Bloat löst (alles außer der echten Native-Closure fliegt raus) als auch wartungsarm bleibt (keine Denylist-Pflege, kein neuer Build-Schritt). Die Seed-Liste ist genau zwei Einträge lang und korrespondiert 1:1 mit dem `external`-Array in `vite.main.config.ts` — wenn dort ein neues Native-Modul hinzukommt, muss der Seed parallel ergänzt werden (Konvention via Kommentar an beiden Stellen). prune-Vertrauen scheitert daran, dass plugin-vite den Schritt im aktuellen Pfad nicht reproduzierbar durchreicht; das explizit zu fixen wäre Pfusch an plugin-vite, nicht an unserer Config. Eine `npm ls`-Lösung würde Build-Zeit beim ersten Pack messbar verlängern und die Forge-Config an einen externen Prozess koppeln, dessen Output-Format zwischen npm-Versionen variieren kann.
+
+**Konsequenz:** Renderer-Bundle bleibt fett genug (1.78 MiB), weil Vite alle Pure-JS-Deps inlinet — das ist gewollt und macht den ASAR-Schlankheits-Effekt erst möglich. Wenn in Phase 3 ein neues Native-Modul (z.B. ein OS-Notifier oder eine zweite SQLite-Variante) hinzukommt, muss es **beide** Stellen treffen: external in `vite.main.config.ts` und Seed in `forge.config.ts`. Falls jemand das vergisst, schlägt der Pack im besten Fall lautstark fehl (Modul fehlt zur Laufzeit) — im schlimmsten Fall fehlt nur eine transitive Dep, die selten getroffen wird. Schutz: Smoketest-Erwartung „App startet, DB öffnet, PTY spawnt" muss vor jedem Release durch.
+
+**Implementierungsdetail:** Scope-Verzeichnisse (`/node_modules/@<scope>`) müssen explizit durchgelassen werden, wenn der Scope ein prod-Paket enthält — sonst klemmt electron-packager den gesamten Subtree weg (ein erster Versuch schickte `@lydell/node-pty` komplett ins Off, weil der Scope-Knoten gefiltert wurde). `prodScopes` ist als separates Set vorab errechnet und in `isProdDepPath` als erste Bedingung gecheckt. `optionalDependencies` werden in die Closure mitgenommen, weil node-pty seine Plattform-Binaries (`@lydell/node-pty-win32-x64` etc.) so deklariert; ohne den Pfad fehlt die ConPTY-Binary im Windows-Pack.
+
+---
+
 ## Custom-Session-Typ: dedizierte Label-Spalte statt Enum-Aufweichung
 
 **Entscheidung:** Der fünfte Session-Typ „Eigene Art" landet als neuer Enum-Wert `'custom'` in `SessionType`, die freie Bezeichnung lebt in einer eigenen nullable Spalte `sessions.custom_type_label` (Migration 0005). Der Verlauf-Filter bündelt alle `custom`-Sessions in eine einzige Pille „Eigene Art" statt einer Pille pro vergebenem freien String.

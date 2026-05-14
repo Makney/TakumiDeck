@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-13 — Phase 2 Zwischenstand: Produktiv-Pack mit ASAR-Hardening
+
+### Was jetzt geht
+
+- **Squirrel-Installer + Portable-ZIP für Windows produktiv ausgeliefert.** `npm run package` baut TakumiDeck.exe + `app.asar` + `app.asar.unpacked` (native `.node`-Binaries für better-sqlite3 und @lydell/node-pty); `npm run make` legt zusätzlich `TakumiDeck-0.1.0 Setup.exe` (138.8 MiB) und `TakumiDeck-win32-x64-0.1.0.zip` (143.3 MiB) in `out/make/` ab. Setup-Exe ist nicht code-signed — Windows-SmartScreen zeigt beim ersten Lauf eine „Publisher unbekannt"-Warnung, manuelles „Trotzdem ausführen" reicht. Daten-Ordner (`%APPDATA%\TakumiDeck\`) wird vom Installer nicht angefasst, Migrations bis 0005 laufen beim ersten Start automatisch.
+- **ASAR-Größe um 70.6 % reduziert (84.7 MiB → 24.9 MiB).** Mini-Review der Phase-2-Änderungen hat einen Build-Smell aufgedeckt: der ursprüngliche `ignore`-Filter ließ ganz `/node_modules` durch, sodass electron-packager den `prune`-Schritt nicht greifen ließ — devDependencies (`@babel`, `@eslint`, `@typescript-eslint`, `@vitejs`, `@rollup`, …) landeten unbenötigt im Bundle. Der Filter ist jetzt seed-basiert: nur die in `vite.main.config.ts` als externals markierten Native-Module (`better-sqlite3`, `@lydell/node-pty`) und ihre transitive Dep-Closure dürfen in das ASAR-`node_modules`. Vite bundelt alle Pure-JS-Deps in den Renderer-Bundle (1.78 MiB) inline, sie sind im ASAR daher redundant und werden ausgefiltert.
+- **Drei latente Bugs vor dem Produktiv-Schwenk gehoben.** (a) `pty:write` schickte eine `waiting`-Session sofort auf `running`, sobald `\r`/`\n` im Schreibstrom auftauchte — Bracketed-Paste-Blöcke (`\x1b[200~ … \x1b[201~`) tragen Newlines IM Block, die Claude-TUI behandelt sie als Shift+Enter. Filter strippt den Paste-Body bevor die Heuristik auf echte CR prüft. (b) Esc im Neu-Inline-Form des Templates-Modals schloss das ganze Modal statt nur das Inline-Form — React-Synthetic-Events stoppen den nativen Bubble nicht, der globale Esc-Listener feuerte trotz `stopPropagation()`. Window-Handler liest jetzt den Inline-Form-State und schließt nur das Form, wenn es offen ist. (c) `setTimeout(onClose, 800)` im PreCommitModal lief weiter, wenn der User in den 800 ms via Esc/× schloss und das Modal neu öffnete — Timer schloss dann das frisch geöffnete Modal. Timer-Handle landet jetzt in einem Ref, Unmount-Cleanup räumt auf.
+
+### Architektur-Notiz
+
+Mini-Review lief als vier parallele Subagent-Reviews (Backend / Renderer / Shared+Schemas / Build+Forge) plus typecheck/lint/tests in einem Aufruf — alle Gates grün, keine Blocker. Der ASAR-Build-Smell tauchte erst beim Smoke-Pack auf, weil typecheck/lint/tests den Bundle-Output nicht prüfen. Build-Logik in `forge.config.ts` ist jetzt eine kleine reine Funktion `computeNativeDepClosure(rootDir, seed)`, die die Dep-Closure einer Seed-Liste über `package.json`-Lookups errechnet — funktioniert ohne Build-Time-Aufruf von `npm ls --omit=dev` (synchron, ohne `child_process.execSync`-Risiko). Scope-Verzeichnisse (`@<scope>`) werden nur durchgelassen, wenn der Scope mindestens ein prod-Paket enthält — sonst klemmt electron-packager den gesamten Subtree weg (das hat den ersten Anlauf den @lydell-Subtree gekostet). Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md). Drei neue TECH_SCHULDEN-Einträge dokumentieren Backlog-Polish (Installer-Icon, Screenshot-Retention, `ended_at`-Type/Schema-Drift).
+
+---
+
 ## 2026-05-13 — Phase 2 Season 5: Eigene Session-Art mit Freitext-Bezeichnung
 
 ### Was jetzt geht

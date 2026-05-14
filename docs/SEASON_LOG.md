@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Zwischenstand — Mini-Review + Produktiv-Pack-Hardening
+
+**Ziel:** Phase 2 für Produktiv-Schwenk vorbereiten. Mini-Review aller Änderungen aus Seasons 1–5 + Templates-Non-Modal-Nachzug auf Produktiv-Reife (Backend, Renderer, Shared, Build), drei Verify-Gates (typecheck + lint + tests) grün halten, und dann den ersten echten Pack via `npm run package` + `npm run make` durchziehen.
+
+**Ergebnis:** Vier parallele Subagent-Reviews + Verify in einem Aufruf, alle Gates grün — keine Blocker für den Produktiv-Schwenk (Daily-Use trotz offener Phase-2-Roadmap, nicht Phase-Abschluss). Drei Renderer-/Main-Bugs mit konkretem User-Impact identifiziert und in einem Pass gehoben (Bracketed-Paste-Filter in `pty:write`, Esc-Bubble im Templates-Modal-Inline-Form, `setTimeout`-Cleanup im PreCommitModal). Smoke-Pack hat einen Build-Smell aufgedeckt, den der statische Review nicht finden konnte: das ASAR enthielt sämtliche devDeps (84.7 MiB statt erwartet ~15–25 MiB), weil der `ignore`-Filter komplett `/node_modules` durchließ und damit den `prune`-Schritt von electron-packager neutralisierte. Iteration über die Filter-Logik (Denylist verworfen, `prune: true` no-op, dann seed-basierte Closure mit Scope-Bounding-Korrektur) brachte das ASAR auf 24.9 MiB (-70.6 %), Smoke-Exe-Start verifiziert (Migrations bis 5, DB öffnet, PTY-Pfad funktional). `npm run make` liefert Squirrel-Setup (138.8 MiB) + Portable-ZIP (143.3 MiB). Drei neue TECH_SCHULDEN-Einträge dokumentieren den Backlog (`setupIcon`, Screenshot-Retention, `ended_at`-Drift). Gesamt-Testsuite weiterhin grün (549/549).
+
+**Gut gelaufen:**
+
+- **Parallele Subagent-Aufteilung in vier non-überlappende Domänen.** Backend / Renderer / Shared+Schemas / Build+Forge — jede Domäne ein Agent, gleichzeitig dispatched, Output kompakt strukturiert (BLOCKER / WARNINGS / OK). Vier Reviews + die drei Verify-Gates lieferten in ~3 Minuten ein vollständiges Bild, statt sequentiell die ~64 geänderten Dateien selbst durchzugehen. Der Aufwand fürs Briefing der Agenten (Scope-Liste pro Dateibucket, Memory-Hinweise weitergegeben) hat sich klar bezahlt gemacht.
+- **Verify-Gates VOR Pack ausgeführt.** typecheck/lint/tests sind ~30 s im Hintergrund, der Pack ~3 min — die Reihenfolge hat verhindert, dass ein Pack-Failure am Ende von einem trivialen Type-Error maskiert wird. Lehre: Gates immer zuerst.
+- **Iterativer ASAR-Filter-Build mit Größen-Vergleich nach jedem Step.** Statt einer großen „eleganten" Lösung sofort: Denylist (zu fragil) → `prune: true` (no-op) → Seed-Closure ohne Scope-Bounding (@lydell verloren) → Seed-Closure mit zu breitem Scope-Bounding (zu permissiv) → präziser Scope-Filter (84.7 → 84.7 → 41.0 → 69.2 → 24.9 MiB). Jeder Schritt mit ASAR-Größe und ASAR-Inhaltscheck verifiziert, sodass die Diagnose mit dem Output mitwuchs. Schneller als „erstmal hinschreiben und dann debuggen".
+
+**Gebremst durch:**
+
+- **Build-Smell war im statischen Review nicht sichtbar.** Vier Reviewer-Agenten haben den `forge.config.ts`-`ignore`-Filter angesehen und kein Problem gemeldet — er WIRKTE syntaktisch korrekt und der Kommentar darüber sagte „electron-packager prune'd anschließend". Erst der echte Pack-Smoke hat den Bloat sichtbar gemacht. Lehre: Build-Pipeline-Checks gehören in den Verify-Pass, nicht in den statischen Review — wenn schon im Phase-Abschluss-Hardening, dann auch ein Pack-Smoke als Pflicht-Gate. „typecheck/lint/tests grün" ist nicht „pack ist sauber".
+- **Erster Scope-Fix war zu breit (alle `@<scope>`-Dirs durchgelassen).** Im Eifer, den @lydell-Subtree zurückzubringen, wurde `if (seg2.startsWith('@') && segments.length === 3) return true` geschrieben — damit waren plötzlich @babel/@eslint/@vitejs wieder im ASAR, ohne dass die Per-Paket-Filter dahinter griffen (electron-packager prüft Children einer durchgelassenen Directory nicht weiter). Lehre: bei Filter-Logik immer beide Boundary-Fälle testen — „ist drin, das soll drin sein" UND „ist draußen, das soll draußen sein". Eine Mini-Tabelle vor dem Edit (welche Pfade gehen durch, welche nicht?) hätte den Doppel-Roundtrip gespart.
+
+**Für nächste Season:**
+
+- **Pack-Smoke als 4. Gate neben typecheck/lint/test.** Spätestens vor jedem Release-Tag muss `npm run package` durchlaufen und ASAR-Größe + `app.asar.unpacked`-Inhalt + Smoke-Start der Exe verifiziert werden. Ein kleines Script (`scripts/verify-pack.ps1`) das die drei Asserts macht (ASAR < 50 MiB, native modules unpacked, exe startet 10 s ohne Crash) wäre eine günstige Erweiterung.
+- **Seed-Liste in `forge.config.ts` synchronisieren, wenn ein neuer external in `vite.main.config.ts` hinzukommt.** Kommentare an beiden Stellen verweisen aufeinander; bei Phase-3-Features mit nativen Erweiterungen (z.B. systemnaher Notifier, OS-Tray) muss das mit-überprüft werden. Falls das Pattern sich häuft, könnte die Seed-Liste aus dem Vite-Config dynamisch geladen werden (ein Sub-Modul mit der Liste, das beide Configs importieren) — heute Single-Source-of-Truth via Kommentar reicht.
+- **Drei neue TECH_SCHULDEN sind allesamt nicht-blockend, aber zwei davon werden bei Verteilung relevant.** `setupIcon` (Branding) und Screenshot-Retention (Disk-Verbrauch) gehören in einen frühen Polish-Pass von Phase 3, sobald die App weitergegeben wird oder mehr Sessions pro Tag laufen.
+
+---
+
 ## Phase 2 Season 5 — Eigene Session-Art
 
 **Ziel:** Im NewSessionModal einen fünften Button für eine selbst definierbare Session-Art hinzufügen, sodass der User pro Session eine freie Bezeichnung (z.B. „Refactor", „Spike", „Hotfix") wählen kann. Datenmodell soll typsicher bleiben — keine Enum-Aufweichung, kein Title-Hack. Nicht aus PHASE2.md — User-Trigger.
