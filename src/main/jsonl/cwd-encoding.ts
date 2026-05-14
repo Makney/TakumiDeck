@@ -41,3 +41,19 @@ export function claudeUuidFromJsonlPath(filePath: string): string | null {
   const stem = base.replace(/\.jsonl$/i, '');
   return UUID_RE.test(stem) ? stem : null;
 }
+
+// Phase-2 Season-15: erwarteten JSONL-Pfad fuer eine bekannte cwd + Session-UUID
+// berechnen. claude-code legt die Datei deterministisch unter
+// `<projectsRoot>/<encodeCwd(cwd)>/<uuid>.jsonl` ab; mit `--session-id <uuid>`
+// beim Spawn kennen wir alle drei Komponenten vorab. `path.normalize` glaettet
+// Trailing-Slashes / gemischte Separator, damit der Match gegen den vom
+// Watcher gemeldeten Pfad konsistent klappt (chokidar reportet OS-canonical).
+export function expectedJsonlPath(
+  projectsRoot: string,
+  cwd: string,
+  claudeSessionId: string,
+): string {
+  return path.normalize(
+    path.join(projectsRoot, encodeCwd(cwd), `${claudeSessionId}.jsonl`),
+  );
+}

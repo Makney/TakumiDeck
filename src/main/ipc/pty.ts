@@ -16,6 +16,9 @@ import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
 import { preSpawnCheck } from '../pty/preSpawnCheck';
 import { assertFromMainWindow } from './sender-guard';
+import { expectedJsonlPath } from '../jsonl/cwd-encoding';
+import { defaultClaudeProjectsPath } from '../jsonl/watcher';
+import type { JsonlPollingRing } from '../jsonl/polling-ring';
 
 // IPC-Handler für pty:create / pty:write / pty:resize / pty:kill.
 // Forwarded außerdem die PtyManager-Events ans aktive BrowserWindow.
@@ -27,8 +30,25 @@ export function registerPtyIpc(deps: {
   settings: SettingsStore;
   getWebContents: () => WebContents | null;
   log: Logger;
+  // Phase-2 Season-15: optionale Kopplung an den Polling-Ring. Tests, die nur
+  // den DB-Pfad pruefen wollen (= ohne realen Watcher/Poller), lassen das Feld
+  // weg.
+  pollingRing?: JsonlPollingRing;
+  // Phase-2 Season-15: Override fuer Tests, damit kein echtes ~/.claude/
+  // angefragt wird. Default = defaultClaudeProjectsPath().
+  claudeProjectsRoot?: string;
 }): void {
-  const { manager, sessions, projects, lifecycle, settings, getWebContents, log } = deps;
+  const {
+    manager,
+    sessions,
+    projects,
+    lifecycle,
+    settings,
+    getWebContents,
+    log,
+    pollingRing,
+  } = deps;
+  const claudeProjectsRoot = deps.claudeProjectsRoot ?? defaultClaudeProjectsPath();
 
   // Manager-Events ans Renderer durchreichen + bei Exit Session-Status nachziehen.
   manager.setListeners({
@@ -53,6 +73,9 @@ export function registerPtyIpc(deps: {
           `[pty:exit] Lifecycle-Transition abgelehnt sessionId=${event.sessionId} → ${result.error}`,
         );
       }
+      // Phase-2 Season-15: nach Lifecycle-Transition vom Polling-Ring abkoppeln.
+      // Idempotent — falls schon detached (z.B. Tab-Close kam vor pty:exit), no-op.
+      pollingRing?.detach(event.sessionId);
       getWebContents()?.send(Channels.PtyExit, event);
     },
   });
@@ -111,6 +134,13 @@ export function registerPtyIpc(deps: {
       //    Phase-2 Season-5: bei type='custom' speichert das Repo die freie
       //    Bezeichnung in custom_type_label; bei den vier festen Typen verwerfen
       //    wir einen versehentlich mitgeschickten Wert.
+      // Phase-2 Season-15: erwarteten JSONL-Pfad gleich beim Insert mitschreiben.
+      // Pfad ist deterministisch aus cwd + sessionId — der Watcher landet beim
+      // ersten chokidar-add/change ueber `WHERE jsonl_path = ?` in einem einzigen
+      // Index-Lookup, und der Polling-Ring weiss sofort, welche Datei er pro
+      // Tick anschauen soll.
+      const jsonlPath = expectedJsonlPath(claudeProjectsRoot, cwd, input.sessionId);
+
       const row = sessions.create({
         id: input.sessionId,
         project_id: input.projectId,
@@ -122,6 +152,7 @@ export function registerPtyIpc(deps: {
         claude_session_id: input.sessionId,
         custom_type_label:
           input.type === 'custom' ? (input.customTypeLabel ?? null) : null,
+        jsonl_path: jsonlPath,
       });
 
       // 3. PTY spawnen. Wenn das fehlschlägt (Binary nicht gefunden, cwd ungültig),
@@ -153,6 +184,11 @@ export function registerPtyIpc(deps: {
         }
         throw e;
       }
+
+      // Phase-2 Season-15: Polling-Ring an die frische Session koppeln, damit
+      // die Token-Bars in Echtzeit pushen statt erst am 100-ms-awaitWriteFinish.
+      // Detach laeuft ueber den SessionLifecycle bei terminalen Statuswechseln.
+      pollingRing?.attach(input.sessionId, jsonlPath);
 
       log.info(`[pty] erstellt sessionId=${input.sessionId} model=${input.model}`);
       return ok(row);

@@ -31,6 +31,7 @@ const baseInsert: Omit<SessionInsert, 'id' | 'claude_session_id'> = {
   started_at: 1000,
   ended_at: 2000,
   custom_type_label: null,
+  jsonl_path: null,
 };
 
 describe('SessionRepository.setClaudeSessionId', () => {
@@ -186,6 +187,118 @@ describe('claudeUuidFromJsonlPath', () => {
     expect(
       claudeUuidFromJsonlPath('/foo/AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE.JSONL'),
     ).toBe('AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE');
+  });
+});
+
+describe('SessionRepository.findByJsonlPath / setJsonlPath — Phase-2 Season-15', () => {
+  it('findet die Session ueber den jsonl_path', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({
+      ...baseInsert,
+      id: 'sess-1',
+      claude_session_id: 'uuid-x',
+      jsonl_path: 'C:\\path\\to\\uuid-x.jsonl',
+    });
+    expect(repo.findByJsonlPath('C:\\path\\to\\uuid-x.jsonl')?.id).toBe('sess-1');
+  });
+
+  it('returnt null bei unbekanntem Pfad', () => {
+    const { repo } = makeRepo();
+    expect(repo.findByJsonlPath('C:\\unknown.jsonl')).toBeNull();
+  });
+
+  it('matcht nie auf Sessions mit jsonl_path=null', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({
+      ...baseInsert,
+      id: 'sess-null',
+      claude_session_id: null,
+      jsonl_path: null,
+    });
+    // Edge-Case: ein versehentlicher Lookup mit dem String "null" oder leerem
+    // String darf nicht zufaellig die NULL-Sessions treffen.
+    expect(repo.findByJsonlPath('null')).toBeNull();
+    expect(repo.findByJsonlPath('')).toBeNull();
+  });
+
+  it('setJsonlPath ist idempotent (ueberschreibt nicht)', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({
+      ...baseInsert,
+      id: 'sess-2',
+      claude_session_id: null,
+      jsonl_path: null,
+    });
+    expect(repo.setJsonlPath('sess-2', '/a/b/x.jsonl')).toBe(true);
+    expect(driver.findById('sess-2')?.jsonl_path).toBe('/a/b/x.jsonl');
+    expect(repo.setJsonlPath('sess-2', '/different.jsonl')).toBe(false);
+    expect(driver.findById('sess-2')?.jsonl_path).toBe('/a/b/x.jsonl');
+  });
+
+  it('setJsonlPath returnt false bei nicht-existenter Session', () => {
+    const { repo } = makeRepo();
+    expect(repo.setJsonlPath('ghost', '/x.jsonl')).toBe(false);
+  });
+
+  it('bei Tie auf jsonl_path gewinnt die juengste Session', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({
+      ...baseInsert,
+      id: 'older',
+      claude_session_id: null,
+      jsonl_path: '/dup.jsonl',
+      started_at: 1000,
+    });
+    driver.insert({
+      ...baseInsert,
+      id: 'younger',
+      claude_session_id: null,
+      jsonl_path: '/dup.jsonl',
+      started_at: 2000,
+    });
+    expect(repo.findByJsonlPath('/dup.jsonl')?.id).toBe('younger');
+  });
+});
+
+describe('SessionRepository.listMissingClaudeIdForCwd — Phase-2 Season-15', () => {
+  it('filtert auf cwd-Match und claude_session_id IS NULL, sortiert started_at ASC', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({
+      ...baseInsert,
+      id: 'a',
+      cwd: 'D:\\X',
+      claude_session_id: null,
+      started_at: 3000,
+    });
+    driver.insert({
+      ...baseInsert,
+      id: 'b',
+      cwd: 'D:\\X',
+      claude_session_id: null,
+      started_at: 1000,
+    });
+    driver.insert({
+      ...baseInsert,
+      id: 'c',
+      cwd: 'D:\\Y', // anderer cwd → raus
+      claude_session_id: null,
+      started_at: 2000,
+    });
+    driver.insert({
+      ...baseInsert,
+      id: 'd',
+      cwd: 'D:\\X',
+      claude_session_id: 'already-set', // UUID schon da → raus
+      started_at: 1500,
+    });
+    const result = repo.listMissingClaudeIdForCwd('D:\\X');
+    expect(result.map((r) => r.id)).toEqual(['b', 'a']);
+  });
+
+  it('returnt leeres Array, wenn kein cwd-Match', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({ ...baseInsert, id: 'a', cwd: 'D:\\X', claude_session_id: null });
+    expect(repo.listMissingClaudeIdForCwd('D:\\NOPE')).toEqual([]);
   });
 });
 

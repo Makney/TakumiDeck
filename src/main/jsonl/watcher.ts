@@ -104,6 +104,17 @@ export class JsonlWatcher {
     }
   }
 
+  // Phase-2 Season-15: oeffentlicher Hook fuer den JsonlPollingRing. Der Ring
+  // ruft die gleiche `scheduleHandle`-Logik wie chokidar, sodass die Anti-
+  // Reentrancy-Map und der jsonl_offsets-Tail-Read aus einer Pipeline bedient
+  // werden. Wenn der Watcher noch nicht `start()`-ed wurde (theoretisch
+  // moeglich, wenn der Ring zuerst attach-ed), laufen die handleFile-Calls
+  // trotzdem — chokidar ist nur fuer add-Events zustaendig, change-Events
+  // dispatcht der Ring sowieso unabhaengig.
+  notifyChanged(filePath: string): void {
+    this.scheduleHandle(filePath);
+  }
+
   // Serialisiert Aufrufe pro Datei: läuft schon eine handleFile, wird ein Re-Run
   // nach Abschluss eingeplant (per pending-Set), damit Mid-Read-Änderungen nicht
   // verloren gehen.
@@ -213,20 +224,21 @@ export class JsonlWatcher {
     }
   }
 
-  // Mapping JSONL-Datei → TakumiDeck-Session (Phase-2-Season-8-Variante A).
+  // Mapping JSONL-Datei → TakumiDeck-Session (Phase-2 Season-15-Drei-Stufen).
   //
-  // Wir gehen primaer ueber die claude-eigene Session-UUID, die im JSONL-Filename
-  // steckt: das Spawn-Pfad-IPC `pty:create` setzt `--session-id <id>` und schreibt
-  // dieselbe UUID gleich in `sessions.claude_session_id`; der Backfill-Pfad oben
-  // (`backfillClaudeSessionId`) holt diese Spalte fuer Legacy-Sessions nach,
-  // bevor `resolveTakumiSession` lookt. Match ueber UUID ist deterministisch und
-  // unterscheidet sauber zwischen mehreren parallelen Sessions im selben cwd.
-  //
-  // Fallback fuer "externe" Sessions, die claude ohne TakumiDeck-Spawn geschrieben
-  // hat und fuer die noch keine UUID-Verknuepfung existiert: der bisherige
-  // cwd-Encoded-Match auf running/idle-Sessions, mit Tie-Break = juengste.
+  // Drei orthogonale Stufen, jede deterministischer als die vorherige:
+  // 1. `jsonl_path`-Match: pty:create persistiert den erwarteten Pfad sofort
+  //    beim Spawn, der Boot-One-Shot-Backfill und der Watcher-Backfill unten
+  //    halten ihn auch fuer Legacy-Sessions auf Stand. Eine Index-Lookup-Query.
+  // 2. `claude_session_id`-Match (Season-9-Pfad): falls jsonl_path noch nicht
+  //    gesetzt ist — z.B. erste Watcher-Sichtung einer Session, deren Spawn
+  //    vor dem Season-15-Patch passierte und deren Boot-Backfill noch nicht
+  //    gelaufen ist (~/.claude-Datei ist neuer als die DB).
+  // 3. encodeCwd-Fallback fuer komplett externe Sessions (claude-Aufruf ohne
+  //    TakumiDeck-Spawn), die weder Pfad noch UUID-Bindung haben.
   private resolveTakumiSession(filePath: string): SessionRow | null {
     return resolveJsonlToSession(filePath, {
+      findByJsonlPath: (p) => this.deps.sessions.findByJsonlPath(p),
       findByClaudeSessionId: (uuid) => this.deps.sessions.findByClaudeSessionId(uuid),
       listByStatus: (status) => this.deps.sessions.listByStatus(status),
     });
@@ -243,6 +255,11 @@ export class JsonlWatcher {
   //
   // Idempotent: setClaudeSessionId überschreibt nicht, daher ist ein erneuter
   // Aufruf für eine bereits befüllte Session ein No-op.
+  //
+  // Phase-2 Season-15: zusaetzlich `jsonl_path` mit-befuellen, sobald wir die
+  // Session aufgeloest haben. Damit ist die Stufe-1-Lookup-Query beim naechsten
+  // Tick deterministisch — der Backfill-Scan ueber `listMissingClaudeSessionId`
+  // entfaellt fuer diese Datei.
   private backfillClaudeSessionId(filePath: string): void {
     const claudeUuid = claudeUuidFromJsonlPath(filePath);
     if (!claudeUuid) return;
@@ -260,6 +277,11 @@ export class JsonlWatcher {
       this.deps.log.info(
         `[jsonl-watcher] claude_session_id backfilled session=${best.id.slice(0, 8)} → ${claudeUuid.slice(0, 8)} (status=${best.status})`,
       );
+    }
+    // Phase-2 Season-15: jsonl_path mitfuehren, auch wenn die UUID schon stand
+    // (Pre-Patch-Sessions haben claude_session_id, aber jsonl_path NULL).
+    if (best.jsonl_path === null) {
+      this.deps.sessions.setJsonlPath(best.id, filePath);
     }
   }
 
@@ -280,7 +302,11 @@ export function defaultClaudeProjectsPath(): string {
 
 // Phase-2 Season-8: pure JSONL→Session-Resolver mit injizierten Repo-Methoden,
 // damit Tests die Logik ohne kompletten JsonlWatcher-Aufbau pruefen koennen.
+// Phase-2 Season-15: zusaetzliche erste Stufe `findByJsonlPath` vor der
+// UUID-Aufloesung — sobald der Pfad persistiert ist, sparen wir die Filename-
+// Parse-Runde plus den UUID-Index-Lookup.
 export interface JsonlResolverDeps {
+  findByJsonlPath: (jsonlPath: string) => SessionRow | null;
   findByClaudeSessionId: (uuid: string) => SessionRow | null;
   listByStatus: (status: SessionRow['status']) => SessionRow[];
 }
@@ -289,13 +315,19 @@ export function resolveJsonlToSession(
   filePath: string,
   deps: JsonlResolverDeps,
 ): SessionRow | null {
-  // 1. UUID-First: deterministisch ueber claude_session_id.
+  // 1. Path-First: deterministisch ueber den persistierten jsonl_path. Spawn-
+  //    Pfad (Season 15) setzt ihn beim pty:create, der Boot-One-Shot-Backfill
+  //    deckt Legacy-Bestaende ab, und der Watcher-Backfill unten holt alles
+  //    nach, was bisher durch das Raster gefallen war.
+  const direct = deps.findByJsonlPath(filePath);
+  if (direct) return direct;
+  // 2. UUID-Match (Season-9-Pfad): falls jsonl_path noch nicht gesetzt ist.
   const claudeUuid = claudeUuidFromJsonlPath(filePath);
   if (claudeUuid) {
-    const direct = deps.findByClaudeSessionId(claudeUuid);
-    if (direct) return direct;
+    const viaUuid = deps.findByClaudeSessionId(claudeUuid);
+    if (viaUuid) return viaUuid;
   }
-  // 2. Fallback: cwd-Encoded-Match auf live-Sessions (Externe / Pre-Backfill).
+  // 3. Fallback: cwd-Encoded-Match auf live-Sessions (Externe / Pre-Backfill).
   const folderEncoded = encodedCwdFromJsonlPath(filePath);
   if (!folderEncoded) return null;
   const candidates = [

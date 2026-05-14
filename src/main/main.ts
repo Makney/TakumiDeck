@@ -35,11 +35,14 @@ import {
   JsonlOffsetRepository,
   SqliteJsonlOffsetDriver,
 } from './db/repos/jsonl-offsets';
+import { MetaKvRepository, SqliteMetaKvDriver } from './db/repos/meta-kv';
 import { SessionLifecycle } from './sessions/lifecycle';
 import { reconcileCrashedSessions } from './sessions/reconciliation';
 import { StateDetectionLoop } from './sessions/state-detection-loop';
 import { JsonlWatcher, defaultClaudeProjectsPath } from './jsonl/watcher';
+import { JsonlPollingRing } from './jsonl/polling-ring';
 import { realJsonlReadDriver } from './jsonl/parser';
+import { runJsonlPathBackfill } from './jsonl/backfill';
 import { Channels } from '@shared/ipc-channels';
 import { scanWorkspace, realFsDriver } from './workspace/scanner';
 
@@ -65,6 +68,7 @@ process.on('unhandledRejection', (reason) => {
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
 let jsonlWatcher: JsonlWatcher | null = null;
+let jsonlPollingRing: JsonlPollingRing | null = null;
 let stateLoop: StateDetectionLoop | null = null;
 
 function createMainWindow(): void {
@@ -140,6 +144,11 @@ void app.whenReady().then(async () => {
     const heatmapRepo = new HeatmapRepository(new SqliteHeatmapDriver(db));
     const modelStatsRepo = new ModelStatsRepository(new SqliteModelStatsDriver(db));
     const jsonlOffsetRepo = new JsonlOffsetRepository(new SqliteJsonlOffsetDriver(db));
+    // Phase-2 Season-15: Meta-KV-Store ueber die seit Sprint 1 reservierte
+    // SQLite-`settings`-Tabelle. Aktuell nur fuer das Boot-Backfill-Flag,
+    // bietet sich aber als generischer Internal-State-Store an (anders als
+    // die User-facing AppSettings).
+    const metaKvRepo = new MetaKvRepository(new SqliteMetaKvDriver(db));
     ptyManager = new PtyManager(realPtySpawn);
 
     // Sprint 8 — Crash-Recovery (Variante C aus Sprint-3-Briefing).
@@ -181,6 +190,17 @@ void app.whenReady().then(async () => {
     // ungeschützt (defensiv-blockend ist OK, aber inkonsistent).
     setMainWebContentsResolver(() => mainWindow?.webContents ?? null);
 
+    // Phase-2 Season-15: Polling-Ring fuer Live-Token-Updates parallel zur
+    // chokidar-Pipeline. Wird unten via attach() pro Session aktiviert; den
+    // notifyChanged-Callback bedient der Watcher (gleiche handleFile-Logik
+    // wie chokidar-change), damit Anti-Reentrancy und jsonl_offsets-Tail
+    // konsistent bleiben.
+    const claudeProjectsRoot = defaultClaudeProjectsPath();
+    jsonlPollingRing = new JsonlPollingRing({
+      onChange: (filePath) => jsonlWatcher?.notifyChanged(filePath),
+      log: logger,
+    });
+
     registerSettingsIpc(settings);
     registerAppIpc({ settings });
     registerSessionIpc({
@@ -189,6 +209,7 @@ void app.whenReady().then(async () => {
       manager: ptyManager,
       settings,
       log: logger,
+      pollingRing: jsonlPollingRing,
     });
     registerPtyIpc({
       manager: ptyManager,
@@ -198,6 +219,8 @@ void app.whenReady().then(async () => {
       settings,
       getWebContents: () => mainWindow?.webContents ?? null,
       log: logger,
+      pollingRing: jsonlPollingRing,
+      claudeProjectsRoot,
     });
     registerProjectIpc({
       projects: projectRepo,
@@ -241,7 +264,7 @@ void app.whenReady().then(async () => {
     // nächsten Start nochmal gelesen wird.
     // Bereich-4-Review (W-4): usage:update-Push lebt im ipc/-Layer.
     jsonlWatcher = new JsonlWatcher({
-      watchPath: defaultClaudeProjectsPath(),
+      watchPath: claudeProjectsRoot,
       reader: realJsonlReadDriver,
       offsets: jsonlOffsetRepo,
       messages: messageRepo,
@@ -251,6 +274,37 @@ void app.whenReady().then(async () => {
       push: createUsagePusher(() => mainWindow?.webContents ?? null),
     });
     void jsonlWatcher.start();
+
+    // Phase-2 Season-15: Boot-One-Shot-Backfill fuer resume-tote Multi-Session-
+    // Bestaende — verteilt JSONL-Files nach mtime-Reihenfolge auf TakumiDeck-
+    // Sessions ohne claude_session_id. Flag in settings (`backfill_jsonl_link_v1_done`)
+    // verhindert Re-Run nach App-Restart. Hartfehler darf den App-Start nicht
+    // blocken.
+    try {
+      await runJsonlPathBackfill({
+        sessions,
+        meta: metaKvRepo,
+        claudeProjectsRoot,
+        log: logger,
+      });
+    } catch (e) {
+      logger.warn('[startup] JSONL-Path-Backfill fehlgeschlagen', e);
+    }
+
+    // Phase-2 Season-15: bereits laufende / idle / waiting / permission-prompt
+    // Sessions an den Polling-Ring koppeln, sobald die DB konsistent ist. Diese
+    // Sessions stammen entweder aus einem Crash-Recovery-Roundtrip (in dem Fall
+    // wurden sie gerade auf interrupted gepatcht und tauchen nicht mehr in der
+    // Liste auf) oder es laeuft tatsaechlich ein PTY (typisch nur im Dev-Modus
+    // mit Hot-Reload). Aus Defensiv-Gruenden trotzdem attachen — `detach` ist
+    // idempotent, wenn der naechste Lifecycle-Tick Sessions schliesst.
+    for (const status of ['running', 'idle', 'waiting', 'permission-prompt'] as const) {
+      for (const row of sessions.listByStatus(status)) {
+        if (row.jsonl_path) {
+          jsonlPollingRing.attach(row.id, row.jsonl_path);
+        }
+      }
+    }
 
     // State-Detection-Loop (Architektur 6.2): alle 2 s laufen running/idle-Übergänge
     // basierend auf der letzten messages.ts-Zeile. running-Sessions ohne Activity
@@ -314,6 +368,13 @@ void app.whenReady().then(async () => {
           stateLoop?.stop();
         } catch (e) {
           logger.warn('State-Detection-Loop-Stop fehlgeschlagen', e);
+        }
+        // Phase-2 Season-15: Polling-Ring vor PTY-Kill stoppen, damit kein Tick
+        // mehr in den Watcher pusht, waehrend die Pipeline runterfaehrt.
+        try {
+          jsonlPollingRing?.stopAll();
+        } catch (e) {
+          logger.warn('JSONL-Polling-Ring-Stop fehlgeschlagen', e);
         }
         try {
           ptyManager?.killAll();

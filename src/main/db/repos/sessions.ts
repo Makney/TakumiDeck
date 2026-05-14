@@ -68,6 +68,22 @@ export interface SessionDbDriver {
   // Status-agnostisch, weil auch completed/interrupted-Sessions waehrend des Resume
   // wieder JSONL-Lines bekommen.
   findByClaudeSessionId(claudeSessionId: string): SessionRow | null;
+  // Phase-2 Season-15 (Watcher-Resolver-Optimierung): direkter Lookup ueber den
+  // persistierten JSONL-Pfad. Erste Stufe vor findByClaudeSessionId, weil der
+  // Pfad beim Spawn sofort gesetzt wird und keine UUID-Filename-Parsing-Runde im
+  // Watcher-Hot-Path braucht. Tie-Break = juengste Session, analog zu
+  // findByClaudeSessionId (theoretische Duplikate aus Backfill-Race oder
+  // claude-UUID-Reuse).
+  findByJsonlPath(jsonlPath: string): SessionRow | null;
+  // Phase-2 Season-15: idempotent setzen, analog zu setClaudeSessionId. Returnt
+  // true, wenn die Spalte tatsaechlich befuellt wurde (= vorher null war), false
+  // sonst. Damit ist der Aufruf pro Watcher-Tick gefahrlos.
+  setJsonlPath(sessionId: string, jsonlPath: string): boolean;
+  // Phase-2 Season-15 (Boot-One-Shot-Backfill): alle Sessions mit gegebenem cwd,
+  // die noch keine claude_session_id haben. Sortiert nach started_at ASC (=
+  // aelteste zuerst), damit der Backfill sie paarweise mit den nach mtime
+  // sortierten JSONL-Files matchen kann.
+  listMissingClaudeIdForCwd(cwd: string): SessionRow[];
   // Phase-2 Season-11: atomare Allokation einer Season-Nummer fuer eine
   // bestehende Session. Wird vom Templates-Send-Flow gerufen, wenn der Prompt
   // {{NEXT_SEASON_NR}} verwendet. In einer Transaction: hat die Session schon
@@ -101,6 +117,11 @@ export interface CreateSessionInput {
   // Phase-2 Season-5: freie Bezeichnung fuer type='custom'. Bei den vier festen
   // Typen weglassen — der Repo setzt dann null.
   custom_type_label?: string | null;
+  // Phase-2 Season-15: erwarteter Pfad zur claude-code JSONL-Datei. Wird vom
+  // pty:create-Handler aus cwd + sessionId berechnet (siehe expectedJsonlPath
+  // in jsonl/cwd-encoding.ts). Tests koennen das Feld weglassen — der Repo
+  // setzt dann null.
+  jsonl_path?: string | null;
 }
 
 // Whitelist für PATCH-Keys: schützt davor, dass jemand über die Schema-Boundary
@@ -142,6 +163,7 @@ export class SessionRepository {
       ended_at: null,
       claude_session_id: input.claude_session_id ?? null,
       custom_type_label: input.custom_type_label ?? null,
+      jsonl_path: input.jsonl_path ?? null,
     };
     this.driver.insert(row);
     return rowFromInsert(row);
@@ -199,6 +221,18 @@ export class SessionRepository {
     return this.driver.findByClaudeSessionId(claudeSessionId);
   }
 
+  findByJsonlPath(jsonlPath: string): SessionRow | null {
+    return this.driver.findByJsonlPath(jsonlPath);
+  }
+
+  setJsonlPath(sessionId: string, jsonlPath: string): boolean {
+    return this.driver.setJsonlPath(sessionId, jsonlPath);
+  }
+
+  listMissingClaudeIdForCwd(cwd: string): SessionRow[] {
+    return this.driver.listMissingClaudeIdForCwd(cwd);
+  }
+
   // Phase-2 Season-11: durchreichen — die Atomizitaet sitzt im Driver
   // (better-sqlite3-Transaction bzw. simulierte Sequenz im InMemory-Driver).
   // Vertragsfreiheit der Repo-Schicht: gibt null zurueck, wenn die Session
@@ -222,6 +256,11 @@ export class SqliteSessionDriver implements SessionDbDriver {
   private readonly listMissingClaudeIdStmt: Database.Statement<[], SessionRow>;
   private readonly lastCompletedFeatureStmt: Database.Statement<[string], SessionRow>;
   private readonly findByClaudeIdStmt: Database.Statement<[string], SessionRow>;
+  // Phase-2 Season-15: jsonl_path-Lookup + idempotenter UPDATE + Backfill-
+  // Selektor pro cwd.
+  private readonly findByJsonlPathStmt: Database.Statement<[string], SessionRow>;
+  private readonly setJsonlPathStmt: Database.Statement;
+  private readonly listMissingClaudeIdForCwdStmt: Database.Statement<[string], SessionRow>;
   // Phase-2 Season-11: drei Statements + Transaction fuer assignSeasonNumber.
   // Read-Step liefert project_id und den aktuellen season_number-Wert; falls NULL,
   // ermittelt der MAX-Step die naechste freie Nummer und der UPDATE-Step schreibt
@@ -255,11 +294,11 @@ export class SqliteSessionDriver implements SessionDbDriver {
       `INSERT INTO sessions (
         id, project_id, title, type, season_number, status, current_model,
         worktree_branch, notes_md, cwd, started_at, ended_at, claude_session_id,
-        custom_type_label
+        custom_type_label, jsonl_path
       ) VALUES (
         @id, @project_id, @title, @type, @season_number, @status, @current_model,
         @worktree_branch, @notes_md, @cwd, @started_at, @ended_at, @claude_session_id,
-        @custom_type_label
+        @custom_type_label, @jsonl_path
       )`,
     );
     this.selectStmt = db.prepare<[string], SessionRow>(
@@ -289,6 +328,24 @@ export class SqliteSessionDriver implements SessionDbDriver {
     // Tie-Break-Regel wie im cwd-Fallback.
     this.findByClaudeIdStmt = db.prepare<[string], SessionRow>(
       'SELECT * FROM sessions WHERE claude_session_id = ? ORDER BY started_at DESC LIMIT 1',
+    );
+    // Phase-2 Season-15: gleiche Tie-Break-Regel wie bei der UUID-Variante —
+    // theoretische Duplikate beim Backfill-Pair-Up gewinnt die juengste Session.
+    this.findByJsonlPathStmt = db.prepare<[string], SessionRow>(
+      'SELECT * FROM sessions WHERE jsonl_path = ? ORDER BY started_at DESC LIMIT 1',
+    );
+    // Idempotenter Update: NUR wenn jsonl_path aktuell NULL. Damit kann der
+    // Watcher pro JSONL-Zeile aufrufen, ohne vorher zu pruefen — die WHERE-
+    // Klausel wirkt als atomarer Check-and-Set (gleiches Muster wie
+    // setClaudeIdStmt aus Sprint-6-Hotfix).
+    this.setJsonlPathStmt = db.prepare(
+      'UPDATE sessions SET jsonl_path = @jsonlPath WHERE id = @sessionId AND jsonl_path IS NULL',
+    );
+    // Boot-One-Shot-Backfill: Kandidaten pro encodeCwd-Bucket, sortiert nach
+    // started_at ASC, damit der Pass sie mit den mtime-aufsteigend sortierten
+    // JSONL-Files paaren kann (aelteste Session ↔ aeltester File).
+    this.listMissingClaudeIdForCwdStmt = db.prepare<[string], SessionRow>(
+      'SELECT * FROM sessions WHERE cwd = ? AND claude_session_id IS NULL ORDER BY started_at ASC',
     );
     // Phase-2 Season-11: assignSeasonNumber. SELECT+MAX+UPDATE laeuft in einer
     // better-sqlite3-Transaction; bei bereits zugewiesener Nummer faellt MAX/UPDATE
@@ -460,6 +517,19 @@ export class SqliteSessionDriver implements SessionDbDriver {
     return this.findByClaudeIdStmt.get(claudeSessionId) ?? null;
   }
 
+  findByJsonlPath(jsonlPath: string): SessionRow | null {
+    return this.findByJsonlPathStmt.get(jsonlPath) ?? null;
+  }
+
+  setJsonlPath(sessionId: string, jsonlPath: string): boolean {
+    const result = this.setJsonlPathStmt.run({ sessionId, jsonlPath });
+    return Number(result.changes) > 0;
+  }
+
+  listMissingClaudeIdForCwd(cwd: string): SessionRow[] {
+    return this.listMissingClaudeIdForCwdStmt.all(cwd);
+  }
+
   assignSeasonNumber(sessionId: string): AssignSeasonResult | null {
     return this.assignSeasonNumberTxn(sessionId);
   }
@@ -590,6 +660,37 @@ export class InMemorySessionDriver implements SessionDbDriver {
       }
     }
     return best ? { ...best } : null;
+  }
+
+  findByJsonlPath(jsonlPath: string): SessionRow | null {
+    // Phase-2 Season-15: Tie-Break analog zu findByClaudeSessionId.
+    let best: SessionRow | null = null;
+    for (const row of this.rows.values()) {
+      if (row.jsonl_path !== jsonlPath) continue;
+      if (best === null || row.started_at > best.started_at) {
+        best = row;
+      }
+    }
+    return best ? { ...best } : null;
+  }
+
+  setJsonlPath(sessionId: string, jsonlPath: string): boolean {
+    const existing = this.rows.get(sessionId);
+    if (!existing) return false;
+    if (existing.jsonl_path !== null) return false;
+    this.rows.set(sessionId, { ...existing, jsonl_path: jsonlPath });
+    return true;
+  }
+
+  listMissingClaudeIdForCwd(cwd: string): SessionRow[] {
+    const out: SessionRow[] = [];
+    for (const row of this.rows.values()) {
+      if (row.cwd !== cwd) continue;
+      if (row.claude_session_id !== null) continue;
+      out.push({ ...row });
+    }
+    out.sort((a, b) => a.started_at - b.started_at);
+    return out;
   }
 
   assignSeasonNumber(sessionId: string): AssignSeasonResult | null {

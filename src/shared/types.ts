@@ -116,6 +116,12 @@ export interface SessionRow {
   // Phase-2 Season-5: freie Bezeichnung fuer type='custom'. Nur dort befuellt;
   // bei allen anderen Typen null (Migration 0005 setzt NULL als Default).
   custom_type_label: string | null;
+  // Phase-2 Season-15: vollstaendiger Pfad zur passenden claude-code JSONL-Datei
+  // (~/.claude/projects/<encoded-cwd>/<claude-uuid>.jsonl). Watcher und
+  // Polling-Ring matchen direkt darueber, statt den Filename pro Tick neu zu
+  // parsen. null fuer Legacy-Sessions, bis Spawn-Pfad / Watcher-Backfill /
+  // Boot-One-Shot-Pass die Spalte befuellt.
+  jsonl_path: string | null;
 }
 
 // PTY-IPC-Payloads (Renderer → Main).

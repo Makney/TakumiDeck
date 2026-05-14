@@ -24,6 +24,52 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## JSONL-Live-Polling: Per-Session-Timer parallel zu chokidar, kein Global-Single-Timer
+
+**Entscheidung:** Live-Token-Updates kommen aus einem zweiten Pipeline-Pfad parallel zu chokidar: pro „aktive" Session laeuft ein eigener 250-ms-Timer mit `fs.stat`-Diff auf `mtimeMs`+`size`. Bei Aenderung pusht der Timer in den public `JsonlWatcher.notifyChanged`-Hook, der die bestehende `scheduleHandle`-Anti-Reentrancy-Pipeline nutzt. chokidar bleibt fuer `add`-Events und externe Sessions zustaendig.
+
+**Varianten:**
+
+- **A** Per-Session-Timer (gewaehlt) — pro `pty:create`/Resume ein `setInterval`, pro terminalem Lifecycle-Wechsel `clearInterval`.
+- **B** Global-Single-Timer — ein einziger 250-ms-Tick iteriert alle aktiven Sessions, ein Repo-Query pro Tick.
+- **C** Status-getrieben — Timer nur waehrend `running` (TUI-State); idle/waiting/permission-prompt schalten ab.
+
+**Grund:** A hat den saubersten Lebenszyklus pro Session — `attach`/`detach`-Calls sitzen an den IPC-Stellen, an denen ohnehin schon Lifecycle-Transitions passieren (pty:create, pty:exit, session:close, session:archive, session:resume). Das macht den Polling-Ring in den IPC-Handlers sichtbar und leicht zu debuggen. B spart Timer-Verwaltung, koppelt aber alle Sessions an eine pro-Tick-Repo-Query (`listByStatus`) — wenn ein Tick lange braucht (z.B. SQLite-Lock waehrend Backup), driften alle Sessions im selben Tempo. C waere theoretisch billigster Footprint, koppelt aber den Polling-Pfad an die Phase-2-Season-1-TUI-State-Detection — die hat selbst eine ~2-s-Latenz und wuerde im Worst-Case die letzten Token-Pushs einer Session verschlucken. Bei 4–6 aktiven Sessions im Daily-Use kostet A vier bis sechs `fs.stat`-Calls alle 250 ms; vernachlaessigbar gegenueber dem Mehrwert von Live-Token-Bars waehrend laufender Antworten.
+
+**Konsequenz:** Der Ring teilt die `scheduleHandle`-Anti-Reentrancy-Map und den `jsonl_offsets`-Tail mit chokidar — beide Pipelines konvergieren in `JsonlWatcher.handleFile`. Wenn ein chokidar-change und ein Polling-Tick gleichzeitig kommen, serialisiert die `inFlight`-Map sie pro File. Lifecycle-Hooks sind explizit in pty/session-IPC verdrahtet (fuenf Call-Sites) statt ueber ein Event-System in `SessionLifecycle` — die fuenf Stellen sind im Code direkt lesbar, das Event-System haette nur Indirection ergeben.
+
+## JSONL-UUID-Mapping: sessions.jsonl_path-Spalte, keine eigene claude_session_links-Tabelle
+
+**Entscheidung:** Die Bindung TakumiDeck-Session ↔ claude-JSONL-Datei wandert in eine neue Spalte `sessions.jsonl_path` (Migration 0007) plus partiellen Index `idx_sessions_jsonl_path`. Watcher-Resolver bekommt eine neue erste Stufe `findByJsonlPath` vor dem Season-9-UUID-Match. `pty:create` befuellt die Spalte direkt beim Spawn aus dem deterministischen `expectedJsonlPath`-Helper.
+
+**Varianten:**
+
+- **A** Eigene Tabelle `claude_session_links (takumi_session_id, claude_session_id, file_path)` mit Indizes — Roadmap-literal aus PHASE2.md.
+- **B** Neue Spalte `sessions.jsonl_path` (gewaehlt) — Migration 0007, schlanker Match-Pfad.
+- **C** Status quo + Spawn-Time-First-JSONL-Read fuer externe Sessions ohne `--session-id`.
+
+**Grund:** B haengt den Pfad direkt an die Session-Row — kein zusaetzlicher Join im Watcher-Hot-Path, gleicher Index-Lookup-Aufwand wie A, aber ohne Schema-Topologie-Aufblaehung. A waere die roadmap-literale Variante, baut aber einen Side-Table-Mechanismus fuer Daten, die zur 1:1-Lebenszyklus-Relation der Session gehoeren (`jsonl_path` haengt 1:1 an einer Session, nicht n:m). Wenn jemals eine zweite claude-Session-Datei pro TakumiDeck-Session noetig wuerde (Multi-Pfad-Replay), waere A vorteilhaft — bis dahin ist B die einfachere Form. C waere ein Minimal-Patch, deckt aber den Hauptzweck — die `jsonl_path`-Indirection sparen, statt jedes Tick einen Filename-Parse zu machen — nicht ab.
+
+**Konsequenz:** Resolver hat drei Stufen (Pfad → UUID → cwd) statt Season-9-zwei. Pre-Patch-Sessions bekommen den Pfad ueber den Watcher-Backfill nachgetragen (gleicher Mechanismus wie `setClaudeSessionId` aus Sprint-6-Hotfix). Der partielle Index `WHERE jsonl_path IS NOT NULL` haelt sich klein. Wenn Phase 3 doch eine n:m-Bindung verlangt (z.B. Multi-Replay), kommt eine `claude_session_links`-Tabelle hinzu und `jsonl_path` wird zur 1:1-Quick-Path-Optimierung neben dem Side-Table — kein Schema-Rueckbau noetig.
+
+## JSONL-Backfill: Boot-One-Shot mit Settings-Flag, kein On-Demand-Pfad
+
+**Entscheidung:** Resume-tote Multi-Session-Bestaende werden in einem einmaligen Pass beim App-Start nachgezogen. Pro cwd-Bucket Files nach `mtime` und Sessions nach `started_at` sortieren, paarweise zuordnen. Flag `backfill_jsonl_link_v1=done` in der SQLite-`settings`-KV-Tabelle verhindert Re-Run.
+
+**Varianten:**
+
+- **A** Boot-One-Shot (gewaehlt) — einmal pro Installation, ~200–500 ms Boot-Latenz beim Erst-Lauf.
+- **B** On-Demand-pro-Projekt-Klick — Backfill erst beim ersten Click auf ein betroffenes Projekt.
+- **C** Manueller Settings-Button — User triggert den Pass selbst.
+
+**Grund:** A erledigt die Inkonsistenz im Erst-Lauf-Boot, bevor der User die Sidebar sieht — das HistoryPane zeigt sofort die korrekten Resume-Stati. Boot-Latenz ist einmalig und liegt unter der wahrgenommenen Schwelle (200–500 ms vs. den ~1–2 s, die der State-Detection-Loop ohnehin braucht, bis die Sidebar live ist). B haette keine Boot-Latenz, dafuer eine UX-Regression pro Projekt: bis zum ersten Klick zeigt die Detail-Pane „Resume nicht moeglich" fuer Sessions, die der Pass eigentlich nachhole — der Pfad ist heute schon inkonsistent, das durch B zementieren waere ein Rueckschritt. C waere die transparenteste Variante (User entscheidet, wann der Pass laeuft), erfordert aber, dass der User die Existenz dieses Buttons kennt — gegen das „minimale Ueberraschung"-Prinzip aus Phase 1.
+
+**Konsequenz:** Der Backfill ist idempotent ueber das Flag und kann nicht versehentlich zweimal laufen. Wenn das Datenmodell in einer spaeteren Phase erweitert wird (z.B. claude rotiert Files, Multi-Pfad-Sessions), kann ein zweiter Flag (`backfill_jsonl_link_v2`) den neuen Pass schalten — `backfill_jsonl_link_v1` bleibt als „v1-done"-Marker bestehen. Pass 1 (Path-Hydration fuer Sessions mit UUID aber ohne Pfad) wurde bewusst deaktiviert: der Watcher-Backfill schreibt `jsonl_path` ohnehin nach der ersten Watcher-Sichtung mit; ein zweiter Codepfad fuer denselben Effekt waere Doppelarbeit.
+
+**Implementierungsdetail:** Der Flag liegt im SQLite-`settings`-KV-Store (seit Sprint 1 reserviert, bisher ungenutzt) ueber den neuen `MetaKvRepository`, bewusst NICHT im User-facing `AppSettings`-JSON. Begruendung: Backfill-Flags sind interne State-Information, kein User-Konfigurations-Pflicht-Feld — wer `settings.json` versioniert oder teilt, soll nicht den Backfill-Status seines Geraets mit-versionieren.
+
+---
+
 ## Modelle-View: Eigener IPC parallel zu stats:project-overview, geteilte Header-Toggles
 
 **Entscheidung:** Die Per-Modell-Aufschlüsselung bekommt einen eigenen IPC `stats:models` parallel zu `stats:project-overview` und `stats:heatmap`. Eigenes `ModelStatsRepository`, eigener Statement-Cache pro Scope/Range-Kombination, eigener Store-Slot mit eigenem `usage:update`-Listener. Scope (Aktiv/Global) und Range (Alle/30d/7d) werden mit den Cards geteilt — kein eigener Toggle in der Modelle-View.

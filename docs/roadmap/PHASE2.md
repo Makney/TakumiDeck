@@ -31,7 +31,7 @@ Buttons in der App für die in CLAUDE.md definierten Trigger-Phrasen.
 
 **Trigger:** Komfort-Wunsch nach Phase 1.
 
-### Feature: JSONL-Watcher Polling-Ring für Live-Token-Updates
+### Feature: JSONL-Watcher Polling-Ring für Live-Token-Updates ✅
 
 Zweiter Mechanismus neben `chokidar.awaitWriteFinish`, um Token-Bars in Echtzeit zu pushen.
 
@@ -42,7 +42,7 @@ Zweiter Mechanismus neben `chokidar.awaitWriteFinish`, um Token-Bars in Echtzeit
 
 **Trigger:** Wenn der UX-Eindruck „Dashboard ist nicht live" stört — aktuell ist die State-Detection-Loop alle 2 s ein Mitigator, aber bei längeren Antworten bleiben Plan- und Per-Session-Kontext-Bars sichtbar statisch.
 
-### Feature: Claude-UUID-basiertes Session-Mapping
+### Feature: Claude-UUID-basiertes Session-Mapping ✅
 
 1:1-Mapping zwischen TakumiDeck-Session und claude-Code-Session über die UUID statt der encodeCwd-Heuristik.
 
@@ -54,7 +54,7 @@ Zweiter Mechanismus neben `chokidar.awaitWriteFinish`, um Token-Bars in Echtzeit
 
 **Trigger:** Wenn der Edge-Case „zwei Tabs im selben Projekt parallel offen, beide prompten gleichzeitig" im Daily-Use auftritt. Architektur K2 zielt ohnehin auf 2–5 Tabs, parallele Antworten im selben Projekt sind selten — aber die Heuristik ist latent fehlbar.
 
-### Feature: Multi-Session-cwd-Backfill-Migration
+### Feature: Multi-Session-cwd-Backfill-Migration ✅
 
 Einmaliger Migrations-Pass für resume-tote Sessions mit mehrdeutigem encodeCwd.
 

@@ -69,6 +69,9 @@ function seed(driver: InMemorySessionDriver, input: SeedInput) {
     // Phase-2 Season-5: custom_type_label nur fuer 'custom'-Sessions relevant;
     // bestehende Filter-Tests fahren mit null.
     custom_type_label: null,
+    // Phase-2 Season-15: jsonl_path wird vom listHistory-Pfad nicht gelesen;
+    // Defaults auf null, spezifische Tests in tests/main/jsonl-*-test.ts.
+    jsonl_path: null,
   });
 }
 

@@ -15,6 +15,7 @@ import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
 import { preSpawnCheck } from '../pty/preSpawnCheck';
 import { assertFromMainWindow } from './sender-guard';
+import type { JsonlPollingRing } from '../jsonl/polling-ring';
 
 // IPC-Handler für die Session-Domain.
 // session:update — Sprint 2: notes_md / title / status-Patches.
@@ -29,8 +30,10 @@ export function registerSessionIpc(deps: {
   manager: PtyManager;
   settings: SettingsStore;
   log: Logger;
+  // Phase-2 Season-15: optional, weil Tests den Polling-Ring nicht aufsetzen.
+  pollingRing?: JsonlPollingRing;
 }): void {
-  const { sessions, lifecycle, manager, settings, log } = deps;
+  const { sessions, lifecycle, manager, settings, log, pollingRing } = deps;
 
   ipcMain.handle(Channels.SessionUpdate, (event, payload: unknown) => {
     const guard = assertFromMainWindow(event);
@@ -80,6 +83,10 @@ export function registerSessionIpc(deps: {
           log.warn(`[session:close] PTY-Kill fehlgeschlagen sessionId=${input.sessionId}`, e);
         }
       }
+      // Phase-2 Season-15: Polling-Ring abkoppeln, sobald der PTY weg ist.
+      // Der pty:exit-Handler patcht zwar nochmal nach, aber bis dahin haengt
+      // der Per-Session-Timer noch und macht ein paar leere fs.stat-Calls.
+      pollingRing?.detach(input.sessionId);
       // Aktuellsten Stand zurückliefern — wenn der pty:exit-Handler synchron noch
       // nicht gefeuert hat, ist hier ggf. noch der alte Status, das Renderer-Update
       // kommt dann via pty:exit-Push.
@@ -144,6 +151,15 @@ export function registerSessionIpc(deps: {
         return transitionResult;
       }
 
+      // Phase-2 Season-15: Polling-Ring wieder an die Session koppeln, sobald
+      // sie zurueck im Live-Status ist. jsonl_path kann bei Legacy-Sessions
+      // noch null sein — dann bleibt nur der Chokidar-Pfad. Watcher-Backfill
+      // wuerde den Pfad bei der naechsten Antwort eintragen, aber der erste
+      // Resume-Run profitiert dann noch nicht vom Polling.
+      if (transitionResult.data.jsonl_path) {
+        pollingRing?.attach(input.sessionId, transitionResult.data.jsonl_path);
+      }
+
       // 2. PTY mit --resume <claude-session-id> spawnen. Modell aus session.current_model
       //    (Architektur 6.2: gleiches Modell wie ursprünglich, kein Picker beim Resume).
       const model = session.current_model ?? current.default_model;
@@ -201,6 +217,9 @@ export function registerSessionIpc(deps: {
     try {
       const input = SessionArchiveInputSchema.parse(payload);
       const result = lifecycle.transition(input.sessionId, 'archived', 'tab-close');
+      // Phase-2 Season-15: archivierte Sessions schreiben keine JSONL mehr.
+      // detach ist idempotent — falls die Session nie attached war, no-op.
+      pollingRing?.detach(input.sessionId);
       return result;
     } catch (e) {
       return errFromUnknown(e, 'SESSION_ARCHIVE');

@@ -21,6 +21,7 @@ const baseSession: Omit<SessionRow, 'id' | 'claude_session_id' | 'started_at' | 
   notes_md: '',
   ended_at: null,
   custom_type_label: null,
+  jsonl_path: null,
 };
 
 function makeSession(overrides: Partial<SessionRow>): SessionRow {
@@ -38,6 +39,7 @@ function makeSession(overrides: Partial<SessionRow>): SessionRow {
 interface FakeDeps {
   byUuid: Map<string, SessionRow>;
   byStatus: Map<SessionStatus, SessionRow[]>;
+  byPath: Map<string, SessionRow>;
 }
 
 function makeDeps(byUuid: SessionRow[], byStatus: Record<string, SessionRow[]>): FakeDeps {
@@ -45,14 +47,27 @@ function makeDeps(byUuid: SessionRow[], byStatus: Record<string, SessionRow[]>):
   for (const s of byUuid) {
     if (s.claude_session_id) uuidMap.set(s.claude_session_id, s);
   }
+  const pathMap = new Map<string, SessionRow>();
+  // Phase-2 Season-15: Pfad-Index zusaetzlich; sessions, deren jsonl_path
+  // gesetzt ist, werden direkt darueber gefunden.
+  for (const list of Object.values(byStatus)) {
+    for (const s of list) {
+      if (s.jsonl_path) pathMap.set(s.jsonl_path, s);
+    }
+  }
+  for (const s of byUuid) {
+    if (s.jsonl_path) pathMap.set(s.jsonl_path, s);
+  }
   return {
     byUuid: uuidMap,
     byStatus: new Map(Object.entries(byStatus) as [SessionStatus, SessionRow[]][]),
+    byPath: pathMap,
   };
 }
 
 function callResolver(filePath: string, deps: FakeDeps) {
   return resolveJsonlToSession(filePath, {
+    findByJsonlPath: (p) => deps.byPath.get(p) ?? null,
     findByClaudeSessionId: (uuid) => deps.byUuid.get(uuid) ?? null,
     listByStatus: (status) => deps.byStatus.get(status) ?? [],
   });
@@ -177,6 +192,63 @@ describe('resolveJsonlToSession', () => {
     });
     const deps = makeDeps([], { running: [sessionFallback] });
     const result = callResolver(`${JSONL_DIR_A}\\notes.jsonl`, deps);
+    expect(result?.id).toBe('sess-fb');
+  });
+
+  // --- Phase-2 Season-15: jsonl_path-First-Priority -----------------------
+
+  it('jsonl_path-Match gewinnt gegen UUID-Match (Season-15-First-Stufe)', () => {
+    // Sessions koennen theoretisch beide Felder haben — z.B. nach einem
+    // Backfill-Lauf, der jsonl_path nachgetragen hat. Die Path-Stufe spart
+    // den UUID-Filename-Parse und muss zuerst greifen.
+    const filePath = `${JSONL_DIR_A}\\${UUID_A}.jsonl`;
+    const targetByPath = makeSession({
+      id: 'sess-path',
+      claude_session_id: 'wrong-uuid',
+      jsonl_path: filePath,
+      status: 'running',
+      cwd: 'D:\\Projekte\\TakumiDeck',
+      started_at: 1000,
+    });
+    const decoyByUuid = makeSession({
+      id: 'sess-uuid',
+      claude_session_id: UUID_A,
+      jsonl_path: null,
+      status: 'running',
+      cwd: 'D:\\Projekte\\TakumiDeck',
+      started_at: 2000,
+    });
+    const deps = makeDeps([decoyByUuid], { running: [targetByPath, decoyByUuid] });
+    const result = callResolver(filePath, deps);
+    expect(result?.id).toBe('sess-path');
+  });
+
+  it('faellt auf UUID-Match zurueck, wenn jsonl_path keine Session bindet', () => {
+    const filePath = `${JSONL_DIR_A}\\${UUID_A}.jsonl`;
+    const onlyUuid = makeSession({
+      id: 'sess-uuid-only',
+      claude_session_id: UUID_A,
+      jsonl_path: null,
+      status: 'running',
+      cwd: 'D:\\Projekte\\TakumiDeck',
+      started_at: 1000,
+    });
+    const deps = makeDeps([onlyUuid], { running: [onlyUuid] });
+    const result = callResolver(filePath, deps);
+    expect(result?.id).toBe('sess-uuid-only');
+  });
+
+  it('faellt auf cwd zurueck, wenn weder jsonl_path noch UUID matchen', () => {
+    const fbSession = makeSession({
+      id: 'sess-fb',
+      claude_session_id: null,
+      jsonl_path: null,
+      status: 'running',
+      cwd: 'D:\\Projekte\\TakumiDeck',
+      started_at: 1000,
+    });
+    const deps = makeDeps([], { running: [fbSession] });
+    const result = callResolver(`${JSONL_DIR_A}\\${UUID_B}.jsonl`, deps);
     expect(result?.id).toBe('sess-fb');
   });
 });
