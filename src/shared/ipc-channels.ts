@@ -59,6 +59,11 @@ export const Channels = {
   // hat einen eigenen 30W/52W-Toggle, weil ein 7d-Fenster die Heatmap-Logik
   // zertruemmern wuerde.
   StatsHeatmap: 'stats:heatmap',
+  // Stats (Phase-2 Season-14): Per-Modell-Aufschluesselung fuer die Modelle-
+  // View. Eigener Endpoint parallel zu StatsOverview/StatsHeatmap; konsumiert
+  // den gleichen Scope/Range-Toggle wie die Cards, damit „Zeitfilter analog
+  // zu Uebersicht" (PHASE2.md) ohne zusaetzliche Toggle-Tiefe erfuellt ist.
+  StatsModels: 'stats:models',
 
   // Filesystem (Sprint 6/7)
   FsRead: 'fs:read',

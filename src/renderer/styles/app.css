@@ -1961,6 +1961,144 @@ body,
   text-align: center;
 }
 
+/* ----- Phase-2 Season-14: ModelsView -----
+
+   Per-Modell-Aufschluesselung als zweiter Tab in der Stats-Pane. Layout:
+   - oben Bar-Liste (Modellname | Bar-Track | Prozent | Tokens), eine Reihe
+     pro Modell. Bewusst horizontale CSS-Bars statt 100%-Stack — bei der
+     typischen Verteilung (ein Modell dominiert mit 80–95 %) bleiben kleine
+     Anteile so unterscheidbar.
+   - unten kompakte Tabelle mit allen vier Spalten (Sessions, Tokens, ⌀ pro
+     Session).
+   Bar-Tonungen aus den gleichen color-mix-Stufen wie die Heatmap, damit
+   die Stats-Pane visuell konsistent bleibt. */
+
+.td-models-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.td-models-section-head {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+  margin-bottom: 6px;
+}
+
+.td-models-bars {
+  display: flex;
+  flex-direction: column;
+}
+
+.td-models-bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.td-models-bar-row {
+  display: grid;
+  grid-template-columns: minmax(82px, 110px) minmax(0, 1fr) 52px 64px;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--td-mono);
+  font-size: 11px;
+  color: var(--td-text);
+}
+
+.td-models-bar-name {
+  color: var(--td-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-models-bar-track {
+  position: relative;
+  display: block;
+  height: 10px;
+  background: var(--td-line);
+  border: 1px solid color-mix(in oklch, var(--td-line) 60%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.td-models-bar-fill {
+  display: block;
+  height: 100%;
+  background: color-mix(in oklch, var(--td-accent) 70%, var(--td-line) 30%);
+  transition: width .15s ease-out;
+}
+
+/* Top-Modell bekommt den vollen Accent-Ton — gleiche Geste wie die l4-Stufe
+   der Heatmap. Restliche Modelle bleiben auf der l3-Tonung, damit die
+   Hierarchie auf einen Blick lesbar bleibt. */
+.td-models-bar-row:first-child .td-models-bar-fill {
+  background: var(--td-accent);
+}
+
+.td-models-bar-pct {
+  text-align: right;
+  color: var(--td-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-models-bar-tok {
+  text-align: right;
+  color: var(--td-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-models-table-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.td-models-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--td-mono);
+  font-size: 11px;
+}
+
+.td-models-table thead th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--td-text-mute);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--td-line);
+}
+
+.td-models-table thead th.num,
+.td-models-table tbody td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.td-models-table tbody td {
+  padding: 4px 8px;
+  color: var(--td-text);
+  border-bottom: 1px solid color-mix(in oklch, var(--td-line) 40%, transparent);
+}
+
+.td-models-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.td-models-table tbody tr:hover td {
+  background: color-mix(in oklch, var(--td-bg-3) 70%, transparent);
+}
+
 /* ----- Sprint 5: UsageDetailModal ----- */
 
 .td-modal.td-modal-wide {

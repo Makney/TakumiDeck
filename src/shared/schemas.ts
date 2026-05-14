@@ -422,6 +422,17 @@ export const StatsHeatmapInputSchema = z.object({
   asOf: z.number().int().positive().optional(),
 });
 
+// Phase-2 Season-14 — Modelle-View. Shape ist deckungsgleich mit dem Overview-
+// Input (projectId nullish, Range als Enum, asOf optional fuer Tests). Wir
+// halten das Schema bewusst separat, damit kuenftige Modell-spezifische
+// Optionen (z.B. Min-Token-Threshold, Pagination) hier andocken koennen,
+// ohne den Overview-Channel mitzubelasten.
+export const StatsModelsInputSchema = z.object({
+  projectId: z.string().min(1).nullish(),
+  range: StatsRangeSchema,
+  asOf: z.number().int().positive().optional(),
+});
+
 // --- App / Window-Controls (Sprint 8) --------------------------------
 
 // Whitelist für app:window-action — sperrt die Renderer-Boundary auf genau drei

@@ -114,7 +114,7 @@ GitHub-Style Calendar-Heatmap der letzten 30 Wochen.
 - Hover zeigt Datum + Token-Anzahl
 - Filter: 7d / 30d / Alle
 
-### Feature: Modelle-View
+### Feature: Modelle-View ✅
 
 Per-Modell-Aufschlüsselung als zweiter Tab neben Übersicht.
 

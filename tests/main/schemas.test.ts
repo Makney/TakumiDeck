@@ -8,6 +8,7 @@ import {
   SessionTypeSchema,
   StatsHeatmapInputSchema,
   StatsHeatmapWeeksSchema,
+  StatsModelsInputSchema,
   StatsOverviewInputSchema,
   StatsRangeSchema,
 } from '@shared/schemas';
@@ -254,6 +255,45 @@ describe('StatsHeatmapInputSchema', () => {
     expect(() => StatsHeatmapWeeksSchema.parse(52)).not.toThrow();
     expect(() => StatsHeatmapWeeksSchema.parse(31)).toThrow();
     expect(() => StatsHeatmapWeeksSchema.parse('30')).toThrow();
+  });
+});
+
+// Phase-2 Season-14: StatsModelsInputSchema. Shape ist deckungsgleich mit
+// dem Overview-Input — Scope per nullish-projectId, Range als Enum, asOf
+// optional fuer Tests. Eigener Schema-Block, damit kuenftige Modelle-
+// spezifische Optionen (z.B. Min-Token-Threshold) hier andocken koennen.
+describe('StatsModelsInputSchema', () => {
+  it('akzeptiert range mit projectId', () => {
+    const parsed = StatsModelsInputSchema.parse({ projectId: 'p1', range: 'all' });
+    expect(parsed.projectId).toBe('p1');
+    expect(parsed.range).toBe('all');
+  });
+
+  it('akzeptiert weggelassenes projectId (Global-Scope)', () => {
+    const parsed = StatsModelsInputSchema.parse({ range: '30d' });
+    expect(parsed.projectId).toBeUndefined();
+  });
+
+  it('akzeptiert projectId=null (explizit global)', () => {
+    const parsed = StatsModelsInputSchema.parse({ projectId: null, range: '7d' });
+    expect(parsed.projectId).toBeNull();
+  });
+
+  it('lehnt unbekanntes range ab', () => {
+    expect(() => StatsModelsInputSchema.parse({ range: '14d' })).toThrow();
+  });
+
+  it('lehnt leere projectId ab', () => {
+    expect(() => StatsModelsInputSchema.parse({ projectId: '', range: 'all' })).toThrow();
+  });
+
+  it('akzeptiert optionalen asOf-Stichzeitpunkt', () => {
+    const parsed = StatsModelsInputSchema.parse({
+      projectId: 'p1',
+      range: '7d',
+      asOf: 1_700_000_000_000,
+    });
+    expect(parsed.asOf).toBe(1_700_000_000_000);
   });
 });
 

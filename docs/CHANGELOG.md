@@ -17,6 +17,19 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-14 — Phase 2 Season 14: Modelle-View
+
+### Was jetzt geht
+
+- **Per-Modell-Aufschlüsselung als zweiter Tab in der Stats-Pane.** Klick auf „Modelle" zeigt zwei Blöcke: oben eine horizontale Bar-Liste pro Modell (Modellname · Bar-Track · Prozent · Tokens), unten eine kompakte Tabelle (Modell · Sessions · Tokens · ⌀ pro Session). Das Top-Modell bekommt den vollen Accent-Ton, die restlichen Modelle landen auf der l3-Heatmap-Tonung — Hierarchie ist auf einen Blick lesbar. Sessions-Count ist `COUNT(DISTINCT session_id)` aus `messages`: ein Modell taucht in der Session auf, sobald mindestens eine Message damit lief (passt zum Detail-Pane-Aggregat aus Season 10). NULL-Modelle (Pre-Migration-Backfill-Tail) fliegen raus — keine `(unbekannt)`-Reihe.
+- **Scope/Range-Toggle aus Season 12 wirken jetzt auch auf die Modelle-View.** Header-Toggles werden geteilt: „Aktiv/Global" filtert auf das aktive Projekt bzw. global, „Alle/30d/7d" engt das Zeitfenster ein. Live-Refresh über den bestehenden `usage:update`-Push-Channel mit 600-ms-Debounce, plus Auto-Refresh bei Projekt-Wechsel / Toggle. Empty-State mit Tipp („Scope auf Global oder Range auf Alle"), wenn der aktuelle Filter keine Modell-Daten findet.
+
+### Architektur-Notiz
+
+Variante A/A/A aus drei Achsen. **A1 Daten-Pipeline:** eigener IPC `stats:models` parallel zu `stats:project-overview` und `stats:heatmap`, eigenes `ModelStatsRepository` mit `SqliteModelStatsDriver` (Statement-Cache pro Scope/Range-Kombination) und `InMemoryModelStatsDriver` für Tests, eigener Store-Slot — kein Overview-Erweiterungs-Flag, damit der Cards-Tick die GROUP-BY-Models-Query nicht ungefragt mit auslöst. **A2 Bar-Chart-Stil:** horizontale CSS-Bars pro Modell mit color-mix-Tonungen über `--td-accent` (gleiche Stufen wie die Heatmap), kein 100%-Stack (kleine Anteile verschwinden bei der realen Verteilung, wo ein Modell dominiert) und kein Recharts-BarChart (stilistischer Fremdkörper neben den CSS-Bars aus Sprint 5 und der CSS-Color-Mix-Heatmap aus Season 13). **A3 Toggle-Kopplung:** Scope und Range werden mit den Cards geteilt — Roadmap-Notiz „Zeitfilter analog zu Übersicht" ohne zusätzliche Toggle-Tiefe. Aggregat-Query `GROUP BY model FROM messages WHERE model IS NOT NULL` mit `COUNT(*)`, `COUNT(DISTINCT session_id)`, `SUM(tokens_in+tokens_out)`, Sort `tokens DESC, model ASC`. `tokens_share` und `tokens_per_session` werden im Repository (nicht im Driver) berechnet — Driver bleibt aufs reine SELECT beschränkt, Renderer muss keine Summe nochmal aufaddieren. Renderer-Komponente `ModelsView.tsx` mit eigenem `usage:update`-Listener (Cards/Heatmap haben ihren eigenen Listener im OverviewView — ein gemeinsamer Listener auf StatsPane-Ebene hätte beide Aggregate immer mit aktualisiert, auch wenn der User nur einen Tab sieht). `ModelsPlaceholder` aus Season 13 entfernt. Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md). 18 neue Tests (12 ModelStatsRepository-Aggregate inkl. Cross-Session-Distinct-Count, NULL-Modell-Filter, Range-Cutoff 30d/7d, Scope-Global, Tokens-Total=0-Edge, Sort tokens DESC + Tie-Break model ASC; 6 Schema-Validierung mit nullish-projectId + Range-Enum + asOf-Optional). Typecheck + lint sauber.
+
+---
+
 ## 2026-05-14 — Phase 2 Season 13: Aktivitäts-Heatmap
 
 ### Was jetzt geht

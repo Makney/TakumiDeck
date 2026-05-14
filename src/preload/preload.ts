@@ -33,6 +33,8 @@ import type {
   RendererApi,
   StatsHeatmapInput,
   StatsHeatmapResult,
+  StatsModelsInput,
+  StatsModelsResult,
   StatsOverviewInput,
   StatsOverviewResult,
   SessionArchiveInput,
@@ -204,6 +206,10 @@ const api: RendererApi = {
     heatmap: (input: StatsHeatmapInput) =>
       ipcRenderer.invoke(Channels.StatsHeatmap, input) as Promise<
         IpcResult<StatsHeatmapResult>
+      >,
+    models: (input: StatsModelsInput) =>
+      ipcRenderer.invoke(Channels.StatsModels, input) as Promise<
+        IpcResult<StatsModelsResult>
       >,
   },
 };

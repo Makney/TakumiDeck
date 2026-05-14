@@ -24,6 +24,34 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Modelle-View: Eigener IPC parallel zu stats:project-overview, geteilte Header-Toggles
+
+**Entscheidung:** Die Per-Modell-Aufschlüsselung bekommt einen eigenen IPC `stats:models` parallel zu `stats:project-overview` und `stats:heatmap`. Eigenes `ModelStatsRepository`, eigener Statement-Cache pro Scope/Range-Kombination, eigener Store-Slot mit eigenem `usage:update`-Listener. Scope (Aktiv/Global) und Range (Alle/30d/7d) werden mit den Cards geteilt — kein eigener Toggle in der Modelle-View.
+
+**Varianten:**
+
+- **A** Eigener IPC `stats:models` parallel (gewählt) — saubere Domänen-Trennung, der Cards-Refresh-Tick zieht die Models-Query nicht ungefragt mit.
+- **B** `stats:project-overview` um `models`-Breakdown im Result erweitern. Ein Round-Trip statt zwei, aber jeder Cards-Refresh schleppt das Models-Aggregat mit — und der User-Pfad „nur Übersicht offen" ist der häufigere.
+- **C** Renderer-seitige Aggregation aus dem bestehenden `MessageRepository`. Bricht aus dem Stats-Pattern aus (Main aggregiert, Renderer pullt) und ist bei Power-User-Datensätzen messbar langsamer als SQLite `GROUP BY`.
+
+**Grund:** A folgt dem Pattern aus Season 12/13 — drei Aggregat-Domänen, drei IPCs, jeder mit eigenem Statement-Cache. Das hält den `SqliteModelStatsDriver` aufs reine SELECT beschränkt, vermeidet eine dritte Achse durch alle StatsRepository-Methoden und entlastet den Cards-Refresh-Tick: wer nur die Übersicht offen hat, zahlt die GROUP-BY-Models-Query nicht. B würde A1 aus Season-13 (Heatmap-IPC parallel) konterkarieren, das die gleiche Trennlinie schon einmal gewählt hat. C wäre der einzige Pfad, der ohne IPC-Erweiterung auskäme — opfert aber die im Pattern etablierte Aggregat-Ownership-Trennung und liefert bei vielen Messages spürbar schlechtere Latenz, weil das Renderer-Process keine Index-Nutzung wie SQLite hat.
+
+**Konsequenz:** Die `stats:*`-IPC-Domain ist jetzt eine Familie mit drei Channels (overview/heatmap/models). Wenn Phase 3 weitere Stats-Domänen ergänzt (Easter-Egg-Vergleiche, Multi-Tab-Diff-Stats), wandern sie als weitere Channels in dieselbe Domain. Der `useStatsStore` trägt das mit weiteren State-Slots, solange jeder Slot saubere Setter/Refresh-Methoden behält. Scope/Range-Sharing zwischen Cards und Models ist bewusst — die Roadmap formulierte „Zeitfilter analog zu Übersicht", das wäre durch einen eigenen Range-Toggle in der Models-View redundant geworden.
+
+## Modelle-View: Horizontale CSS-Bars pro Modell, kein 100%-Stack und kein Recharts
+
+**Entscheidung:** Der Bar-Chart in der Modelle-View ist eine horizontale CSS-Bar pro Modell mit color-mix-Tonungen über `--td-accent` (gleiche Stufen wie die Heatmap). Top-Modell bekommt den vollen Accent-Ton, restliche Modelle die l3-Heatmap-Stufe. Kein 100%-Stack-Segment-Bar, kein Recharts.
+
+**Varianten:**
+
+- **A** Horizontale CSS-Bars pro Modell (gewählt) — eine Reihe je Modell, links Modellname, Track mit dem Token-Anteil, rechts Prozent + absolute Tokens.
+- **B** 100%-Stack-Bar mit allen Modellen aneinandergereiht — modern und kompakt in einem Block, aber bei der realen Verteilung (ein Modell dominiert mit 80–95 %) verschwinden die kleinen Segmente unter 5 px und werden nur über Tooltips lesbar.
+- **C** Recharts-BarChart wie die UsageDetailModal-Linie aus Sprint 5. Out-of-the-box Tooltips/Animations, aber visuell ein Fremdkörper neben den CSS-Bars (UsageBar) und der CSS-Color-Mix-Heatmap, die alle ohne Chart-Lib auskommen.
+
+**Grund:** A bleibt für die typische Token-Verteilung (Daily-Driver: ein Modell dominiert klar, ein bis zwei sekundäre Modelle, Long-Tail aus Modell-Wechsel-Experimenten) lesbar — auch kleine Anteile haben einen sichtbaren Track-Restbetrag (`width: max(share*100%, 0.5%)`) plus Inline-Prozent-Wert. B sähe in einer Demo schicker aus, scheitert aber am Daily-Use mit ungleicher Verteilung. C wäre ein zweiter Chart-Stil im Repo — die Sprint-5-Recharts-Linie ist im UsageDetailModal weit weg von der Stats-Pane, hier hätte sie direkt neben der CSS-Color-Mix-Heatmap gesessen. Memory-Hinweis „UX-Defaults konvenient vor traditionell" trug die Wahl nur indirekt: die moderne Variante (100%-Stack) wäre für eine gleichmäßige Verteilung der Empfehlungs-Kandidat gewesen, scheitert aber an der realen Verteilung — Konvenienz schlägt Modernität, wenn die Realität ungleich ist.
+
+**Konsequenz:** Stilistisch konsistent zur Heatmap-Tonung. Das Top-Modell-Hervorheben (voller Accent vs. l3) macht die Hierarchie auf einen Blick lesbar — wer nur den dominanten Modell-Anteil wissen will, braucht nicht erst Prozente zu lesen. Falls die Modelle-View je in eine Phase-3-Ausbaustufe geht (z.B. Modell-Wechsel-Verlauf über Zeit), kann ein zweiter Chart in der gleichen Stats-Pane mit der gleichen color-mix-Tonung andocken.
+
 ## Heatmap: Eigener IPC parallel zu stats:project-overview, nicht Endpoint-Erweiterung
 
 **Entscheidung:** Die Aktivitäts-Heatmap bekommt einen eigenen IPC `stats:heatmap` parallel zu `stats:project-overview` aus Season 12. Eigener Statement-Cache pro Scope im `SqliteHeatmapDriver` (zwei vorbereitete Statements für project/global), eigene Schema-Validierung (`StatsHeatmapInputSchema`), eigener Refresh-Pfad im `useStatsStore`.

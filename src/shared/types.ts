@@ -670,6 +670,49 @@ export interface StatsHeatmapResult {
   generated_at: number;
 }
 
+// Phase-2 Season-14 — Modelle-View. Per-Modell-Aufschluesselung mit Bar-Chart
+// (Token-Anteil) und Tabelle (Modell · Sessions · Tokens · Durchschnitt pro
+// Session). Range + Scope kommen vom geteilten Stats-Header-Toggle (Season 12).
+
+export interface StatsModelsInput {
+  // null oder weggelassen = global ueber alle Projekte.
+  projectId?: string | null;
+  range: StatsRange;
+  asOf?: number;
+}
+
+// Eine Zeile pro Modell. `model` ist die Modell-ID, wie in `messages.model`
+// gespeichert (claude-opus-4-7, claude-sonnet-4-6, ...). NULL-Modelle (Pre-
+// Migration-Backfill-Tail) bleiben raus — der Renderer braucht keine
+// "unbekannt"-Reihe. `sessions` zaehlt DISTINCT session_id der Messages mit
+// diesem Modell, nicht `sessions.current_model` — damit erscheint ein
+// Modell in der Liste, sobald in der Session mindestens eine Message damit
+// lief. Das passt zum Detail-Pane-Aggregat aus Season 10.
+export interface StatsModelBreakdownRow {
+  model: string;
+  messages: number;
+  sessions: number;
+  tokens: number;
+  // Anteil an der Gesamt-Token-Summe der zurueckgegebenen Modelle. 0..1.
+  // Wird vorberechnet, damit der Renderer keine Summe nochmal aufaddieren
+  // muss (und beide Seiten denselben Wert sehen).
+  tokens_share: number;
+  // tokens / sessions, gerundet auf eine Ganzzahl. `null`, wenn `sessions=0`
+  // (sollte bei Aggregat aus Messages nicht vorkommen, defensiv trotzdem).
+  tokens_per_session: number | null;
+}
+
+export interface StatsModelsResult {
+  // Absteigend sortiert nach `tokens`, Tie-Break alphabetisch nach `model`.
+  rows: StatsModelBreakdownRow[];
+  // Summe ueber alle Rows. Renderer kann daraus Empty-State (0) ableiten,
+  // ohne ueber `rows` zu iterieren.
+  tokens_total: number;
+  scope: 'project' | 'global';
+  range: StatsRange;
+  generated_at: number;
+}
+
 export interface UsageWindowInput {
   barId: string;
   asOf?: number;
@@ -792,9 +835,11 @@ export interface RendererApi {
   };
   // Phase-2 Season-12: Stats-Cards aus messages + sessions aggregiert.
   // Phase-2 Season-13: Aktivitaets-Heatmap als zweiter Channel parallel.
+  // Phase-2 Season-14: Per-Modell-Aufschluesselung als dritter Channel.
   stats: {
     overview: (input: StatsOverviewInput) => Promise<IpcResult<StatsOverviewResult>>;
     heatmap: (input: StatsHeatmapInput) => Promise<IpcResult<StatsHeatmapResult>>;
+    models: (input: StatsModelsInput) => Promise<IpcResult<StatsModelsResult>>;
   };
 }
 

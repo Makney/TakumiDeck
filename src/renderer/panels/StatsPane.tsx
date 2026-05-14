@@ -4,8 +4,9 @@ import { useStatsStore, type StatsScope } from '../stores/stats';
 import type { StatsOverviewResult, StatsRange } from '@shared/types';
 import { fmtTokens } from '../components/fmtTokens';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
+import { ModelsView } from '../components/ModelsView';
 
-// StatsPane (Phase-2 Season-12 + Season-13).
+// StatsPane (Phase-2 Season-12 + Season-13 + Season-14).
 //
 // Übersicht-View: acht Aggregat-Karten (Volumen + Verhalten) aus dem Main-
 // Aggregat (stats:project-overview) plus die GitHub-Style Aktivitaets-
@@ -16,8 +17,9 @@ import { ActivityHeatmap } from '../components/ActivityHeatmap';
 // Heatmap-Komponente, weil ein 7d-Range-Cut die Heatmap zertruemmern
 // wuerde.
 //
-// Modelle-View bleibt vorerst Phase-2-Hinweis — kommt in der naechsten Season
-// (siehe PHASE2.md, "Modelle-View").
+// Modelle-View (Season 14): Per-Modell-Aufschluesselung mit Token-Anteil-
+// Bars + Detail-Tabelle. Verwendet Scope+Range vom geteilten Header-Toggle,
+// kein eigener Filter.
 
 type View = 'overview' | 'models';
 
@@ -85,7 +87,7 @@ export function StatsPane() {
         </div>
       </header>
       <div className="td-dash-body">
-        {view === 'overview' ? <OverviewView /> : <ModelsPlaceholder />}
+        {view === 'overview' ? <OverviewView /> : <ModelsView />}
       </div>
     </section>
   );
@@ -197,17 +199,6 @@ function OverviewView() {
         onWeeksChange={setHeatmapWeeks}
         error={heatmapError}
       />
-    </div>
-  );
-}
-
-function ModelsPlaceholder() {
-  return (
-    <div className="td-stats-placeholder">
-      <p>In Phase 2 verfügbar</p>
-      <p className="td-stats-placeholder-meta">
-        Per-Modell-Aufschlüsselung kommt mit der nächsten Season (siehe roadmap/PHASE2.md).
-      </p>
     </div>
   );
 }
