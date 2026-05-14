@@ -553,6 +553,51 @@ function UsageTab({
         </div>
       </Field>
 
+      {/* Phase-2 Season-8: Soft-Warning fuer die persoenliche Erfahrungsgrenze.
+          Setzt einen Marker an der Per-Session-Kontext-Bar und toent die Bar
+          dezent ein, sobald die Auslastung den Wert ueberschreitet — unabhaengig
+          von den globalen gelb/orange/rot-Stufen oben (= harte Limit-Naehe). */}
+      <Field
+        label="Kontext-Soft-Warning"
+        hint="Persoenliche Erfahrungsgrenze fuer die ctx-Bar in der Action-Bar. Default 20 % — empirisch der Punkt, ab dem die Output-Qualitaet in langen Sessions spuerbar nachlaesst."
+      >
+        <div className="td-settings-grid">
+          <label className="td-settings-grid-row">
+            <span className="td-settings-grid-label">Aktiv</span>
+            <input
+              type="checkbox"
+              className="td-settings-input td-settings-input--narrow"
+              checked={settings.context_soft_warning.enabled}
+              onChange={(e) =>
+                setField('context_soft_warning', {
+                  ...settings.context_soft_warning,
+                  enabled: e.target.checked,
+                })
+              }
+            />
+          </label>
+          <label className="td-settings-grid-row">
+            <span className="td-settings-grid-label">Schwellwert (%)</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              className="td-settings-input td-settings-input--narrow"
+              value={settings.context_soft_warning.threshold_percent}
+              disabled={!settings.context_soft_warning.enabled}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isFinite(n) || n < 0 || n > 100) return;
+                setField('context_soft_warning', {
+                  ...settings.context_soft_warning,
+                  threshold_percent: n,
+                });
+              }}
+            />
+          </label>
+        </div>
+      </Field>
+
       <Field
         label="Plannutzungs-Bars (Raw JSON)"
         hint={

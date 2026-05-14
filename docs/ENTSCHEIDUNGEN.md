@@ -24,6 +24,42 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Kontext-Soft-Warning: Marker an der ctx-Bar + Tooltip statt Pille oder Toast
+
+**Entscheidung:** Die persönliche Erfahrungsgrenze für die Per-Session-Kontext-Bar (Default 20 %, im Settings-Tab Token-Tracking konfigurierbar und per Toggle abschaltbar) wird als visueller Marker direkt an der `ctx`-Bar in der Action-Bar gerendert plus einer vierten, dezenten Tonungs-Stufe `soft` (gedämpfter `--td-blue`-Hinweis), sobald die Auslastung den Marker überholt. Der Hinweis-Text „Kontext über X % — Output-Qualität kann sinken" sitzt im `title`-Tooltip der Bar.
+
+**Varianten:**
+
+- **A** Marker an der Bar + soft-Tonung + Tooltip-Text (gewählt). Permanente Distanz-Anzeige zur Schwelle, Hinweis-Text on demand. Kein neuer UI-Slot, kein Layout-Sprung beim Überschreiten.
+- **B** Eigene „⚠ Kontext > X %"-Pille unter der Action-Bar, sobald die Schwelle gerissen ist. Ohne Hover sichtbar, aber kein permanenter „wie weit weg"-Marker — User sieht nur „drüber/drunter". Layout springt im Moment des Überschreitens.
+- **C** Einmaliger Toast unten rechts beim ersten Überschreiten pro Session. Maximal unaufdringlich, aber die explizit gewünschte Distanz-Anzeige fehlt komplett, und die Toast-Infrastruktur existiert noch nicht — Neu-Bau für ein dezentes Signal ist Overkill.
+
+**Grund:** A liefert beides — die permanente Distanz-Anzeige (User-Wunsch: „Eine kleine Markierung wäre gut in der Leiste") UND den sanften Hinweis-Text — ohne Layout-Slot zu kosten und ohne neue UI-Infrastruktur. B verliert den Distanz-Aspekt, C dazu noch den permanenten Charakter. Der Marker selbst ist 2 px breit und ragt 2 px über und unter die 4-px-Bar hinaus (effektiv 8 px hoch); helles Off-White (`rgba(255,255,255,0.7)`) hält ihn auf jedem Fill-Ton sichtbar, `z-index: 1` über dem Fill macht ihn auch bei Überschreitung erkennbar. Erste Iteration mit 1 px Breite, gedämpftem Grau und ohne `z-index` war zu schwach — User-Feedback hat das direkt bestätigt, der Fix war eine reine CSS-Änderung (kein Schema-/Logik-Touch).
+
+**Konsequenz:** Die Soft-Tonungs-Stufe `soft` ist eine eigene Vokabel neben Default / `warn` / `orange` / `red`. Sie sitzt absichtlich unter der Default-Yellow-Schwelle (User-Setting → bei Default 20 % vs. yellow 70 %); überschneidet sich also nicht mit dem etablierten Limit-Naehe-Alarm. Wenn jemand die Soft-Schwelle über die Yellow-Schwelle setzt, gewinnt immer die stärkere Tonung (`red > orange > warn > soft > Default`). Toggle = aus blendet Marker und Tonung komplett aus, die Yellow/Orange/Red-Logik bleibt unberührt — der User kann das Feature also einfach abschalten, falls es im Daily-Use stört, ohne andere Token-UI zu verlieren.
+
+**Implementierungsdetail:** `overflow: hidden` auf `.td-ctx-bar` ist im Zuge der Marker-Sichtbarkeit weggefallen, damit der Marker oben/unten überstehen darf. Der Fill bekommt jetzt selbst `border-radius: 1px` (Inner-Radius < Outer-Radius), damit die abgerundeten Bar-Ecken visuell weiter sauber bleiben — gleicher Effekt wie zuvor mit `overflow: hidden`, aber ohne den Marker mitzuclippen. Marker-Triggered-Zustand markiert nur ein zusätzlicher blauer Halo via `box-shadow` — die Kern-Farbe bleibt neutral, weil der Marker eine *Position* markieren soll, nicht selber ein Alarm-Signal sein. Soft-Tonung selbst übernimmt das Alarm-Signal über die Fill-Farbe.
+
+---
+
+## JSONL-Watcher-Resolver: UUID-First mit cwd-Fallback statt nur cwd-Match
+
+**Entscheidung:** Der JSONL-Watcher mappt Events primär über die claude-eigene Session-UUID aus dem JSONL-Dateinamen gegen `sessions.claude_session_id` und greift nur dann auf den bestehenden cwd-Encoded-Match auf `running`/`idle`-Sessions zurück, wenn für die UUID keine TakumiDeck-Session bekannt ist. Die Resolver-Logik ist als pure Funktion `resolveJsonlToSession(filePath, deps)` aus dem `JsonlWatcher` extrahiert; die `private`-Methode wickelt sie nur noch in die Repo-Calls ein.
+
+**Varianten:**
+
+- **A** UUID-First-Match mit cwd-Fallback (gewählt). Deterministisch, status-agnostisch, unabhängig vom aktiven Tab.
+- **B** Aktive Session als „Hint" aus dem Renderer an den Watcher schicken; bei Ambiguität bevorzugt der Watcher die Hint-Session. Hätte einen neuen IPC-Channel plus Coupling UI-State ↔ JSONL-Pipeline gefordert — verletzt die Sprint-5-Architektur (Watcher kennt UI nicht), und ein Tab-Wechsel mitten in einem JSONL-Write erzeugt Race-Conditions.
+- **C** Mapping-Cache `filePath → sessionId` im Watcher, befüllt vom ersten Match (egal welcher Heuristik); Folge-Events lesen aus dem Cache. Macht den ersten Match permanent — ein Fehl-Match (jüngste-Session-Heuristik liegt daneben) wird damit dauerhaft verewigt.
+
+**Grund:** A nutzt eine Datenverbindung, die im System bereits existiert: `claude_session_id` wird seit Sprint-6-Hotfix beim `pty:create` direkt befüllt (`--session-id <id>`) und vom Backfill-Pfad im Watcher (`backfillClaudeSessionId`) für Legacy-Sessions nachgeholt — sie ist also für 99 % der laufenden Sessions sofort verfügbar, und der Backfill-Pfad räumt den Rest auf, sobald der Watcher die JSONL einmal gesehen hat. Damit ist das Mapping JSONL-Datei → TakumiDeck-Session 1:1 und deterministisch. Die alte cwd-Match-Heuristik („gewinne die `started_at`-jüngste Session im selben Projekt-Pfad") war ein Sprint-5-Provisorium, das funktionierte solange nur eine Session pro Projekt gleichzeitig lief — sobald mehrere Tabs im selben Pfad laufen (mehrere Seasons parallel), spiegelte die Per-Session-Kontext-Anzeige fremde Tokens in den aktiven Tab. Variante B verschiebt das Problem nur auf eine andere Kopplungs-Achse und bricht die Architektur-Trennung; Variante C konserviert das alte Falsch-Match-Risiko statt es zu eliminieren.
+
+**Konsequenz:** Der cwd-Fallback bleibt erhalten und ist der einzige Pfad für „externe" Sessions, die claude ohne TakumiDeck geschrieben hat (kein Spawn-IPC durchlaufen, kein Backfill noch nicht angefasst). Das ist genau der ursprüngliche Use-Case der Heuristik aus Sprint 5 und schadet nicht — er greift nur, wenn der UUID-Lookup leer zurückkommt. Status-Filter beim Fallback bleibt `running` + `idle` (Live-Tracking-Pfad), beim UUID-Match dagegen status-agnostisch — so trifft auch ein Token-Push während einer resumed-completed-Session die richtige Session.
+
+**Implementierungsdetail:** `findByClaudeSessionId` ist eine neue Repo-Methode mit SQLite-`ORDER BY started_at DESC LIMIT 1`-Statement (Tie-Break auf die jüngste, falls per Konstruktion mal zwei Sessions dieselbe UUID hätten — sollte nie passieren, aber Defense-in-Depth) und einer entsprechenden InMemory-Driver-Implementierung für Tests. Die Resolver-Logik ist als pure Funktion mit injizierten Repo-Methoden (`findByClaudeSessionId`, `listByStatus`) testbar — `tests/main/jsonl-resolver.test.ts` deckt sieben Fälle ab (UUID-Win-gegen-juengste-cwd-Session, Status-Agnostik, Fallback-Aktivierung, Tie-Break im Fallback, Non-UUID-Filename, leere Kandidaten).
+
+---
+
 ## Projekt entfernen: Hover-Trash + Modal statt Kontextmenü, Hard-Delete + Bulk-Remap statt Soft-Archive
 
 **Entscheidung:** „Projekt aus Liste entfernen" wird durch ein Hover-Trash-Icon im Sidebar-Eintrag getriggert und durch ein eigenes Bestätigungs-Modal mit Doppel-Confirm vollzogen. Server-seitig löscht der neue IPC `project:remove` die `projects`-Row tatsächlich (kein `archived`-Flag) und hängt vorher alle Sessions und ihre `messages`-Rows in einer better-sqlite3-Transaction auf den Default-Bucket um.

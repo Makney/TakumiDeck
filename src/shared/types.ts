@@ -54,6 +54,16 @@ export interface AppSettings {
     orange: number;
     red: number;
   };
+  // Phase-2 Season-8 (Soft-Warning): zusaetzlicher persoenlicher Schwellwert
+  // an der Per-Session-Kontext-Bar (Action-Bar-ctx-Slot). Marker + dezente
+  // Tonung, sobald die Auslastung den Wert ueberschreitet — unabhaengig von
+  // den globalen yellow/orange/red-Stufen oben (die schalten ab 70 % etc.).
+  // `threshold_percent` ist die User-Erfahrungsgrenze (Default 20 %).
+  // `enabled=false` blendet Marker und Tonung komplett aus.
+  context_soft_warning: {
+    enabled: boolean;
+    threshold_percent: number;
+  };
   terminal_font_family: string;
   terminal_font_size: number;
   theme: 'dark' | 'light';

@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 9 — 20 %-Kontext-Soft-Warning
+
+**Ziel:** Phase-2-Roadmap-Eintrag „20 %-Kontext-Soft-Warning" produktiv machen. Konfigurierbarer Schwellwert (Default 20 %) an der Per-Session-Kontext-Bar, dezenter Hinweis bei Überschreitung, Settings-Toggle zum Abschalten, plus eine kleine Markierung in der Bar, die die Distanz zum Schwellwert zeigt. User hat in den Hinweisen explizit den Nebenfund mit-bestellt: aktuelle Kontext-Anzeige misst gegen die `started_at`-jüngste Session statt die im Terminal sichtbare — das mit-fixen.
+
+**Ergebnis:** Variante 1A (Marker an der ctx-Bar + soft-Tonung + Tooltip-Text) und 2A (UUID-First-Match mit cwd-Fallback) gewählt und umgesetzt. Soft-Warning hängt am neuen `AppSettings.context_soft_warning`-Feld (Schema + Default + Settings-UI), `ContextSlot` in der Action-Bar rendert Marker und vierte Tonungs-Stufe `soft` (gedämpfter `--td-blue`). Watcher-Resolver ist als pure Funktion `resolveJsonlToSession` extrahiert; neue Repo-Methode `findByClaudeSessionId` mit SQLite-Statement + InMemory-Driver-Impl. 14 neue Tests (8 Resolver, 4 Repo-Lookup, 2 Schema-Validierung), typecheck + lint + vier betroffene Test-Files grün (67 Tests passed in der Auswahl). Erste Marker-Iteration mit 1 px Breite, gedämpftem Grau und ohne `z-index` war für den User zu schwach — Fix war eine reine CSS-Änderung (2 px breit, 8 px hoch via Überstand, Off-White, `z-index: 1` über dem Fill, blauer Halo bei Trigger). Kein TECH_SCHULDEN-Eintrag — keine bewussten Shortcuts.
+
+**Gut gelaufen:**
+
+- **Zwei orthogonale Varianten-Sets vor dem ersten Edit.** UI-Variante (1A/B/C) und Architektur-Variante (2A/B/C) jeweils separat präsentiert, jeweils mit Empfehlung — User-Entscheidung „Setze deine Empfehlungen um" lief als ein einziger Klick durch, danach komplette Implementierung ohne Rückfragen. Die Auftrennung in zwei Achsen hat sich an dieser Stelle gelohnt, weil die UI-Form und der Backend-Bug-Fix konzeptionell unabhängig waren — eine 9er-Kombinatorik hätte den User unnötig in die Entscheidungs-Falle geschickt.
+- **Pure Resolver-Funktion mit injizierten Deps macht den Test trivial.** Statt einen kompletten `JsonlWatcher` mit chokidar-Setup und Repo-Stub zu bauen, ist `resolveJsonlToSession(filePath, { findByClaudeSessionId, listByStatus })` direkt testbar mit zwei Fake-Funktionen. Acht Test-Cases in einer kleinen Datei (`tests/main/jsonl-resolver.test.ts`), keine Test-Infrastruktur-Vorarbeit. Memory-Hinweis „Pure-Logik-Util mit Driver-Injection" trägt das Pattern hier sauber.
+- **User-Visual-Feedback hat den ersten Marker-Entwurf entlarvt.** Erste Iteration war 1 px breit, gedämpftes Grau, kein `z-index` — auf dem Screenshot war der Marker unter dem Fill kaum zu erkennen, geschweige denn nach Überschreitung. User hat das direkt visuell gemeldet, Fix war eine reine CSS-Änderung (kein Logik-/Schema-/Test-Touch). Lehre bestätigt: bei sichtbaren UI-Elementen ein zweiter Pass mit Screenshot-Vergleich nach der Erst-Implementierung ist Pflicht — typecheck/lint/tests sagen nichts über visuelle Erkennbarkeit aus.
+
+**Gebremst durch:**
+
+- **Erster Marker-Entwurf zu zurückhaltend.** Reflex war „dezent" → 1 px Strich, gedämpftes `--td-text-mute`-Grau, `overflow: hidden` auf der Bar (Marker bekam dadurch keine Höhe über die 4-px-Bar hinaus, und kein `z-index` über dem Fill). Resultat: kaum sichtbar. Lehre: „dezent" bei einem Marker meint *Farbe und Größe gegenüber dem Fill*, nicht *unter die Wahrnehmungsschwelle*. Bei einer 4-px-hohen Bar braucht der Marker eigene visuelle Anker (Überstand + heller Ton + z-index), sonst geht er im Fill unter. Roundtrip mit dem User hat das in einem einzigen Korrektur-Edit beigebogen.
+- **Vergessen, das neue Settings-Pflichtfeld im Test-Fixture mitzuziehen.** Erste Typecheck nach dem Schema-Update hat in `tests/main/usage-aggregation.test.ts` einen Compile-Error geliefert (`Type '...' is not assignable to type 'AppSettings'` — `context_soft_warning` fehlt). Eine Sekunde an der falschen Stelle gespart: ich hätte beim Edit des `AppSettings`-Typs gleich nach allen Test-Fixtures grepen können (`token_warning_thresholds`-Match wäre der minimale Suchstring). Lehre: jedes neue Pflichtfeld auf einer Shared-Type → grep nach einer Nachbar-Property in den Tests, bevor der Typecheck angeschossen wird.
+
+**Für nächste Season:**
+
+- Die soft-Tonung ist als vierte Stufe neben Default/`warn`/`orange`/`red` in `ContextSlot` ein lokaler Sonderfall — die `UsageBar` (Plannutzungs-Bars in der PlanPane) hat den gleichen `tone`-Schema-Mechanismus, aber kein Soft-Warning-Feld. Wenn das Feature im Daily-Use hilfreich ist und auf die Plannutzungs-Bars übertragen werden soll, wäre der Schritt: Soft-Warning-Settings pro Bar (oder global) plus dieselbe Marker/Tonungs-Logik in `UsageBar.tsx` — bewusst nicht in dieser Season mitgenommen, weil die User-Beobachtung sich auf die Per-Session-Kontext-Bar bezog.
+- Der Watcher-Resolver-Fix ist eine Korrektur einer Sprint-5-Heuristik, die im Daily-Use mit mehreren parallelen Sessions im selben Projekt zum Problem wurde. Wenn die Sprint-5-Architektur weitere ähnliche Heuristiken hat (z.B. cwd-basiertes Token-Aggregat-Routing in `usage_buckets`), lohnt sich ein zweiter Pass — aktuell nicht akut, aber „cwd-Match als Sprint-5-Provisorium" ist jetzt als Pattern auf dem Radar.
+- ContextSlot ist inzwischen ein nicht-trivialer inline-Block in `TabContainer.tsx` (Marker-Logik, Tone-Switch, Tooltip-Text-Composing). Wenn die nächste Phase-2-Season eine fünfte Tonungs-Stufe oder einen zweiten Marker (z.B. Branch-Specific-Limit) bringt, ist die Auslagerung in eine eigene Komponente `src/renderer/components/ContextSlot.tsx` günstiger als weitere Inline-Conditionals — heute aber nicht vorbauen, weil der Block noch übersichtlich ist.
+
+---
+
 ## Phase 2 Season 8 — Projekt entfernen
 
 **Ziel:** Phase-2-Roadmap-Eintrag „Projekt entfernen" produktiv machen. Sidebar-Action mit Bestätigungs-Dialog, neuer IPC `project:remove`, Sessions des entfernten Projekts wandern auf den Default-Bucket (Gegenrichtung zum Sprint-4-Remap), Default-Bucket selbst ist immutable. Spec ließ den UI-Trigger offen („Rechtsklick oder Hover-Trash-Icon").

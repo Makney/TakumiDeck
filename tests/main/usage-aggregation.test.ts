@@ -32,6 +32,7 @@ function buildSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     limit_bars: [],
     p90_window_hours: 192,
     token_warning_thresholds: { yellow: 70, orange: 85, red: 95 },
+    context_soft_warning: { enabled: true, threshold_percent: 20 },
     terminal_font_family: 'JetBrains Mono',
     terminal_font_size: 13,
     theme: 'dark',

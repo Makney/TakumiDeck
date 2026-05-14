@@ -208,25 +208,23 @@ export class JsonlWatcher {
     }
   }
 
-  // Mapping claude-cwd-Encoding → TakumiDeck-Session.
-  // Wir nehmen alle running/idle-Sessions, encoden ihren cwd nach claude-codes
-  // Schema (`:/\\` → `-`) und vergleichen mit dem encoded-cwd des JSONL-Eltern-
-  // Ordners. Bei Mehrfach-Treffer (mehrere Sessions im selben Projekt) gewinnt
-  // die jüngste (höchstes started_at) — das ist die mit hoher Wahrscheinlichkeit
-  // gerade aktive.
+  // Mapping JSONL-Datei → TakumiDeck-Session (Phase-2-Season-8-Variante A).
+  //
+  // Wir gehen primaer ueber die claude-eigene Session-UUID, die im JSONL-Filename
+  // steckt: das Spawn-Pfad-IPC `pty:create` setzt `--session-id <id>` und schreibt
+  // dieselbe UUID gleich in `sessions.claude_session_id`; der Backfill-Pfad oben
+  // (`backfillClaudeSessionId`) holt diese Spalte fuer Legacy-Sessions nach,
+  // bevor `resolveTakumiSession` lookt. Match ueber UUID ist deterministisch und
+  // unterscheidet sauber zwischen mehreren parallelen Sessions im selben cwd.
+  //
+  // Fallback fuer "externe" Sessions, die claude ohne TakumiDeck-Spawn geschrieben
+  // hat und fuer die noch keine UUID-Verknuepfung existiert: der bisherige
+  // cwd-Encoded-Match auf running/idle-Sessions, mit Tie-Break = juengste.
   private resolveTakumiSession(filePath: string): SessionRow | null {
-    const folderEncoded = encodedCwdFromJsonlPath(filePath);
-    if (!folderEncoded) return null;
-    const candidates = [
-      ...this.deps.sessions.listByStatus('running'),
-      ...this.deps.sessions.listByStatus('idle'),
-    ];
-    let best: SessionRow | null = null;
-    for (const session of candidates) {
-      if (encodeCwd(session.cwd) !== folderEncoded) continue;
-      if (!best || session.started_at > best.started_at) best = session;
-    }
-    return best;
+    return resolveJsonlToSession(filePath, {
+      findByClaudeSessionId: (uuid) => this.deps.sessions.findByClaudeSessionId(uuid),
+      listByStatus: (status) => this.deps.sessions.listByStatus(status),
+    });
   }
 
   // Sprint-6-Hotfix: rückwirkend claude_session_id für Sessions ohne UUID setzen.
@@ -273,4 +271,36 @@ export class JsonlWatcher {
 // Default-Watch-Pfad. claude-code schreibt nach ~/.claude/projects/.
 export function defaultClaudeProjectsPath(): string {
   return path.join(os.homedir(), '.claude', 'projects');
+}
+
+// Phase-2 Season-8: pure JSONL→Session-Resolver mit injizierten Repo-Methoden,
+// damit Tests die Logik ohne kompletten JsonlWatcher-Aufbau pruefen koennen.
+export interface JsonlResolverDeps {
+  findByClaudeSessionId: (uuid: string) => SessionRow | null;
+  listByStatus: (status: SessionRow['status']) => SessionRow[];
+}
+
+export function resolveJsonlToSession(
+  filePath: string,
+  deps: JsonlResolverDeps,
+): SessionRow | null {
+  // 1. UUID-First: deterministisch ueber claude_session_id.
+  const claudeUuid = claudeUuidFromJsonlPath(filePath);
+  if (claudeUuid) {
+    const direct = deps.findByClaudeSessionId(claudeUuid);
+    if (direct) return direct;
+  }
+  // 2. Fallback: cwd-Encoded-Match auf live-Sessions (Externe / Pre-Backfill).
+  const folderEncoded = encodedCwdFromJsonlPath(filePath);
+  if (!folderEncoded) return null;
+  const candidates = [
+    ...deps.listByStatus('running'),
+    ...deps.listByStatus('idle'),
+  ];
+  let best: SessionRow | null = null;
+  for (const session of candidates) {
+    if (encodeCwd(session.cwd) !== folderEncoded) continue;
+    if (!best || session.started_at > best.started_at) best = session;
+  }
+  return best;
 }

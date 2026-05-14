@@ -284,6 +284,7 @@ export function TabContainer({ settings }: Props) {
             model={activeTab.model}
             status={activeTab.status}
             warnThresholds={settings.token_warning_thresholds}
+            softWarning={settings.context_soft_warning}
             canCommit={activeProject !== null}
             triggerPhrases={activeProjectFrontmatter?.workbench.trigger_phrases ?? null}
             onOpenTemplates={() => setShowTemplatesModal(true)}
@@ -441,6 +442,10 @@ interface ActionBarProps {
   model: string;
   status: SessionStatus;
   warnThresholds: AppSettings['token_warning_thresholds'];
+  // Phase-2 Season-8: Soft-Warning fuer die persoenliche Erfahrungsgrenze.
+  // Aus, wenn `enabled=false` — dann rendert ContextSlot weder Marker
+  // noch die zusaetzliche soft-Tonung.
+  softWarning: AppSettings['context_soft_warning'];
   // false → commit-Pill ist disabled (kein aktives Projekt → kein Trigger sinnvoll).
   canCommit: boolean;
   // Phase-2 Season-3: Trigger-Phrasen aus dem CLAUDE.md-Frontmatter. null, wenn
@@ -456,6 +461,7 @@ function ActionBar({
   model,
   status,
   warnThresholds,
+  softWarning,
   canCommit,
   triggerPhrases,
   onOpenTemplates,
@@ -515,7 +521,11 @@ function ActionBar({
       {/* Sprint 9 (C1) — Per-Session-Kontext-„Glance"-Slot zwischen Pillen
           und Status (Vorlage components.jsx 183-189). PlanPane behält die
           ausführliche Kontext-Bar; hier nur die kompakte Inline-Variante. */}
-      <ContextSlot sessionId={sessionId} thresholds={warnThresholds} />
+      <ContextSlot
+        sessionId={sessionId}
+        thresholds={warnThresholds}
+        softWarning={softWarning}
+      />
       <span className="td-term-bar-status">{STATUS_LABEL[status]}</span>
     </div>
   );
@@ -524,6 +534,7 @@ function ActionBar({
 interface ContextSlotProps {
   sessionId: string;
   thresholds: AppSettings['token_warning_thresholds'];
+  softWarning: AppSettings['context_soft_warning'];
 }
 
 // Sprint 9 (C1) — kompakter Per-Session-Context-Slot in der Action-Bar.
@@ -535,7 +546,7 @@ interface ContextSlotProps {
 // kein per-session-Initial-Fetch mehr (war an die alte ContextBar in der
 // PlanPane gekoppelt). Wir ziehen den first-load hier nach — read-only
 // IPC, kein useRef-Guard nötig (Memory: Guard nur für Server-Mutationen).
-function ContextSlot({ sessionId, thresholds }: ContextSlotProps) {
+function ContextSlot({ sessionId, thresholds, softWarning }: ContextSlotProps) {
   const session = useUsageStore((s) => s.contextBySession[sessionId] ?? null);
   const refreshContext = useUsageStore((s) => s.refreshContext);
   useEffect(() => {
@@ -546,12 +557,27 @@ function ContextSlot({ sessionId, thresholds }: ContextSlotProps) {
   // „0 Tokens nach Spawn", damit der Slot dezent bleibt, bis echte Werte
   // einlaufen.
   const isEmpty = !session || session.tokens.total === 0;
+  // Phase-2 Season-8: Marker-Position clamped, falls der User einen un-
+  // ueblichen Wert (z.B. 150) eingibt — der Schwellwert wird per Schema
+  // auf 0..100 begrenzt, aber Defense-in-Depth schadet nicht.
+  const softMarkerVisible =
+    softWarning.enabled &&
+    softWarning.threshold_percent > 0 &&
+    softWarning.threshold_percent < 100;
+  const softMarkerPos = Math.max(0, Math.min(100, softWarning.threshold_percent));
   if (!session) {
     return (
       <div className="td-ctx empty" aria-label="Kontext-Auslastung">
         <span className="td-ctx-label">ctx</span>
         <div className="td-ctx-bar">
           <div className="td-ctx-fill" style={{ width: '0%' }} />
+          {softMarkerVisible && (
+            <div
+              className="td-ctx-marker"
+              style={{ left: `${softMarkerPos}%` }}
+              aria-hidden
+            />
+          )}
         </div>
         <span className="td-ctx-value empty">—</span>
       </div>
@@ -559,6 +585,12 @@ function ContextSlot({ sessionId, thresholds }: ContextSlotProps) {
   }
   const percent = Math.max(0, session.percent);
   const clamped = Math.min(percent, 100);
+  // Phase-2 Season-8: vierte Tonungs-Stufe „soft" zwischen Default und gelb.
+  // Greift nur, wenn die Soft-Warning eingeschaltet ist und die etablierten
+  // yellow/orange/red-Schwellen noch nicht gerissen wurden — sonst zeigen
+  // wir den staerkeren Ton.
+  const softTriggered =
+    softWarning.enabled && percent >= softWarning.threshold_percent;
   const tone =
     percent >= thresholds.red
       ? 'red'
@@ -566,17 +598,34 @@ function ContextSlot({ sessionId, thresholds }: ContextSlotProps) {
         ? 'orange'
         : percent >= thresholds.yellow
           ? 'warn'
-          : '';
+          : softTriggered
+            ? 'soft'
+            : '';
   const used = fmtTokens(session.tokens.total);
   const limit = fmtTokens(session.limit);
+  // Tooltip: Basis-Info plus Soft-Warning-Hinweis, sobald die Schwelle
+  // erstmals gerissen ist. Wortlaut absichtlich dezent („kann sinken")
+  // statt alarmistisch — der harte Alarm sitzt weiterhin auf yellow/orange/red.
+  const baseTitle =
+    `${Math.round(session.tokens.total).toLocaleString()} / ${Math.round(session.limit).toLocaleString()} Tokens · ${percent.toFixed(0)} %`;
+  const title = softTriggered
+    ? `${baseTitle}\nKontext ueber ${softWarning.threshold_percent} % — Output-Qualitaet kann sinken.`
+    : baseTitle;
   return (
     <div
       className={`td-ctx${isEmpty ? ' empty' : ''}`}
-      title={`${Math.round(session.tokens.total).toLocaleString()} / ${Math.round(session.limit).toLocaleString()} Tokens · ${percent.toFixed(0)} %`}
+      title={title}
     >
       <span className="td-ctx-label">ctx</span>
       <div className="td-ctx-bar">
         <div className={`td-ctx-fill ${tone}`} style={{ width: `${clamped}%` }} />
+        {softMarkerVisible && (
+          <div
+            className={`td-ctx-marker${softTriggered ? ' triggered' : ''}`}
+            style={{ left: `${softMarkerPos}%` }}
+            aria-hidden
+          />
+        )}
       </div>
       <span className={`td-ctx-value${isEmpty ? ' empty' : ''}`}>{used} / {limit}</span>
     </div>

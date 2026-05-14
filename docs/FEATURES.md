@@ -170,7 +170,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
-| `20%-Kontext-Soft-Warning`           | ⛔      | Konfigurierbarer Schwellwert, Settings-Toggle |
+| `20%-Kontext-Soft-Warning`           | ✅      | 2026-05-14 (Phase-2-Season-9) — Settings-Toggle + Schwellwert-Input (Default 20 %) im Token-Tracking-Tab. Marker an der Per-Session-Kontext-Bar in der Action-Bar (2 px breit, ragt 2 px über und unter die Bar, Off-White) zeigt permanent die Distanz zur Schwelle; ab Überschreitung wechselt die Bar auf vierte Tonungs-Stufe `soft` (`--td-blue`, sitzt zwischen Default-Grün und der bestehenden Gelb-Schwelle), Marker bekommt einen blauen Halo via `box-shadow`. Tooltip um „Kontext über X % — Output-Qualität kann sinken" erweitert. Nebenfund mit-gehoben: JSONL-Watcher matcht jetzt primär über die claude-eigene Session-UUID (`sessions.claude_session_id`) statt ausschließlich via cwd-Encoded-Folder — bei mehreren parallelen Sessions im selben Projekt landet der Kontext nicht mehr auf der `started_at`-jüngsten Session, sondern auf der tatsächlich gemeinten. |
 | `Modell-Filter im Verlauf-Panel`     | ⛔      | Ergänzt Phase-1-Filter um `current_model` |
 
 ### Stats & Heatmap (Phase 2)
@@ -231,4 +231,4 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 - **Ein Feature pro Zeile.** Zu grobe Zeilen verlieren ihre Aussagekraft.
 - **Bereiche** orientieren sich an Sprints/Roadmap.
 - **Fertige Features** werden *nicht* aus der Tabelle entfernt — ✅-Markierung bleibt als Referenz, zusammen mit Datum in der Bemerkung.
-- Phase-2- und Phase-3-Features werden hier ergänzt, sobald Phase 1 abgeschlossen ist (= alle Einträge oben ✅).
+- Phase-3-Features werden hier ergänzt, sobald Phase 2 abgeschlossen ist (= alle Einträge oben ✅).

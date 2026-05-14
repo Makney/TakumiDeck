@@ -59,6 +59,14 @@ export interface SessionDbDriver {
   // die {{LETZTE_SEASON_NAME}}-Variable zu befuellen. null, wenn das Projekt
   // noch keine erfolgreich gelandete Season hat.
   findLastCompletedFeatureSession(projectId: string): SessionRow | null;
+  // Phase-2 Season-8 (Watcher-Resolver-Fix): Lookup ueber die JSONL-UUID, damit
+  // der JSONL-Watcher Events deterministisch der richtigen TakumiDeck-Session
+  // zuordnet. Vorher loeste der Watcher nur ueber `cwd`-Encoding auf — bei mehreren
+  // parallelen Sessions im selben Projekt-Pfad gewann die juengste, was bei
+  // mehreren offenen Seasons die Kontext-Anzeige auf den falschen Tab schickte.
+  // Status-agnostisch, weil auch completed/interrupted-Sessions waehrend des Resume
+  // wieder JSONL-Lines bekommen.
+  findByClaudeSessionId(claudeSessionId: string): SessionRow | null;
 }
 
 export interface CreateSessionInput {
@@ -154,6 +162,10 @@ export class SessionRepository {
   findLastCompletedFeatureSession(projectId: string): SessionRow | null {
     return this.driver.findLastCompletedFeatureSession(projectId);
   }
+
+  findByClaudeSessionId(claudeSessionId: string): SessionRow | null {
+    return this.driver.findByClaudeSessionId(claudeSessionId);
+  }
 }
 
 function rowFromInsert(row: SessionInsert): SessionRow {
@@ -169,6 +181,7 @@ export class SqliteSessionDriver implements SessionDbDriver {
   private readonly setClaudeIdStmt: Database.Statement;
   private readonly listMissingClaudeIdStmt: Database.Statement<[], SessionRow>;
   private readonly lastCompletedFeatureStmt: Database.Statement<[string], SessionRow>;
+  private readonly findByClaudeIdStmt: Database.Statement<[string], SessionRow>;
   // Statement-Cache für patch(): Cache-Key = sortierte Whitelist-Keys, damit jede
   // Patch-Permutation nur einmal vorbereitet wird. Schützt vor Re-Compile bei
   // Bulk-Patches (z.B. before-quit-Handler über alle running-Sessions).
@@ -213,6 +226,13 @@ export class SqliteSessionDriver implements SessionDbDriver {
     // einzelnen Eintrag liefert (nicht eine Liste).
     this.lastCompletedFeatureStmt = db.prepare<[string], SessionRow>(
       "SELECT * FROM sessions WHERE project_id = ? AND type = 'feature' AND status = 'completed' ORDER BY started_at DESC LIMIT 1",
+    );
+    // Phase-2 Season-8 (Watcher-Resolver-Fix): Lookup ueber die JSONL-UUID.
+    // Sollte per Konstruktion eindeutig sein (eine UUID = eine Session); bei
+    // theoretischen Duplikaten gewinnt die juengste — das ist dieselbe
+    // Tie-Break-Regel wie im cwd-Fallback.
+    this.findByClaudeIdStmt = db.prepare<[string], SessionRow>(
+      'SELECT * FROM sessions WHERE claude_session_id = ? ORDER BY started_at DESC LIMIT 1',
     );
   }
 
@@ -331,6 +351,10 @@ export class SqliteSessionDriver implements SessionDbDriver {
   findLastCompletedFeatureSession(projectId: string): SessionRow | null {
     return this.lastCompletedFeatureStmt.get(projectId) ?? null;
   }
+
+  findByClaudeSessionId(claudeSessionId: string): SessionRow | null {
+    return this.findByClaudeIdStmt.get(claudeSessionId) ?? null;
+  }
 }
 
 // In-Memory-Implementation des Drivers für Tests (analog Migration-Fake-Driver).
@@ -432,6 +456,19 @@ export class InMemorySessionDriver implements SessionDbDriver {
       if (row.project_id !== projectId) continue;
       if (row.type !== 'feature') continue;
       if (row.status !== 'completed') continue;
+      if (best === null || row.started_at > best.started_at) {
+        best = row;
+      }
+    }
+    return best ? { ...best } : null;
+  }
+
+  findByClaudeSessionId(claudeSessionId: string): SessionRow | null {
+    // Phase-2 Season-8 (Watcher-Resolver-Fix): Tie-Break = juengste Session
+    // gewinnt, analog zum cwd-Fallback und zum SQLite-Statement.
+    let best: SessionRow | null = null;
+    for (const row of this.rows.values()) {
+      if (row.claude_session_id !== claudeSessionId) continue;
       if (best === null || row.started_at > best.started_at) {
         best = row;
       }

@@ -64,7 +64,7 @@ Beim ersten App-Start keinen automatischen Default-Workspace-Scan, sondern expli
 
 ## Bereich: Token-Dashboard
 
-### Feature: 20%-Kontext-Soft-Warning
+### Feature: 20%-Kontext-Soft-Warning ✅
 
 Zusätzliche Warnung für die persönliche Erfahrungsgrenze.
 

@@ -25,6 +25,32 @@ describe('AppSettings-Schema', () => {
     const broken = { ...defaults, terminal_font_size: -1 };
     expect(() => AppSettingsSchema.parse(broken)).toThrow();
   });
+
+  // Phase-2 Season-8: Soft-Warning-Feld an der Per-Session-Kontext-Bar.
+  it('akzeptiert context_soft_warning mit gueltigen Werten', () => {
+    const defaults = buildDefaultSettings();
+    expect(defaults.context_soft_warning.enabled).toBe(true);
+    expect(defaults.context_soft_warning.threshold_percent).toBe(20);
+    const patched = {
+      ...defaults,
+      context_soft_warning: { enabled: false, threshold_percent: 50 },
+    };
+    expect(() => AppSettingsSchema.parse(patched)).not.toThrow();
+  });
+
+  it('lehnt Soft-Warning-Schwellwert ausserhalb von 0..100 ab', () => {
+    const defaults = buildDefaultSettings();
+    const tooHigh = {
+      ...defaults,
+      context_soft_warning: { enabled: true, threshold_percent: 150 },
+    };
+    expect(() => AppSettingsSchema.parse(tooHigh)).toThrow();
+    const negative = {
+      ...defaults,
+      context_soft_warning: { enabled: true, threshold_percent: -5 },
+    };
+    expect(() => AppSettingsSchema.parse(negative)).toThrow();
+  });
 });
 
 describe('AppSettingsPatch-Schema', () => {

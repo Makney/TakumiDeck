@@ -63,6 +63,15 @@ export function buildDefaultSettings(): AppSettings {
       red: 95,
     },
 
+    // Phase-2 Season-8: Soft-Warning fuer die persoenliche Erfahrungsgrenze.
+    // Default 20 % — empirisch der Punkt, an dem die Output-Qualitaet bei
+    // sehr langen Sessions spuerbar nachlaesst (Anthropic-Recommendation).
+    // Per User abschaltbar; greift unabhaengig von token_warning_thresholds.
+    context_soft_warning: {
+      enabled: true,
+      threshold_percent: 20,
+    },
+
     terminal_font_family: 'JetBrains Mono, Cascadia Code, MesloLGS NF',
     terminal_font_size: 13,
 

@@ -93,6 +93,53 @@ describe('SessionRepository.create — Hotfix: claude_session_id beim Spawn', ()
   });
 });
 
+describe('SessionRepository.findByClaudeSessionId — Phase-2 Season-8 Watcher-Resolver-Fix', () => {
+  it('findet die Session mit passender claude_session_id', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({ ...baseInsert, id: 'sess-1', claude_session_id: 'uuid-aaa' });
+    const result = repo.findByClaudeSessionId('uuid-aaa');
+    expect(result?.id).toBe('sess-1');
+  });
+
+  it('returnt null bei unbekannter UUID', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({ ...baseInsert, id: 'sess-1', claude_session_id: 'uuid-aaa' });
+    expect(repo.findByClaudeSessionId('uuid-ghost')).toBeNull();
+  });
+
+  it('ignoriert Sessions ohne claude_session_id (null darf nie matchen)', () => {
+    // Schutz vor einer subtilen Falle: ein Lookup mit dem String "null"
+    // (oder ein falsch initialisierter Wert) duerfte niemals zufaellig die
+    // null-Sessions treffen. Wir testen den verbreiteten String "null" und
+    // einen leeren String.
+    const { repo, driver } = makeRepo();
+    driver.insert({ ...baseInsert, id: 'sess-null', claude_session_id: null });
+    expect(repo.findByClaudeSessionId('null')).toBeNull();
+    expect(repo.findByClaudeSessionId('')).toBeNull();
+  });
+
+  it('bei mehreren Sessions mit derselben UUID gewinnt die juengste (Tie-Break)', () => {
+    // Sollte per Konstruktion nicht vorkommen (UUID == Session-ID), aber der
+    // Driver-Contract macht den Tie-Break explizit. Wir verlassen uns
+    // andernorts auf die Garantie, dass `findByClaudeSessionId` deterministisch
+    // antwortet.
+    const { repo, driver } = makeRepo();
+    driver.insert({
+      ...baseInsert,
+      id: 'older',
+      claude_session_id: 'uuid-dup',
+      started_at: 1000,
+    });
+    driver.insert({
+      ...baseInsert,
+      id: 'younger',
+      claude_session_id: 'uuid-dup',
+      started_at: 2000,
+    });
+    expect(repo.findByClaudeSessionId('uuid-dup')?.id).toBe('younger');
+  });
+});
+
 describe('SessionRepository.listMissingClaudeSessionId', () => {
   it('liefert nur Sessions mit claude_session_id IS NULL, status-agnostisch', () => {
     const { repo, driver } = makeRepo();

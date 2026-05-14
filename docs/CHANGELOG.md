@@ -17,6 +17,19 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-14 — Phase 2 Season 9: 20 %-Kontext-Soft-Warning + Watcher-Resolver-Fix
+
+### Was jetzt geht
+
+- **Persönliche Erfahrungsgrenze an der ctx-Bar in der Action-Bar.** Neuer Settings-Eintrag „Kontext-Soft-Warning" im Token-Tracking-Tab mit Toggle + Schwellwert-Input (Default 20 %, anpassbar 0–100). Bei aktivem Toggle sitzt an der Schwellen-Position der Per-Session-Kontext-Bar ein 2 px breiter Off-White-Marker, der 2 px über und unter die Bar hinausragt — gut sichtbar auf jedem Fill-Ton. Sobald die Auslastung den Marker überholt, wechselt die Bar auf eine vierte Tonungs-Stufe „soft" (gedämpfter `--td-blue`-Hinweis, sitzt zwischen Default-Grün und dem bestehenden Gelb der `token_warning_thresholds`), und der Marker bekommt einen leichten farbigen Halo via `box-shadow`. Tooltip enthält zusätzlich „Kontext über X % — Output-Qualität kann sinken", sobald die Schwelle gerissen ist. Toggle = aus blendet Marker und soft-Tonung komplett aus, die etablierten Gelb/Orange/Rot-Stufen bleiben unberührt.
+- **Per-Session-Kontext koppelt jetzt an die im Terminal sichtbare Session, nicht mehr an die jüngste.** Bei mehreren parallelen Sessions im selben Projekt-Pfad (= mehreren offenen Seasons gleichzeitig) ordnete der JSONL-Watcher Token-Events bisher immer der `started_at`-jüngsten `running`/`idle`-Session zu — die Kontext-Anzeige im aktiven Tab konnte dadurch fremde Tokens spiegeln, sobald irgendwo eine zweite Session startete. Der neue Resolver matcht primär über die claude-eigene Session-UUID aus dem JSONL-Filename (`<uuid>.jsonl`) gegen `sessions.claude_session_id`. Spawn schreibt diese Spalte ohnehin direkt beim `pty:create`, der bestehende Backfill-Pfad holt sie für Legacy-Sessions nach. cwd-Encoded-Fallback bleibt für externe Sessions ohne UUID-Bindung erhalten (claude-Aufruf außerhalb von TakumiDeck).
+
+### Architektur-Notiz
+
+Soft-Warning ist Variante A (Marker an der Bar + Tooltip-Text). Variante B (eigene Hinweis-Pille unter der Action-Bar) hätte den Marker als „permanente Distanz-zur-Schwelle"-Anzeige ausgelassen; Variante C (Toast einmalig pro Session) hätte eine Toast-Infrastruktur neu fordern müssen. Watcher-Fix ist Variante A (UUID-First mit cwd-Fallback). Variante B (UI-State-Hint aus dem Renderer) hätte UI-Wechsel an die JSONL-Pipeline gekoppelt (Sprint-5-Architektur-Bruch), C (Mapping-Cache) hätte einen fehlerhaften ersten Match dauerhaft verewigt. Entscheidungs-Why beider Pfade in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md). Resolver ist als pure Funktion `resolveJsonlToSession` aus dem `JsonlWatcher` herausgezogen — die `private`-Methode der Klasse wickelt nur noch die Repo-Calls in die Funktion ein, sodass Tests die Resolver-Logik ohne kompletten Watcher-Aufbau prüfen können. 14 neue Tests (8 Resolver + 4 `findByClaudeSessionId` + 2 Soft-Warning-Schema). Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md).
+
+---
+
 ## 2026-05-14 — Phase 2 Season 8: Projekt aus Liste entfernen
 
 ### Was jetzt geht

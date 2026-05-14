@@ -38,6 +38,13 @@ export const AppSettingsSchema = z.object({
     orange: z.number().min(0).max(100),
     red: z.number().min(0).max(100),
   }),
+  // Phase-2 Season-8 (Soft-Warning): persoenliche Erfahrungsgrenze fuer die
+  // Per-Session-Kontext-Bar. Bei `enabled=true` zeigt die Action-Bar einen
+  // Marker an `threshold_percent` und toent die Bar oberhalb dezent ein.
+  context_soft_warning: z.object({
+    enabled: z.boolean(),
+    threshold_percent: z.number().min(0).max(100),
+  }),
   terminal_font_family: z.string(),
   terminal_font_size: z.number().positive(),
   theme: z.enum(['dark', 'light']),
