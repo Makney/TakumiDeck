@@ -6,6 +6,8 @@ import {
   PtyCreateInputSchema,
   SessionHistoryInputSchema,
   SessionTypeSchema,
+  StatsHeatmapInputSchema,
+  StatsHeatmapWeeksSchema,
   StatsOverviewInputSchema,
   StatsRangeSchema,
 } from '@shared/schemas';
@@ -206,6 +208,52 @@ describe('StatsOverviewInputSchema', () => {
     expect(() => StatsRangeSchema.parse('30d')).not.toThrow();
     expect(() => StatsRangeSchema.parse('7d')).not.toThrow();
     expect(() => StatsRangeSchema.parse('1y')).toThrow();
+  });
+});
+
+// Phase-2 Season-13: StatsHeatmapInputSchema. Wochen-Toggle ist auf genau zwei
+// Werte begrenzt (30 oder 52), projectId nullish wie beim Overview-Channel,
+// asOf optional fuer Tests.
+describe('StatsHeatmapInputSchema', () => {
+  it('akzeptiert weeks=30 mit projectId', () => {
+    const parsed = StatsHeatmapInputSchema.parse({ projectId: 'p1', weeks: 30 });
+    expect(parsed.projectId).toBe('p1');
+    expect(parsed.weeks).toBe(30);
+  });
+
+  it('akzeptiert weeks=52', () => {
+    const parsed = StatsHeatmapInputSchema.parse({ projectId: null, weeks: 52 });
+    expect(parsed.weeks).toBe(52);
+  });
+
+  it('akzeptiert weggelassenes projectId (Global-Scope)', () => {
+    const parsed = StatsHeatmapInputSchema.parse({ weeks: 30 });
+    expect(parsed.projectId).toBeUndefined();
+  });
+
+  it('lehnt unbekannte Wochenzahl ab', () => {
+    expect(() => StatsHeatmapInputSchema.parse({ weeks: 13 })).toThrow();
+    expect(() => StatsHeatmapInputSchema.parse({ weeks: 100 })).toThrow();
+  });
+
+  it('lehnt leere projectId ab', () => {
+    expect(() => StatsHeatmapInputSchema.parse({ projectId: '', weeks: 30 })).toThrow();
+  });
+
+  it('akzeptiert optionalen asOf-Stichzeitpunkt', () => {
+    const parsed = StatsHeatmapInputSchema.parse({
+      projectId: 'p1',
+      weeks: 30,
+      asOf: 1_700_000_000_000,
+    });
+    expect(parsed.asOf).toBe(1_700_000_000_000);
+  });
+
+  it('StatsHeatmapWeeksSchema akzeptiert exakt 30 und 52', () => {
+    expect(() => StatsHeatmapWeeksSchema.parse(30)).not.toThrow();
+    expect(() => StatsHeatmapWeeksSchema.parse(52)).not.toThrow();
+    expect(() => StatsHeatmapWeeksSchema.parse(31)).toThrow();
+    expect(() => StatsHeatmapWeeksSchema.parse('30')).toThrow();
   });
 });
 

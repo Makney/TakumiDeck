@@ -31,6 +31,8 @@ import type {
   PtyTuiStateInput,
   PtyWriteInput,
   RendererApi,
+  StatsHeatmapInput,
+  StatsHeatmapResult,
   StatsOverviewInput,
   StatsOverviewResult,
   SessionArchiveInput,
@@ -198,6 +200,10 @@ const api: RendererApi = {
     overview: (input: StatsOverviewInput) =>
       ipcRenderer.invoke(Channels.StatsOverview, input) as Promise<
         IpcResult<StatsOverviewResult>
+      >,
+    heatmap: (input: StatsHeatmapInput) =>
+      ipcRenderer.invoke(Channels.StatsHeatmap, input) as Promise<
+        IpcResult<StatsHeatmapResult>
       >,
   },
 };

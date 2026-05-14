@@ -1609,8 +1609,22 @@ body,
 
 .td-dash-body {
   flex: 1;
-  padding: 12px 14px;
+  padding: 10px 14px;
   overflow-y: auto;
+  min-height: 0;
+}
+
+/* Wenn die Uebersicht-View aktiv ist, soll der Body als Flex-Container den
+   ganzen Bottom-Row-Slot ausschoepfen (Cards + Heatmap stretchen vertikal).
+   Bei anderen Views (Modelle-Placeholder) bleibt das natuerliche Block-Layout. */
+.td-dash-body:has(.td-overview-split) {
+  display: flex;
+  flex-direction: column;
+}
+
+.td-dash-body > .td-overview-split {
+  flex: 1;
+  min-height: 0;
 }
 
 .td-ueb-stats {
@@ -1634,6 +1648,60 @@ body,
 @media (max-width: 760px) {
   .td-stats-cards {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Phase-2 Season-13 — Split-Layout der Uebersicht-View: Cards links in 2x4-
+   Anordnung, Heatmap rechts. Cards-Spalte ist auf 280 px gedeckelt; die
+   Heatmap nimmt den Rest. min-width:0 ist Pflicht, sonst zwingt der
+   Heatmap-Inhalt die rechte Spalte ueber 1fr hinaus und sprengt das Grid.
+
+   Wichtig: die Stats-Pane lebt in der Bottom-Row mit fixer Hoehe (300 px,
+   LAYOUT.ROW_BOTTOM_HEIGHT). Cards und Heatmap muessen zusammen in die
+   verbleibenden ~240 px Body passen, sonst clippt der Inhalt — die Heatmap
+   verzichtet deshalb auf aspect-ratio und laesst Zellen via 1fr/1fr in den
+   verfuegbaren Raum stretchen. */
+.td-overview-split {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.td-stats-cards-compact {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  align-content: start;
+}
+
+.td-stats-cards-compact .td-stat {
+  padding: 6px 9px;
+  gap: 1px;
+}
+
+.td-stats-cards-compact .td-stat .val {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.td-stats-cards-compact .td-stat .lbl {
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.td-stats-cards-compact .td-stat .sub {
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+/* Sehr schmale Pane: Cards-Spalte verschwindet zugunsten der Heatmap nicht,
+   aber das Grid kollabiert auf einen vertikalen Stack, damit nichts
+   abgeschnitten wird. */
+@media (max-width: 620px) {
+  .td-overview-split {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 
@@ -1684,6 +1752,211 @@ body,
 
 .td-stats-placeholder-meta {
   font-size: 11px;
+  color: var(--td-text-mute);
+  text-align: center;
+}
+
+/* ----- Phase-2 Season-13: Aktivitaets-Heatmap -----
+
+   Layout: oben kleiner Header mit Titel + Wochen-Toggle, darunter das Grid
+   mit Wochentag-Labels links und Monat-Labels oben. `--weeks` setzt der
+   Renderer pro Render (30 oder 52); das Grid skaliert via 1fr-Spalten und
+   bekommt eine `aspect-ratio` passend zur Wochenzahl, damit die Zellen
+   visuell quadratisch bleiben.
+
+   Farbskala: 5 Stufen ueber color-mix auf den Accent-Ton. Level 0 ist die
+   Grund-Linien-Farbe, damit leere Tage klar als „nichts passiert" lesbar
+   sind, ohne mit dem Pane-Hintergrund zu verschmelzen. */
+
+.td-heatmap-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.td-heatmap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.td-heatmap-title {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-heatmap-weeks {
+  display: flex;
+  gap: 4px;
+}
+
+.td-heatmap-weeks button {
+  background: transparent;
+  border: 1px solid var(--td-line);
+  color: var(--td-text-dim);
+  padding: 2px 7px;
+  font-family: var(--td-mono);
+  font-size: 10.5px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: border-color .12s, color .12s;
+}
+
+.td-heatmap-weeks button:hover {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-heatmap-weeks button.active {
+  color: var(--td-accent);
+  border-color: var(--td-accent-line);
+}
+
+.td-heatmap-grid-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.td-heatmap-months {
+  display: grid;
+  grid-template-columns: repeat(var(--weeks), minmax(0, 1fr));
+  gap: 1px;
+  margin-left: 22px;
+  font-size: 9.5px;
+  color: var(--td-text-mute);
+  letter-spacing: 0.04em;
+  height: 11px;
+  align-items: end;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.td-heatmap-month {
+  white-space: nowrap;
+}
+
+/* Body fuellt den verbleibenden Raum im Heatmap-Wrap; Grid + Weekday-Spalte
+   passen sich an die verfuegbare Hoehe an (kein aspect-ratio mehr, weil das
+   auf breiten Panes die Hoehe ueber das Pane hinausstreckt und das Layout
+   nach unten clippt). */
+.td-heatmap-body {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.td-heatmap-weekdays {
+  display: grid;
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  font-size: 9.5px;
+  color: var(--td-text-mute);
+}
+
+.td-heatmap-weekday {
+  visibility: hidden;
+  line-height: 1;
+}
+
+.td-heatmap-weekday.visible {
+  visibility: visible;
+}
+
+.td-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--weeks), minmax(0, 1fr));
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 1px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.td-heatmap-cell {
+  border-radius: 2px;
+  background: var(--td-line);
+  /* Schmaler Saum, damit aktive Zellen am Pane-Hintergrund (var(--td-panel-2))
+     immer erkennbar sind — auch Level 1 mit niedriger Deckkraft. */
+  border: 1px solid color-mix(in oklch, var(--td-line) 60%, transparent);
+  transition: filter .1s;
+}
+
+.td-heatmap-cell.empty {
+  background: transparent;
+  border-color: transparent;
+}
+
+.td-heatmap-cell:hover {
+  filter: brightness(1.4);
+}
+
+.td-heatmap-cell.l0 {
+  background: var(--td-line);
+}
+
+.td-heatmap-cell.l1 {
+  background: color-mix(in oklch, var(--td-accent) 22%, var(--td-line) 78%);
+}
+
+.td-heatmap-cell.l2 {
+  background: color-mix(in oklch, var(--td-accent) 45%, var(--td-line) 55%);
+}
+
+.td-heatmap-cell.l3 {
+  background: color-mix(in oklch, var(--td-accent) 70%, var(--td-line) 30%);
+}
+
+.td-heatmap-cell.l4 {
+  background: var(--td-accent);
+}
+
+.td-heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--td-text-mute);
+  flex-shrink: 0;
+}
+
+.td-heatmap-legend .td-heatmap-cell {
+  width: 9px;
+  height: 9px;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+}
+
+.td-heatmap-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px;
+  border: 1px dashed var(--td-line);
+  border-radius: 2px;
+  color: var(--td-text-mute);
+  font-size: 11px;
+}
+
+.td-heatmap-empty-meta {
+  font-size: 10px;
   color: var(--td-text-mute);
   text-align: center;
 }

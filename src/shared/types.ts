@@ -637,6 +637,39 @@ export interface StatsOverviewResult {
   generated_at: number;
 }
 
+// Phase-2 Season-13 — Aktivitaets-Heatmap.
+
+export type StatsHeatmapWeeks = 30 | 52;
+
+export interface StatsHeatmapInput {
+  projectId?: string | null;
+  weeks: StatsHeatmapWeeks;
+  asOf?: number;
+}
+
+// Eine Zelle im Grid. Level 0 = keine Aktivitaet, 1..4 = Quartil-Stufen ueber
+// die nicht-leeren Tage des Fensters. `date` ist YYYY-MM-DD in lokaler Zeit.
+export interface StatsHeatmapDay {
+  date: string;
+  tokens: number;
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+export interface StatsHeatmapResult {
+  // ASC-sortiert nach `date`. Enthaelt jeden Kalendertag vom Fenster-Start
+  // (Montag N-1 Wochen vor dem Montag der aktuellen Woche) bis heute (lokal)
+  // inklusive. Tage ohne Messages haben tokens=0 und level=0. Die Laenge
+  // bleibt deterministisch <= weeks * 7.
+  days: StatsHeatmapDay[];
+  weeks: StatsHeatmapWeeks;
+  scope: 'project' | 'global';
+  // Quartil-Schwellen ueber die nicht-leeren Tage im Fenster. Renderer
+  // zeigt sie optional im Tooltip als Legende. Wenn das Fenster komplett
+  // leer ist, sind alle drei Werte 0.
+  thresholds: { p25: number; p50: number; p75: number };
+  generated_at: number;
+}
+
 export interface UsageWindowInput {
   barId: string;
   asOf?: number;
@@ -758,8 +791,10 @@ export interface RendererApi {
     onUpdate: (handler: (event: UsageUpdateEvent) => void) => () => void;
   };
   // Phase-2 Season-12: Stats-Cards aus messages + sessions aggregiert.
+  // Phase-2 Season-13: Aktivitaets-Heatmap als zweiter Channel parallel.
   stats: {
     overview: (input: StatsOverviewInput) => Promise<IpcResult<StatsOverviewResult>>;
+    heatmap: (input: StatsHeatmapInput) => Promise<IpcResult<StatsHeatmapResult>>;
   };
 }
 

@@ -24,6 +24,50 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Heatmap: Eigener IPC parallel zu stats:project-overview, nicht Endpoint-Erweiterung
+
+**Entscheidung:** Die Aktivitäts-Heatmap bekommt einen eigenen IPC `stats:heatmap` parallel zu `stats:project-overview` aus Season 12. Eigener Statement-Cache pro Scope im `SqliteHeatmapDriver` (zwei vorbereitete Statements für project/global), eigene Schema-Validierung (`StatsHeatmapInputSchema`), eigener Refresh-Pfad im `useStatsStore`.
+
+**Varianten:**
+
+- **A** Eigener IPC `stats:heatmap` parallel (gewählt) — saubere Domänen-Trennung, Statement-Cache unabhängig.
+- **B** `stats:project-overview` um `includeHeatmap`-Flag erweitern — ein Round-Trip statt zwei, aber Schema und Aggregat-Cache wachsen breit, wenn weitere Stats-Domänen (Modelle-View, Easter-Egg) hinzukommen.
+- **C** Eigene `stats_daily(day, project_id, tokens)`-Aggregat-Tabelle, vom JSONL-Watcher mit-geschrieben + Backfill-Migration.
+
+**Grund:** A hält die Cards-Domäne (Statement-Cache nach Scope × Range, vier Auspraegungen) und die Heatmap-Domäne (Cache nach Scope, zwei Auspraegungen) unabhängig — beides zu vermischen würde im SqliteStatsDriver eine zweite Achse durch alle Methoden ziehen. B spart einen IPC pro Refresh, aber der Refresh läuft hinter dem bestehenden 600-ms-Debounce — der zweite Round-Trip ist nicht messbar. C ist Overkill bei aktuellen Datengrößen (siehe „Stats-Cards: Lazy-Pull pro Bedarf" — selbe Begründung): Daily-Aggregat-Queries liefern Sub-10-ms-Antworten, ein Aggregat-Cache bringt Konsistenz-Risiko bei Watcher-Crashes ohne messbaren Gewinn.
+
+**Konsequenz:** Wenn Phase 3 weitere Stats-Domänen ergänzt (Modelle-View, Easter-Egg-Vergleiche), wandern sie als jeweils eigene Channels in dieselbe `stats:*`-IPC-Domain. Der gemeinsame `useStatsStore` trägt das mit eigenen State-Slots pro Domäne, solange die Slots saubere Setter/Refresh-Methoden behalten.
+
+## Heatmap-Farbskala: Quartile der nicht-leeren Tage, kein fester Schwellenwert
+
+**Entscheidung:** Die fünf Heatmap-Stufen kommen aus den 25/50/75-Perzentilen der nicht-leeren Token-Tagessummen im aktuellen Fenster. Level 0 bei `tokens=0`, Level 1 für `tokens ≤ p25`, Level 2 für `≤ p50`, Level 3 für `≤ p75`, Level 4 darüber. Edge-Case `p25=p75` (nur ein aktiver Tag oder alle gleich) → alle aktiven Tage bekommen Level 4 statt Level 1.
+
+**Varianten:**
+
+- **A** Quartil-basiert (gewählt) — Standard-GitHub-Verhalten, Heatmap passt sich an die individuelle Nutzungsverteilung an.
+- **B** Feste Schwellen aus Settings (z.B. 0 / 50k / 200k / 500k / 1M Tokens) — vorhersagbar, projektübergreifend vergleichbar, aber Schwellen müssen gepflegt werden.
+- **C** Log-Skala (`log10(tokens+1)` normiert auf Max) — gut bei extremer Spannweite, aber weniger intuitiv im Tooltip.
+
+**Grund:** A spiegelt die echte Nutzungsverteilung — Pausentage werden grau, Highlight-Tage dunkelgrün, im individuellen Verhältnis. B verlangt Settings-Pflege, die im Daily-Use nicht passiert (Schwellen werden einmal gesetzt und nie wieder angefasst, dadurch passen sie nach einem Monat schon nicht mehr zur Nutzungsentwicklung). C wäre für sehr lange Fenster (mehrere Jahre) mit extremen Ausreißern interessant, ist aber für die aktuellen 30W/52W-Modi nicht nötig.
+
+**Implementierungsdetail:** Der Edge-Case-Sonderfall (`if (t.p25 === t.p75) return 4;`) verhindert, dass bei einem einzigen aktiven Tag im Fenster (Quartile kollabieren auf einen einzigen Wert) der Tag auf Level 1 (= Token-mindestens-vorhanden, aber minimal) gerendert wird. Stattdessen Level 4 — der einzige Signal-Tag wird visuell maximal hervorgehoben.
+
+**Konsequenz:** Wenn das Fenster einen extremen Ausreißer hat (z.B. 1 Tag mit 100M Tokens, 100 Tage mit je 10k), bekommt der Ausreißer Level 4 und die ruhigen Tage rutschen alle in Level 1 — visuell ist das gewollt, ein Spitzentag soll hervorstechen.
+
+## Heatmap-Layout: Cells stretchen via 1fr/1fr, kein aspect-ratio auf der Grid
+
+**Entscheidung:** Die `.td-heatmap-grid` nutzt `grid-template-columns: repeat(weeks, 1fr); grid-template-rows: repeat(7, 1fr)` mit `width:100%; height:100%`. Cells stretchen sich proportional auf den Container-Raum. Kein `aspect-ratio: var(--weeks) / 7` auf der Grid.
+
+**Varianten:**
+
+- **A** Cells stretchen via 1fr/1fr (gewählt) — Grid füllt den verfügbaren Raum, Cells werden auf breiten Panes leicht rechteckig.
+- **B** `aspect-ratio: var(--weeks) / 7` mit `width:100%` — Cells bleiben quadratisch, aber die Grid-Höhe wächst linear mit der Pane-Breite.
+- **C** Cells quadratisch mit `max-width`-Cap, Heatmap linksbündig im Container — verschwendet Whitespace auf breiten Panes.
+
+**Grund:** B war die erste Implementierung und hat auf breiten Panes (>1200 px Pane-Breite) zu Clipping geführt: die Heatmap-Höhe (Pane-Breite × 7/30) wurde größer als der Pane-Body-Slot (300 px Bottom-Row minus 36 px Header minus Padding ≈ 240 px), die Bottom-Row scrollte und Cards + Heatmap clippten unten weg. C löst das Clipping, hinterlässt aber sichtbaren leeren Raum rechts neben der Heatmap. A akzeptiert leichte Cell-Rechteckigkeit als Tradeoff für saubere Container-Fülligkeit ohne Clipping.
+
+**Konsequenz:** Cell-Quadratur ist Pane-Breiten-abhängig. Auf 460 px Pane sind Cells bei 30W etwa 12×20 px (höher als breit), auf 1500 px Pane etwa 40×20 px (breiter als hoch). Kalender-Lesbarkeit bleibt erhalten (Spalten = Wochen, Reihen = Wochentage). Als TECH_SCHULDEN dokumentiert für den Fall, dass die Cell-Form später quadratisch erzwungen werden soll.
+
 ## Stats-Cards: Lazy-Pull pro Bedarf statt Vorab-Aggregat-Tabelle
 
 **Entscheidung:** Die acht Stats-Cards werden im Main bei jedem Renderer-Anruf neu aus `messages` und `sessions` aggregiert. Kein eigener Aggregat-Cache, keine neue Tabelle, keine Doppel-Schreibung im Watcher. Der Renderer pullt nach Projekt-Wechsel, Scope/Range-Toggle und auf `usage:update`-Push (600-ms-debounced).

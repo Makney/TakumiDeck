@@ -104,7 +104,7 @@ Detaillierte Aggregations-Statistiken pro Projekt.
 
 **Trigger:** Im MVP wird der Stats-Bereich nur als Platzhalter angezeigt. Sobald das Daily-Use-Pattern stabil ist und der Wert der Stats sichtbar wird, ausbauen.
 
-### Feature: Aktivitäts-Heatmap
+### Feature: Aktivitäts-Heatmap ✅
 
 GitHub-Style Calendar-Heatmap der letzten 30 Wochen.
 

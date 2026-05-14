@@ -3,13 +3,18 @@ import { useUiStore } from '../stores/ui';
 import { useStatsStore, type StatsScope } from '../stores/stats';
 import type { StatsOverviewResult, StatsRange } from '@shared/types';
 import { fmtTokens } from '../components/fmtTokens';
+import { ActivityHeatmap } from '../components/ActivityHeatmap';
 
-// StatsPane (Phase-2 Season-12).
+// StatsPane (Phase-2 Season-12 + Season-13).
 //
-// Übersicht-View: acht Aggregat-Karten (Volumen-Reihe + Verhalten-Reihe) aus
-// dem Main-Aggregat (stats:project-overview). Im Header drei Toggle-Gruppen:
-// View (Übersicht/Modelle), Scope (Aktiv/Global), Range (Alle/30d/7d).
-// Beide letztgenannten sind in localStorage persistiert.
+// Übersicht-View: acht Aggregat-Karten (Volumen + Verhalten) aus dem Main-
+// Aggregat (stats:project-overview) plus die GitHub-Style Aktivitaets-
+// Heatmap (Season 13). Layout: Cards als 2×4-Block links, Heatmap fuellt
+// die rechte Haelfte. Im Header drei Toggle-Gruppen: View (Übersicht/
+// Modelle), Scope (Aktiv/Global), Range (Alle/30d/7d). Range wirkt nur
+// auf die Cards — die Heatmap hat ihren eigenen 30W/52W-Toggle in der
+// Heatmap-Komponente, weil ein 7d-Range-Cut die Heatmap zertruemmern
+// wuerde.
 //
 // Modelle-View bleibt vorerst Phase-2-Hinweis — kommt in der naechsten Season
 // (siehe PHASE2.md, "Modelle-View").
@@ -90,14 +95,21 @@ function OverviewView() {
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const scope = useStatsStore((s) => s.scope);
   const range = useStatsStore((s) => s.range);
+  const heatmapWeeks = useStatsStore((s) => s.heatmapWeeks);
+  const setHeatmapWeeks = useStatsStore((s) => s.setHeatmapWeeks);
   const overview = useStatsStore((s) => s.overview);
+  const heatmap = useStatsStore((s) => s.heatmap);
   const error = useStatsStore((s) => s.error);
+  const heatmapError = useStatsStore((s) => s.heatmapError);
   const refresh = useStatsStore((s) => s.refresh);
+  const refreshHeatmap = useStatsStore((s) => s.refreshHeatmap);
   // Debounce-Handle fuer den usage:update-Listener: das Watcher-Event feuert
   // potenziell mehrfach pro Sekunde (Sprint 5: Coalesced auf max. 2/s, aber
   // wir wollen nicht jeden Token-Tick aggregieren). 600 ms reichen, damit
   // typische Tipp-Cadences zusammengefasst werden, ohne dass der User die
-  // Verzoegerung spuert.
+  // Verzoegerung spuert. Cards und Heatmap teilen sich den Timer — beide
+  // gehen nach demselben Watcher-Tick raus, ein Round-Trip ist effizient
+  // genug.
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -110,16 +122,24 @@ function OverviewView() {
     };
   }, [refresh, activeProjectId, scope, range]);
 
+  // Heatmap-Refresh laeuft auf eigenem Effekt mit den Heatmap-spezifischen
+  // Abhaengigkeiten (Wochen), damit ein Range-Wechsel auf die Cards die
+  // Heatmap nicht unnoetig nachzieht — sie ignoriert Range ohnehin.
+  useEffect(() => {
+    void refreshHeatmap(activeProjectId);
+  }, [refreshHeatmap, activeProjectId, scope, heatmapWeeks]);
+
   useEffect(() => {
     const unsubscribe = window.api.usage.onUpdate(() => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => {
         refreshTimerRef.current = null;
         void refresh(activeProjectId);
+        void refreshHeatmap(activeProjectId);
       }, 600);
     });
     return () => unsubscribe();
-  }, [refresh, activeProjectId]);
+  }, [refresh, refreshHeatmap, activeProjectId]);
 
   if (error) {
     return (
@@ -131,43 +151,51 @@ function OverviewView() {
   }
 
   return (
-    <div className="td-stats-cards">
-      <Stat label="Sitzungen" value={overview ? String(overview.sessions_total) : '—'} />
-      <Stat
-        label="Nachrichten"
-        value={overview ? formatCount(overview.messages_total) : '—'}
-      />
-      <Stat
-        label="Tokens"
-        value={overview ? fmtTokens(overview.tokens_total) : '—'}
-      />
-      <Stat
-        label="Aktive Tage"
-        value={overview ? String(overview.active_days) : '—'}
-      />
-      <Stat
-        label="Streak"
-        value={overview ? `${overview.current_streak_days} Tg` : '—'}
-        sub={overview && overview.current_streak_days > 0 ? 'in Folge' : null}
-        accent={overview ? overview.current_streak_days > 0 : false}
-      />
-      <Stat
-        label="Längste Streak"
-        value={overview ? `${overview.longest_streak_days} Tg` : '—'}
-      />
-      <Stat
-        label="Spitzenstunde"
-        value={overview ? formatHour(overview.peak_hour) : '—'}
-        sub={overview && overview.peak_hour !== null ? `${overview.peak_hour_count}×` : null}
-      />
-      <Stat
-        label="Lieblingsmodell"
-        value={overview ? formatFavoriteModel(overview) : '—'}
-        sub={
-          overview && overview.favorite_model
-            ? `${overview.favorite_model_count} Msgs`
-            : null
-        }
+    <div className="td-overview-split">
+      <div className="td-stats-cards td-stats-cards-compact">
+        <Stat label="Sitzungen" value={overview ? String(overview.sessions_total) : '—'} />
+        <Stat
+          label="Nachrichten"
+          value={overview ? formatCount(overview.messages_total) : '—'}
+        />
+        <Stat
+          label="Tokens"
+          value={overview ? fmtTokens(overview.tokens_total) : '—'}
+        />
+        <Stat
+          label="Aktive Tage"
+          value={overview ? String(overview.active_days) : '—'}
+        />
+        <Stat
+          label="Streak"
+          value={overview ? `${overview.current_streak_days} Tg` : '—'}
+          sub={overview && overview.current_streak_days > 0 ? 'in Folge' : null}
+          accent={overview ? overview.current_streak_days > 0 : false}
+        />
+        <Stat
+          label="Längste Streak"
+          value={overview ? `${overview.longest_streak_days} Tg` : '—'}
+        />
+        <Stat
+          label="Spitzenstunde"
+          value={overview ? formatHour(overview.peak_hour) : '—'}
+          sub={overview && overview.peak_hour !== null ? `${overview.peak_hour_count}×` : null}
+        />
+        <Stat
+          label="Lieblingsmodell"
+          value={overview ? formatFavoriteModel(overview) : '—'}
+          sub={
+            overview && overview.favorite_model
+              ? `${overview.favorite_model_count} Msgs`
+              : null
+          }
+        />
+      </div>
+      <ActivityHeatmap
+        data={heatmap}
+        weeks={heatmapWeeks}
+        onWeeksChange={setHeatmapWeeks}
+        error={heatmapError}
       />
     </div>
   );

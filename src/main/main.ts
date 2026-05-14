@@ -29,6 +29,7 @@ import {
 import { MessageRepository, SqliteMessageDriver } from './db/repos/messages';
 import { UsageRepository, SqliteUsageDriver } from './db/repos/usage';
 import { StatsRepository, SqliteStatsDriver } from './db/repos/stats';
+import { HeatmapRepository, SqliteHeatmapDriver } from './db/repos/heatmap';
 import {
   JsonlOffsetRepository,
   SqliteJsonlOffsetDriver,
@@ -135,6 +136,7 @@ void app.whenReady().then(async () => {
     const lifecycle = new SessionLifecycle(sessions, undefined, logger);
     const usageRepo = new UsageRepository(new SqliteUsageDriver(db));
     const statsRepo = new StatsRepository(new SqliteStatsDriver(db));
+    const heatmapRepo = new HeatmapRepository(new SqliteHeatmapDriver(db));
     const jsonlOffsetRepo = new JsonlOffsetRepository(new SqliteJsonlOffsetDriver(db));
     ptyManager = new PtyManager(realPtySpawn);
 
@@ -210,6 +212,7 @@ void app.whenReady().then(async () => {
     });
     registerStatsIpc({
       stats: statsRepo,
+      heatmap: heatmapRepo,
       log: logger,
     });
     registerFsIpc({

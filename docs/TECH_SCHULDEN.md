@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Heatmap-Cells leicht rechteckig auf breiten Panes (Phase-2 Season 13)
+
+**Bereich:** `src/renderer/styles/app.css` (`.td-heatmap-grid`)
+
+**Was:** Die Heatmap-Grid verzichtet auf `aspect-ratio: var(--weeks) / 7`. Cells stretchen via `grid-template-columns: repeat(weeks, 1fr); grid-template-rows: repeat(7, 1fr); width:100%; height:100%`. Auf breiten Panes (typisch >1000 px Pane-Breite bei 30W) werden die Cells dadurch breiter als hoch — auf einem 1500-px-Pane sind sie etwa 40×20 px statt 20×20 px.
+
+**Warum so:** Mit `aspect-ratio` wuchs die Heatmap-Höhe linear mit der Pane-Breite und überlief die fixe 300-px-Bottom-Row (LAYOUT.ROW_BOTTOM_HEIGHT). Cards + Heatmap clippten unten weg. `aspect-ratio` raus + Cells stretchen → kein Clipping mehr, aber visuelle Cell-Form ist Pane-Breiten-abhängig.
+
+**Risiko:** Niedrig. Die Lesbarkeit des Kalenders bleibt erhalten (Spalten = Wochen, Reihen = Wochentage, Quartil-Farbskala unverändert), nur die Cell-Quadratur ist nicht garantiert. Auf schmalen Panes (~500 px) sind Cells fast quadratisch.
+
+**Auflösung:** Heatmap-Grid mit `max-width: calc(weeks × max-cell-size)` kappen und im Container linksbündig anordnen — dann bleiben Cells quadratisch, und überschüssige Pane-Breite wird zu Whitespace rechts. Lohnt sich, wenn die Cell-Form im Daily-Use stört.
+
+---
+
 ## Dead-Code-Spalte `projects.next_season_number` (Phase-2 Season 11)
 
 **Bereich:** `src/main/db/migrations/0001_init.sql` (Schema-Definition), `src/main/db/repos/projects.ts` (Insert-Pfad)

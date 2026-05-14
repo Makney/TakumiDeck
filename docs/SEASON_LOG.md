@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 13 — Aktivitäts-Heatmap
+
+**Ziel:** Roadmap-Eintrag „Aktivitäts-Heatmap" aus der Phase-2-Bereich „Stats und Heatmap": GitHub-Style Kalender-Heatmap der letzten 30 Wochen (Default), umschaltbar auf 52 Wochen, pro Tag eine farbige Zelle proportional zum Token-Verbrauch, Hover-Tooltip mit Datum + Token-Anzahl. Integration mit dem bestehenden Scope-Toggle (Aktiv/Global) aus Season 12.
+
+**Ergebnis:** Variante A/A/A aus drei orthogonalen Achsen — eigener IPC `stats:heatmap` parallel zu `stats:project-overview`, Quartil-basierte 5-Stufen-Farbskala über die nicht-leeren Tage des Fensters, eigener 30W/52W-Toggle (Range-Toggle Alle/30d/7d wirkt nicht auf die Heatmap). Neuer `HeatmapRepository` in `src/main/db/repos/heatmap.ts` mit `SqliteHeatmapDriver` (Statement-Cache pro Scope, zwei vorbereitete Statements) und `InMemoryHeatmapDriver`. Pure Helpers: `computeHeatmapWindow` (Wochen-Anker an Diese-Woche-Montag, DE-Konvention via `(getDay() + 6) % 7`-Shift), `enumerateLocalDays`, `computeQuantileThresholds` (Linear-Interpolation), `levelFor` mit p25=p75-Edge-Case → Level 4. Renderer: `useStatsStore` um Heatmap-Slot + `heatmapWeeks`-Toggle + `td.heatmapWeeks`-localStorage erweitert. Neue Komponente `ActivityHeatmap.tsx` mit CSS-Grid 7×N (`grid-auto-flow: column`), Monat-Labels oben (erste-Monatsspalte-Detect via Linear-Scan), Wochentag-Labels links (Di/Do/Sa sichtbar), native `title=`-Tooltips, optionale Quartil-Legende. `StatsPane.OverviewView` umgebaut auf `td-overview-split` mit Cards (2×4 kompakt, reduziertes Padding/Font-Size) links und Heatmap rechts in gleicher Höhe via `align-items: stretch`. 33 neue Tests (26 Heatmap-Pure-Logic inkl. Wochen-Anker an Mo/Mi/Do/So + Cross-Project + Single-Aktiv-Tag-Edge + alle-Werte-identisch-Edge + Cross-Hour-Aggregation, 7 Schema-Validierung mit Wochen-Whitelist 30|52), Gesamtsuite 665/665 grün, typecheck + lint sauber.
+
+**Gut gelaufen:**
+
+- **Drei orthogonale Variants-Achsen statt monolithisches Variants-Set.** Erste Antwort an den User war kein 5-zeiliger Variants-Block, sondern drei Achsen (V1 Datenlayer / V2 Farbskala / V3 Toggle-Verhalten) mit klarer Empfehlung pro Achse. Keine Achse referenzierte eine andere — User-Entscheidung „A/A/A" in einer Sekunde durch. Die offene UI-Layout-Frage (Heatmap-Placement) ging als separates `AskUserQuestion` mit ASCII-Mockup-Previews nach, statt vorab spekuliert zu werden. Pattern aus Season 12 erneut bestätigt: Variants-Achsen sauber trennen, statt alle Kombinationen vorzukomponieren.
+- **Pure Helpers mit Edge-Case-First-Tests.** `computeQuantileThresholds([])`, `[42]`, `[10,10,10,10]` haben jeweils einen eigenen Test, `levelFor` separat. `computeHeatmapWindow` ist auf vier Wochentage als „heute" (Sonntag, Montag, Mittwoch, Donnerstag) getestet — das hat einen klassischen Off-by-One im (getDay()+6)%7-Shift gefangen, bevor er im Daily-Use auffallen konnte. Edge-Cases vor Happy-Path testen ist im Bereich Datum/Quartil-Math billig und fängt die schmerzhaftesten Bugs.
+- **Test-Setup aus Season 12 wiederverwendet.** `tests/main/stats-heatmap.test.ts` lehnt sich strukturell an `stats-aggregate.test.ts` an: NOW-Konstante, `msg()`/`ts()`-Factory-Helper, InMemory-Driver-Pattern. Kein neuer Test-Stack, keine neue Konvention — der Pattern-Transfer hat das Test-Schreiben spürbar beschleunigt.
+
+**Gebremst durch:**
+
+- **`aspect-ratio: var(--weeks) / 7` auf der Grid zuerst genommen, dann auf breitem Pane geclippt.** Erste UI-Iteration hatte die Heatmap-Grid mit `aspect-ratio: var(--weeks) / 7; width:100%`. Auf schmaler Test-Pane (~500 px Pane-Breite) tadellos. Auf der 1500-px-Test-Pane des Users wurde die Heatmap dann 280 px hoch — überlief die ~240 px Pane-Body, Bottom-Row scrollte, Cards-unten + Heatmap-unten clippten. Diagnose erst nach User-Screenshot. Lehre: Layouts mit `aspect-ratio` auf 1fr-Spalten sind Pane-Breite-empfindlich; ein expliziter Wide-Pane-Gedanken-Pass („was passiert bei 2× Pane-Breite?") vor der ersten Implementierung hätte das gefangen.
+- **Cards-Block als „4×2 → 2×4" umgestellt, ohne Card-Höhen mit zu reduzieren.** Initial habe ich Cards mit dem Season-12-Padding (10/12) in 2×4 angeordnet. 4 × 70 px + 3 × 8 px = 304 px Cards-Block, passt nicht in die 240 px Body-Höhe. Erst nach dem Clipping-Screenshot Padding (6/9), Value-Schrift (16→14), Lbl-Schrift (10→9), Sub-Schrift (11→10) reduziert → 4 × 48 + 3 × 6 = 210 px. Lehre: bei Re-Layouts in fester Container-Höhe vorab die Höhen-Mathematik durchrechnen, statt nur die Spaltenzahl umzustellen und zu hoffen.
+
+**Für nächste Season:**
+
+- **Modelle-View kann die Infrastruktur des `useStatsStore` mit-nutzen.** Cards und Heatmap hängen jetzt beide am Store-Scope und am 600-ms-debouncten `usage:update`-Refresh. Eine Modelle-View braucht einen weiteren Store-Slot (`models`) plus einen `stats:per-model`-IPC — Filter-Logik (Scope, ggf. Range) ist im Store schon vorhanden. Aggregations-Pattern lehnt sich an `MessageRepository.aggregateModelsForSessions` aus Season 10 an.
+- **Cells leicht rechteckig auf breiten Panes ist als TECH_SCHULDEN dokumentiert.** Lösung wäre eine `max-width`-Cap auf der Heatmap-Grid plus linksbündige Container-Anordnung — dann bleiben Cells quadratisch und überflüssige Breite wird Whitespace. Heute kein Trigger, der Tradeoff ist akzeptabel.
+- **Template-Drift-Bug (Briefing zeigte „Season 8 / PHASE1.md" statt aktuelle Werte) bleibt im Produktiv-Build ungefixt.** User-Aussage: in der DEV-Version schon adressiert, nur der Produktiv-Stand hängt zurück. Kein TakumiDeck-Code-Touch nötig — die nächste Produktiv-Update-Iteration zieht den Fix mit.
+
+---
+
 ## Phase 2 Season 12 — Stats-Cards + 30d/7d-Filter
 
 **Ziel:** Roadmap-Eintrag „Stats-Cards" aus der Phase-2-Bereich „Stats und Heatmap" produktiv machen: acht Aggregations-Karten pro Projekt (Sitzungen total, Nachrichten total, Tokens gesamt, Aktive Tage, Aktuelle Streak, Längste Streak, Spitzenstunde, Lieblingsmodell). Implizit mit-gedacht: der Sprint-9-UI-Slot „Alle / 30d / 7d" in der Stats-Pane-Header, der bisher statisch war.

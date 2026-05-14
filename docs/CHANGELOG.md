@@ -17,6 +17,19 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-14 — Phase 2 Season 13: Aktivitäts-Heatmap
+
+### Was jetzt geht
+
+- **GitHub-Style Aktivitäts-Heatmap rechts neben den Stats-Cards.** Die „Übersicht"-View bekommt einen Kalender-Grid mit 7 Reihen (Mo..So) und 30 (Default) bzw. 52 Wochen-Spalten. Jede Zelle = ein Tag, gefüllt mit fünf Stufen (Level 0–4) basierend auf der Token-Tagessumme aus `messages`. Quartile der nicht-leeren Tage als Schwellen — Heatmap passt sich an die individuelle Nutzung an (GitHub-Original-Verhalten). Monat-Labels oben, Wochentag-Labels links (Di/Do/Sa sichtbar), native `title=`-Tooltips mit Datum + Token-Count. Eigener 30W/52W-Toggle rechts oben in der Heatmap-Header-Zeile, persistiert in localStorage (`td.heatmapWeeks`). Range-Toggle Alle/30d/7d aus Season 12 wirkt bewusst NICHT auf die Heatmap — 7d würde das Kalender-Grid auf eine Woche zerschneiden.
+- **Cards-Block in der Übersicht kompakter umgebaut.** Die acht Aggregat-Karten wandern von 4×2 in ein 2×4-Grid links, Padding/Schriftgrößen reduziert (Value 16→14, Label 10→9, Padding 10/12→6/9), damit Cards + Heatmap zusammen in die 300-px-Bottom-Row passen ohne zu clippen. Optionale Quartil-Legende „weniger ◌◌◌◌◌ mehr" unter der Heatmap, sobald aktive Tage da sind.
+
+### Architektur-Notiz
+
+Variante A/A/A aus drei orthogonalen Achsen (V1 Datenlayer / V2 Farbskala / V3 Toggle-Verhalten). **V1:** eigener IPC `stats:heatmap` parallel zu `stats:project-overview` mit eigenem Statement-Cache pro Scope im `SqliteHeatmapDriver` — kein gemeinsamer Endpoint mit den Cards, keine Aggregat-Tabelle (`stats_daily` wäre Overkill bei aktuellen Datengrößen). **V2:** Quartil-basierte 5-Stufen-Farbskala (p25/p50/p75 der nicht-leeren Tage), Edge-Case `p25=p75` → Level 4 (sonst würde der einzige Signal-Tag auf Level 1 gedrückt). Color-mix in oklch über `--td-accent` und `--td-line`. **V3:** eigener 30W/52W-Toggle in der Heatmap-Header-Zeile, nicht Mitnutzung des Cards-Range-Toggles. Pure Helpers in `src/main/db/repos/heatmap.ts`: `computeHeatmapWindow` (Wochen-Anker an Diese-Woche-Montag, DE-Konvention), `enumerateLocalDays`, `computeQuantileThresholds` (Linear-Interpolation), `levelFor`. Renderer-Store (`useStatsStore`) um Heatmap-Slot + `heatmapWeeks`-Toggle + eigenen Refresh-Pfad erweitert; beide IPCs hängen am selben `usage:update`-Push mit 600-ms-Debounce. UI-Layout via `td-overview-split` (2-Spalten-Grid `minmax(220px, 280px) 1fr`, `align-items: stretch`) — Heatmap-Grid stretcht via `1fr/1fr` auf die Cards-Block-Höhe, kein `aspect-ratio` (würde auf breiten Panes die Höhe sprengen). Tradeoff: Cells werden auf breiten Panes leicht rechteckig — als TECH_SCHULDEN dokumentiert. Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md). 33 neue Tests (26 Heatmap-Pure-Logic + Aggregat-Cases inkl. Wochentag-Anker an Mo/Mi/Do/So, Cross-Project-Filter, Single-Aktiv-Tag-Edge, alle-Werte-identisch-Edge, Cross-Hour-Aggregation, 7 Schema-Validierung mit Wochen-Whitelist 30|52), Gesamtsuite 665/665 grün, typecheck + lint sauber.
+
+---
+
 ## 2026-05-14 — Phase 2 Season 12: Stats-Cards + 30d/7d-Filter
 
 ### Was jetzt geht

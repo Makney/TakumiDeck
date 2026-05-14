@@ -53,6 +53,12 @@ export const Channels = {
   // jedem usage:update-Push (debounced) — der Main aggregiert direkt aus
   // messages + sessions ueber die bestehenden Indizes.
   StatsOverview: 'stats:project-overview',
+  // Stats (Phase-2 Season-13): GitHub-Style Aktivitaets-Heatmap. Renderer
+  // ruft parallel zu StatsOverview, eigener Endpoint mit eigenem Statement-
+  // Cache. Range/Scope-Toggle der Cards beeinflusst die Heatmap NICHT — die
+  // hat einen eigenen 30W/52W-Toggle, weil ein 7d-Fenster die Heatmap-Logik
+  // zertruemmern wuerde.
+  StatsHeatmap: 'stats:heatmap',
 
   // Filesystem (Sprint 6/7)
   FsRead: 'fs:read',

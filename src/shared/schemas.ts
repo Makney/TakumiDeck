@@ -410,6 +410,18 @@ export const StatsOverviewInputSchema = z.object({
   asOf: z.number().int().positive().optional(),
 });
 
+// Phase-2 Season-13 — Aktivitaets-Heatmap. Genau zwei zulaessige Wochen-
+// Fenster, weil ein dynamischer Wert (z.B. 13W oder 80W) das UI-Grid komplex
+// macht ohne Mehrwert. 30W ≈ ein halbes Jahr (Default), 52W = ein Jahr
+// (Vergleichbarkeit mit GitHub-Original).
+export const StatsHeatmapWeeksSchema = z.union([z.literal(30), z.literal(52)]);
+
+export const StatsHeatmapInputSchema = z.object({
+  projectId: z.string().min(1).nullish(),
+  weeks: StatsHeatmapWeeksSchema,
+  asOf: z.number().int().positive().optional(),
+});
+
 // --- App / Window-Controls (Sprint 8) --------------------------------
 
 // Whitelist für app:window-action — sperrt die Renderer-Boundary auf genau drei
