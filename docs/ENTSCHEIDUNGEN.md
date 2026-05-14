@@ -24,6 +24,42 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Modell-Filter im Verlauf-Panel: current_model statt Join über messages.model
+
+**Entscheidung:** Die neue Modell-Filter-Pillen-Reihe im Verlauf-Panel filtert auf `sessions.current_model` (Single-Column-`IN(...)`-WHERE), nicht auf eine `EXISTS`-Subquery über `messages.model`. Sessions tauchen unter genau einem Modell auf — dem, mit dem sie zuletzt liefen. Das aggregierte „welche Modelle wurden in dieser Session benutzt"-Bild lebt separat im Detail-Pane-Block „Modelle".
+
+**Varianten:**
+
+- **A** Filter auf `sessions.current_model` (gewählt). Triviale SQL-Erweiterung im bestehenden `sessionsHistory`-Statement-Cache, Cache-Key um `modelsLen` erweitert, eine `IN (?, ?, ...)`-Klausel. Sessions kommen in der Liste genau einmal vor.
+- **B** Filter via `EXISTS (SELECT 1 FROM messages WHERE session_id = s.id AND model IN (?))`. Eine Session mit Opus-Start und Sonnet-Wechsel tauchte dann in beiden Filter-Pillen auf — semantisch „irgendwann benutzt". Mächtiger, aber die Sessions-Liste verdoppelt sich gedanklich („warum sehe ich dieselbe Session in zwei Filtern?"), und der Join wäre auf der `messages`-Tabelle deutlich teurer.
+- **C** Beide Modi via Toggle in der Filter-Bar („aktuell / je benutzt"). Maximale Flexibilität, kostet aber UI-Slot und ein neues Konzept, das im Verlauf-Panel sonst nirgends auftaucht — Over-Engineering für ein Pillen-Filter.
+
+**Grund:** Der Daily-Use-Intent ist „zeig mir alle Sessions, die zuletzt mit Opus liefen" — A trifft das direkt. B verschiebt den Aggregat-Aspekt in den Filter, obwohl der Detail-Pane ohnehin die volle Modell-Aufschlüsselung der Session zeigt; doppelt Aggregat ist redundant. Die Modell-Spalte in der Tabellen-Anzeige zeigt sowieso `current_model` (eine Zelle pro Session) — Filter auf dieselbe Quelle hält die UI konsistent: was die Tabelle zeigt, lässt sich auch filtern. Variante B hätte einen Fall produziert, in dem die Tabelle Modell X zeigt, der Filter aber Modell Y matcht — verwirrend.
+
+**Konsequenz:** Sessions ohne `current_model` (theoretisch möglich, in der Praxis nur bei kaputten Pre-Spawn-Sessions) sind nicht filterbar — sie tauchen weder bei aktiver noch bei inaktiver Pille auf, sondern nur im „kein Filter"-Zustand. Das ist ok, weil die Spalte real fast immer befüllt ist und der Workaround (Modell-Pille leer lassen) trivial ist. Die Modell-Liste in der UI ist eine statische 5er-Konstante (`MODEL_FILTER_OPTIONS`) — bewusst NICHT dynamisch aus den im Projekt vorkommenden Modellen. Dynamische Pillen, die je nach Projekt verschwinden/erscheinen, sind verwirrend; die fünf bekannten Modelle decken den Daily-Use ab und ein unbekannter Modell-ID-Wert bleibt in der Tabellen-Spalte sichtbar (Fallback auf rohen String), nur nicht im Filter — bewusste Beschränkung.
+
+**Implementierungsdetail:** Statement-Cache-Key ist `t${typesLen}_s${statusesLen}_m${modelsLen}_q${hasQuery ? 1 : 0}` — Permutations-Raum ≤7×8×5×2 = 560, alle dauerhaft cacheable. Schema bleibt locker auf `z.string().min(1)` für die Modell-IDs (kein Enum-Bind an die fünf UI-Modelle), damit alte Sessions mit umbenannten Modell-IDs filterbar bleiben.
+
+---
+
+## Modell-Aggregat pro Session: aus messages.model statt Timeline-Tabelle oder initial_model
+
+**Entscheidung:** Die im Detail-Pane angezeigte Modell-Aufschlüsselung („welche Modelle in dieser Session, wieviel je") ist eine reine Read-Aggregation aus `messages.model` (neu in Migration 0006), gerendert als kompakte Inline-Liste mit Counts. Kein zeitlicher Verlauf, keine separate Event-Tabelle, keine `initial_model`-Spalte.
+
+**Varianten:**
+
+- **A** Aus `messages.model` aggregieren (gewählt). `SELECT model, COUNT(*) GROUP BY model ORDER BY count DESC, model ASC`, eine zusätzliche Spalte auf der bestehenden messages-Tabelle, der Watcher schreibt das Feld pro Message mit. Antwortet auf „welche Modelle, wie viel pro Modell" — alles, was der Detail-Pane braucht.
+- **B** Eigene Event-Tabelle `session_model_events(session_id, model, switched_at)` mit echtem Timeline-Logging. Würde „16:42 Opus → Sonnet (Slash-Befehl) · 17:15 Sonnet → Opus (Resume)" ermöglichen. Braucht aber dediziertes Switch-Event-Logging im Watcher und im Resume-Pfad, ein eigenes Schema plus Backfill für historische Daten — und die Timeline-Sicht ist im Detail-Pane gar nicht in der Spec.
+- **C** Nur zwei Werte zeigen: `sessions.initial_model` (neue Spalte, beim Spawn gesetzt) und `current_model` (bestehend). Minimaler Schema-Change, aber liefert nur „Start vs. jetzt" — Sessions mit 5 Modell-Wechseln im Daily-Use sehen identisch zu Sessions mit einem Wechsel aus. Verliert den Mehrwert.
+
+**Grund:** A passt zum tatsächlichen Need: der User will wissen, „wie hat sich der Modell-Mix in dieser Session zusammengesetzt", nicht „in welcher Reihenfolge". Die Count-Aggregation liefert implizit die Antwort „welches Modell dominierte" (= das mit höchstem Count) und „wurde überhaupt gewechselt" (= mehr als ein Eintrag). Daten-Quelle ist sowieso vorhanden — der JSONL-Parser liest `message.model` seit Sprint 5, nur der Watcher-Insert hatte das Feld bis Season 10 verworfen. B baut eine Parallel-Welt zur messages-Tabelle für einen Use-Case, der nicht in der Spec steht, und C verliert die Tiefe der Aufschlüsselung.
+
+**Konsequenz:** Backfill für Pre-Migration-Messages nutzt `sessions.current_model` als Approximation (eine Session = ein Hint-Wert, historisch ungenau bei Modell-Wechsel). Dokumentiert als TECH_SCHULDEN-Eintrag — löst sich auf, sobald Pre-Migration-Sessions archiviert sind und neue Messages mit exaktem per-Message-Modell die Daten dominieren. Detail-Pane blendet den Block aus, wenn die Session genau ein Modell hat — der Single-Modell-Fall ist redundant zur Tabellen-Spalte, und ein Hide bei ≤1 Aggregat-Eintrag verhindert, dass der Detail-Pane mit „Modelle · Sonnet 4.6 · 47" eine Information doppelt zeigt, die schon in der Spalte steht.
+
+**Implementierungsdetail:** Aggregat reist mit jedem `SessionHistoryEntry` im IPC-Response — Bulk-Query nach der History-Liste (`SELECT session_id, model, COUNT(*) ... WHERE session_id IN (?, ?, ...) GROUP BY session_id, model`) statt N+1. Statement-Cache pro IN-Listen-Länge analog zum sessionsHistory-Pattern. Alternative „separater IPC bei Klick auf Eintrag" wäre billiger im average-case, aber das Flackern beim Klicken (extra Round-Trip pro Selektion) ist im Daily-Use unangenehmer als die mit-gesendete Aggregat-Payload (≤5 Einträge pro Session = vernachlässigbar). `SessionRepository` bekommt das `MessageRepository` als optionale zweite Konstruktor-Dep — Bestands-Tests, die nur den Sessions-Repo brauchen, lassen den Parameter weg und sehen `models: []` (kein Detail-Aggregat).
+
+---
+
 ## Kontext-Soft-Warning: Marker an der ctx-Bar + Tooltip statt Pille oder Toast
 
 **Entscheidung:** Die persönliche Erfahrungsgrenze für die Per-Session-Kontext-Bar (Default 20 %, im Settings-Tab Token-Tracking konfigurierbar und per Toggle abschaltbar) wird als visueller Marker direkt an der `ctx`-Bar in der Action-Bar gerendert plus einer vierten, dezenten Tonungs-Stufe `soft` (gedämpfter `--td-blue`-Hinweis), sobald die Auslastung den Marker überholt. Der Hinweis-Text „Kontext über X % — Output-Qualität kann sinken" sitzt im `title`-Tooltip der Bar.

@@ -3,6 +3,10 @@ import {
   SessionRepository,
   InMemorySessionDriver,
 } from '../../src/main/db/repos/sessions';
+import {
+  MessageRepository,
+  InMemoryMessageDriver,
+} from '../../src/main/db/repos/messages';
 import type { SessionStatus, SessionType } from '../../src/shared/types';
 
 // Sprint 6: Verlauf-Panel-Filter-Logik. Tests gegen InMemory-Driver — der
@@ -12,6 +16,20 @@ import type { SessionStatus, SessionType } from '../../src/shared/types';
 function makeRepo() {
   const driver = new InMemorySessionDriver();
   return { repo: new SessionRepository(driver), driver };
+}
+
+// Phase-2 Season-10: Variante mit MessageRepository als Dep, damit
+// listHistoryForProject das models-Aggregat pro Eintrag nachliefert.
+function makeRepoWithMessages() {
+  const driver = new InMemorySessionDriver();
+  const messageDriver = new InMemoryMessageDriver();
+  const messages = new MessageRepository(messageDriver);
+  return {
+    repo: new SessionRepository(driver, messages),
+    driver,
+    messages,
+    messageDriver,
+  };
 }
 
 interface SeedInput {
@@ -24,6 +42,10 @@ interface SeedInput {
   seasonNumber?: number | null;
   notesMd?: string;
   endedAt?: number | null;
+  // Phase-2 Season-10: Tests fuer den Modell-Filter setzen das current_model
+  // pro Session; Default bleibt Sonnet 4.6 wie bisher (entspricht der
+  // Phase-1-Test-Konvention).
+  currentModel?: string | null;
 }
 
 function seed(driver: InMemorySessionDriver, input: SeedInput) {
@@ -34,7 +56,7 @@ function seed(driver: InMemorySessionDriver, input: SeedInput) {
     type: input.type,
     season_number: input.seasonNumber ?? null,
     status: input.status,
-    current_model: 'claude-sonnet-4-6',
+    current_model: input.currentModel === undefined ? 'claude-sonnet-4-6' : input.currentModel,
     worktree_branch: null,
     notes_md: input.notesMd ?? '',
     cwd: 'C:\\test',
@@ -162,5 +184,84 @@ describe('SessionRepository.listHistoryForProject', () => {
     const result = repo.listHistoryForProject({ projectId: 'p1' });
     expect(result[0]?.season_number).toBe(7);
     expect(result[0]?.notes_md).toBe('Erste Notiz\nZweite Zeile');
+  });
+
+  // Phase-2 Season-10: Modell-Filter laut Variante "Aktuelles Modell der Session".
+
+  it('Modell-Filter: nur passende current_model-Werte', () => {
+    const { repo, driver } = makeRepo();
+    seed(driver, { id: 'o', projectId: 'p1', title: 'Opus', type: 'feature', status: 'completed', startedAt: 1, currentModel: 'claude-opus-4-7' });
+    seed(driver, { id: 's', projectId: 'p1', title: 'Sonnet', type: 'feature', status: 'completed', startedAt: 2, currentModel: 'claude-sonnet-4-6' });
+    seed(driver, { id: 'h', projectId: 'p1', title: 'Haiku', type: 'feature', status: 'completed', startedAt: 3, currentModel: 'claude-haiku-4-5' });
+    const onlyOpus = repo.listHistoryForProject({ projectId: 'p1', models: ['claude-opus-4-7'] });
+    expect(onlyOpus.map((r) => r.id)).toEqual(['o']);
+    const opusOrSonnet = repo.listHistoryForProject({
+      projectId: 'p1',
+      models: ['claude-opus-4-7', 'claude-sonnet-4-6'],
+    });
+    expect(opusOrSonnet.map((r) => r.id).sort()).toEqual(['o', 's']);
+  });
+
+  it('Modell-Filter: leere Liste = kein Filter', () => {
+    const { repo, driver } = makeRepo();
+    seed(driver, { id: 'a', projectId: 'p1', title: 'A', type: 'feature', status: 'completed', startedAt: 1, currentModel: 'claude-opus-4-7' });
+    seed(driver, { id: 'b', projectId: 'p1', title: 'B', type: 'feature', status: 'completed', startedAt: 2, currentModel: 'claude-sonnet-4-6' });
+    const result = repo.listHistoryForProject({ projectId: 'p1', models: [] });
+    expect(result).toHaveLength(2);
+  });
+
+  it('Modell-Filter: Session mit current_model=null wird ausgeschlossen', () => {
+    const { repo, driver } = makeRepo();
+    seed(driver, { id: 'has', projectId: 'p1', title: 'Has', type: 'feature', status: 'completed', startedAt: 1, currentModel: 'claude-opus-4-7' });
+    seed(driver, { id: 'null', projectId: 'p1', title: 'Null', type: 'feature', status: 'completed', startedAt: 2, currentModel: null });
+    const result = repo.listHistoryForProject({ projectId: 'p1', models: ['claude-opus-4-7'] });
+    expect(result.map((r) => r.id)).toEqual(['has']);
+  });
+
+  it('Modell-Filter kombiniert mit Typ-Filter (UND-Verknuepfung)', () => {
+    const { repo, driver } = makeRepo();
+    seed(driver, { id: 'match', projectId: 'p1', title: 'M', type: 'feature', status: 'completed', startedAt: 1, currentModel: 'claude-opus-4-7' });
+    seed(driver, { id: 'wrong-type', projectId: 'p1', title: 'W', type: 'bug', status: 'completed', startedAt: 2, currentModel: 'claude-opus-4-7' });
+    const result = repo.listHistoryForProject({
+      projectId: 'p1',
+      types: ['feature'],
+      models: ['claude-opus-4-7'],
+    });
+    expect(result.map((r) => r.id)).toEqual(['match']);
+  });
+
+  it('models-Aggregat: leeres Array ohne MessageRepository-Dep', () => {
+    const { repo, driver } = makeRepo();
+    seed(driver, { id: 's1', projectId: 'p1', title: 'A', type: 'feature', status: 'completed', startedAt: 1 });
+    const result = repo.listHistoryForProject({ projectId: 'p1' });
+    expect(result[0]?.models).toEqual([]);
+  });
+
+  it('models-Aggregat: SessionRepo mit MessageRepository reichert Eintraege an', () => {
+    const { repo, driver, messageDriver } = makeRepoWithMessages();
+    seed(driver, { id: 's1', projectId: 'p1', title: 'A', type: 'feature', status: 'completed', startedAt: 1 });
+    seed(driver, { id: 's2', projectId: 'p1', title: 'B', type: 'feature', status: 'completed', startedAt: 2 });
+    // s1: 3× Opus, 1× Sonnet — Opus muss zuerst stehen.
+    messageDriver.insert({ session_id: 's1', project_id: 'p1', role: 'assistant', content: '', tokens_in: 0, tokens_out: 0, ts: 1, model: 'claude-opus-4-7' });
+    messageDriver.insert({ session_id: 's1', project_id: 'p1', role: 'assistant', content: '', tokens_in: 0, tokens_out: 0, ts: 2, model: 'claude-opus-4-7' });
+    messageDriver.insert({ session_id: 's1', project_id: 'p1', role: 'assistant', content: '', tokens_in: 0, tokens_out: 0, ts: 3, model: 'claude-opus-4-7' });
+    messageDriver.insert({ session_id: 's1', project_id: 'p1', role: 'assistant', content: '', tokens_in: 0, tokens_out: 0, ts: 4, model: 'claude-sonnet-4-6' });
+    // s2: nur Haiku.
+    messageDriver.insert({ session_id: 's2', project_id: 'p1', role: 'assistant', content: '', tokens_in: 0, tokens_out: 0, ts: 5, model: 'claude-haiku-4-5' });
+    const result = repo.listHistoryForProject({ projectId: 'p1' });
+    const s1 = result.find((r) => r.id === 's1');
+    const s2 = result.find((r) => r.id === 's2');
+    expect(s1?.models).toEqual([
+      { model: 'claude-opus-4-7', count: 3 },
+      { model: 'claude-sonnet-4-6', count: 1 },
+    ]);
+    expect(s2?.models).toEqual([{ model: 'claude-haiku-4-5', count: 1 }]);
+  });
+
+  it('models-Aggregat: Session ohne Messages bekommt leeres Array', () => {
+    const { repo, driver } = makeRepoWithMessages();
+    seed(driver, { id: 's1', projectId: 'p1', title: 'A', type: 'feature', status: 'completed', startedAt: 1 });
+    const result = repo.listHistoryForProject({ projectId: 'p1' });
+    expect(result[0]?.models).toEqual([]);
   });
 });

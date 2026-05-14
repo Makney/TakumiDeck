@@ -4,6 +4,7 @@ import {
   AppSettingsPatchSchema,
   ProjectRemoveInputSchema,
   PtyCreateInputSchema,
+  SessionHistoryInputSchema,
   SessionTypeSchema,
 } from '@shared/schemas';
 import { buildDefaultSettings } from '../../src/main/settings/defaults';
@@ -122,6 +123,42 @@ describe('PtyCreateInputSchema', () => {
     const tooLong = 'x'.repeat(61);
     expect(() =>
       PtyCreateInputSchema.parse({ ...base, type: 'custom', customTypeLabel: tooLong }),
+    ).toThrow();
+  });
+});
+
+// Phase-2 Season-10: SessionHistoryInputSchema.models — Modell-Filter im
+// Verlauf-Panel. Schema bleibt locker auf String-Werten (keine Enum-Bindung an
+// die fuenf UI-Modelle), weil alte Sessions mit umbenannten Modell-IDs noch
+// filterbar bleiben muessen.
+describe('SessionHistoryInputSchema.models', () => {
+  it('akzeptiert ein Array von Modell-Strings', () => {
+    const parsed = SessionHistoryInputSchema.parse({
+      projectId: 'p1',
+      models: ['claude-opus-4-7', 'claude-sonnet-4-6'],
+    });
+    expect(parsed.models).toEqual(['claude-opus-4-7', 'claude-sonnet-4-6']);
+  });
+
+  it('akzeptiert ein leeres models-Array', () => {
+    const parsed = SessionHistoryInputSchema.parse({ projectId: 'p1', models: [] });
+    expect(parsed.models).toEqual([]);
+  });
+
+  it('akzeptiert weggelassenes models-Feld (Phase-1-Backwards-Compat)', () => {
+    const parsed = SessionHistoryInputSchema.parse({ projectId: 'p1' });
+    expect(parsed.models).toBeUndefined();
+  });
+
+  it('lehnt non-Array fuer models ab', () => {
+    expect(() =>
+      SessionHistoryInputSchema.parse({ projectId: 'p1', models: 'claude-opus-4-7' }),
+    ).toThrow();
+  });
+
+  it('lehnt leere Strings im models-Array ab (kein Phantom-Filter)', () => {
+    expect(() =>
+      SessionHistoryInputSchema.parse({ projectId: 'p1', models: [''] }),
     ).toThrow();
   });
 });

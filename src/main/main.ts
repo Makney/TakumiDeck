@@ -123,11 +123,14 @@ void app.whenReady().then(async () => {
     ensureDefaultProject(db, settings.read().workspace_path);
 
     const projectRepo = new ProjectRepository(new SqliteProjectDriver(db));
-    const sessions = new SessionRepository(new SqliteSessionDriver(db));
+    // Phase-2 Season-10: SessionRepository bekommt das MessageRepository als
+    // zweite Dep, damit listHistoryForProject die Modell-Aggregate pro Eintrag
+    // nachliefern kann. Reihenfolge daher tauschen — MessageRepo zuerst.
+    const messageRepo = new MessageRepository(new SqliteMessageDriver(db));
+    const sessions = new SessionRepository(new SqliteSessionDriver(db), messageRepo);
     // Logger fürs Lifecycle-Debug-Tracing: jeder Statusübergang wird mit Reason
     // im Log nachvollziehbar (debug-Level, daher im Default-Loglevel still).
     const lifecycle = new SessionLifecycle(sessions, undefined, logger);
-    const messageRepo = new MessageRepository(new SqliteMessageDriver(db));
     const usageRepo = new UsageRepository(new SqliteUsageDriver(db));
     const jsonlOffsetRepo = new JsonlOffsetRepository(new SqliteJsonlOffsetDriver(db));
     ptyManager = new PtyManager(realPtySpawn);

@@ -17,6 +17,19 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-14 — Phase 2 Season 10: Modell-Filter im Verlauf-Panel
+
+### Was jetzt geht
+
+- **Dritte Filter-Reihe „Modell" im Verlauf-Panel.** Zwischen den bestehenden Status-Pillen und dem Suchfeld sitzt jetzt eine neue Pillen-Reihe mit den fünf bekannten Modellen (Opus 4.7 · Opus 4.6 · Sonnet 4.6 · Sonnet 4.5 · Haiku 4.5). Multi-Select analog zu Typ/Status, leere Auswahl = kein Filter. Der Filter wirkt auf `sessions.current_model` — eine Session, deren letzter Stand z.B. Opus war, taucht in der Opus-Pille auf, unabhängig davon, ob sie zwischendurch auch Sonnet benutzt hat. Reset bei Projekt-Wechsel zusammen mit den anderen Filtern. Modell-Liste ist bewusst statisch (statt dynamisch aus dem Projekt) — Pillen, die je nach Projekt verschwinden/erscheinen, wären verwirrend.
+- **„Modelle"-Block im Detail-Pane mit Aggregat pro Session.** Klick auf eine Session zeigt zwischen Token-Block und Notizen jetzt eine Inline-Liste der in der Session verwendeten Modelle mit Message-Counts, absteigend sortiert (z.B. `Opus 4.7 · 47 · Sonnet 4.6 · 12`). Quelle ist die `messages`-Tabelle: ab Season 10 schreibt der JSONL-Watcher das per-Message-Modell mit (neue Spalte `messages.model`, Migration 0006), Pre-Migration-Messages bekommen einen Backfill aus `sessions.current_model`. Der Block blendet sich aus, wenn die Session genau ein Modell hatte — der Single-Modell-Fall ist redundant zur Tabellen-Spalte rechts.
+
+### Architektur-Notiz
+
+Filter-Quelle ist Variante A (`current_model`) statt Variante B („irgendwann verwendet" via `messages.model`-Join) — die einfache `IN (...)`-Klausel bleibt schnell und macht die Sessions-Liste nicht durch Mehrfach-Treffer verwirrend. Detail-Aggregat ist Variante A (aus `messages`-Tabelle aggregiert) statt einer eigenen Event-Tabelle oder einer separaten `initial_model`-Spalte. Beides war bedingt durch den Datenmodell-Nachzug: der JSONL-Parser liest `message.model` seit Sprint 5, aber der Watcher-Insert verwarf es bis Season 10. Migration 0006 erweitert `messages` um `model TEXT NULL` und macht den Backfill in derselben Transaction — historisch ungenau bei Sessions mit Modell-Wechsel (es gibt nur einen Wert pro Session als Hint), aber ab dem Patch laufen alle neuen Messages exakt. Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md), Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md). Backfill-Verzerrung ist als TECH_SCHULDEN-Eintrag dokumentiert. Aggregat-Anreicherung läuft als ein zusätzlicher Bulk-`IN(...)`-Query nach dem History-Listing (kein N+1), `MessageRepository.aggregateModelsForSessions` mit Statement-Cache pro IN-Listen-Länge. SessionRepository bekommt das MessageRepository als optionale zweite Dep — Bestands-Tests, die ohne Messages-Repo laufen, sehen weiter `models: []`. 22 neue Tests (11 Aggregat-Pure-Logik, 6 History-Filter + Aggregat-Anreicherung, 5 Schema-Validierung), Gesamtsuite 592/592 grün.
+
+---
+
 ## 2026-05-14 — Phase 2 Season 9: 20 %-Kontext-Soft-Warning + Watcher-Resolver-Fix
 
 ### Was jetzt geht

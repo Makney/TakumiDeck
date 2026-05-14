@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 10 — Modell-Filter im Verlauf-Panel
+
+**Ziel:** Phase-2-Roadmap-Eintrag „Modell-Filter im Verlauf-Panel" produktiv machen. Spec war minimal: „Filter nach `current_model` der Sessions" plus „Modell-Wechsel-History als Detail-Info pro Session". Letzteres ließ offen, ob eine echte Timeline oder eine Aggregat-Sicht gemeint ist und woher die Daten kommen sollen.
+
+**Ergebnis:** Variante A auf beiden Achsen — Filter auf `sessions.current_model` und Detail-Aggregat aus `messages.model`. Datenmodell-Nachzug via Migration 0006 (`ALTER TABLE messages ADD COLUMN model TEXT NULL` + Backfill aus `sessions.current_model` für Pre-Migration-Rows), Watcher schreibt `parsed.model` ab Patch exakt mit. UI: dritte Pillen-Reihe „Modell" zwischen Status und Suche (statische 5er-Liste), neuer Detail-Pane-Block „Modelle" zwischen Token und Notizen mit Inline-Aggregat. `SessionRepository` bekommt `MessageRepository` als optionale zweite Dep, `aggregateModelsForSessions` als Bulk-Query mit IN-Statement-Cache (kein N+1). 22 neue Tests (11 Aggregat-Pure-Logik, 6 History-Filter + Aggregat-Anreicherung, 5 Schema-Validierung), Gesamtsuite 592/592 grün, typecheck + lint sauber. Ein TECH_SCHULDEN-Eintrag dokumentiert die Backfill-Approximation (historische Modell-Wechsel-Sessions sind im Detail-Aggregat verzerrt, löst sich über Zeit auf).
+
+**Gut gelaufen:**
+
+- **Zwei orthogonale Variants-Achsen vor dem ersten Edit, statt aller Kombinationen auf einmal.** Filter-Quelle (current_model / messages-Join / Toggle-Modus) und Detail-Aggregat-Quelle (messages-Aggregat / Event-Timeline / Start+Jetzt) als separate AskUserQuestion-Sets präsentiert. Jeweils mit empfohlener Variante, klarer Plain-Language-Beschreibung ohne Code, User-Entscheidung pro Achse einmal. Pattern aus Season 9 wiederverwendet — funktionierte hier sogar besser, weil die zwei Achsen tatsächlich unabhängig waren. Memory-Hinweis „UX-Defaults: konvenient vor traditionell" trug die Empfehlungs-Reihenfolge.
+- **Falsche Annahme früh entdeckt und transparent korrigiert.** Erste AskUserQuestion bestätigte „Aggregat aus messages-Tabelle ableiten" — direkt danach beim Code-Scan stellte sich heraus, dass `messages.model` als Spalte gar nicht existiert (Parser liefert das Feld zwar, Watcher-Insert verwarf es). Statt das stillschweigend zu lösen, wurde die Korrektur als eigene Variants-Frage gestellt (Migration + Backfill / Eigene Aggregat-Tabelle / History-Detail aus Scope streichen). Ergebnis: User wählte den sauberen Migrations-Pfad bewusst, statt eine implizite Schulden-Lösung übernehmen zu müssen. Lehre bestätigt: bei Daten-Quellen-Annahmen vorab in der DB-Schicht gegen-prüfen, nicht erst bei der Implementierung stolpern.
+- **`MessageInsert.model` als optional + `undefined → null`-Normalisierung im Driver erspart Test-Churn.** Erster Reflex war, `model: string | null` als Pflicht zu deklarieren — wäre durch 16 bestehende `messages.insert`-Aufrufe in Tests gerasselt (state-detection, reconciliation, usage-aggregation). Optionaler Typ plus konsequente `?? null`-Normalisierung beim Insert in beiden Drivers macht die Bestands-Tests unverändert grün, während neue Caller (Watcher, Season-10-Tests) das Feld explizit setzen. Defensive Typsystem-Wahl an einer Stelle erspart 16 Edit-Stellen ohne semantisches Risiko.
+
+**Gebremst durch:**
+
+- **Initiale Verwirrung User: „Filter nicht zu finden".** Nach Implementierung Screenshot vom User: er war in der Terminals-Ansicht und suchte den Filter in der Sidebar-Kurzliste. Der Filter sitzt aber nur im vollen Verlauf-Panel (`setMainView('history')` via „→ Alle anzeigen"-Button). Lehre: bei Features, die in einem View-Mode liegen, der nicht der Default ist, kurz mit-erklären *wo* sie zu finden sind — eine Zeile „Klick auf X öffnet die Ansicht, in der der Filter sichtbar wird" im Abschluss-Kommentar erspart einen Round-Trip. Nicht in den Code, aber in die Chat-Antwort.
+- **Brainstorming-Skill-Flow erst gestartet, dann vom User explizit gekürzt.** Reflexiv ist nach den Variants das nächste Skill-Step „Spec-Doc schreiben → Self-Review → User-Review → writing-plans-Übergang". User stoppte das mit „schreib den code dafür, das mit spec schreiben self review usw ist nicht das was ich wolte". Korrektur als Feedback-Memory gespeichert (`feedback-brainstorming-spec-overhead.md`): nach Variants direkt in den Code; TakumiDeck hat eigene leichte Doku-Anker (CHANGELOG/FEATURES/ENTSCHEIDUNGEN/SEASON_LOG/TECH_SCHULDEN), ein zusätzliches `docs/superpowers/specs/*-design.md`-Artefakt ist Doppel-Doku.
+
+**Für nächste Season:**
+
+- Die Backfill-Approximation der Pre-Migration-Modell-Daten ist als TECH_SCHULDEN-Eintrag erfasst. Falls eine spätere Phase-2-Season (Stats-Cards, Modelle-View) per-Modell-Aggregate über alle Sessions hinweg braucht, ist das der Punkt zum erneuten Hinschauen — entweder akzeptieren (Pre-Migration-Sessions sind dann meist archiviert), oder einen JSONL-Re-Scan-Job einbauen, der den `jsonl_offsets`-Reset für die betroffenen Sessions sauber macht.
+- Statisch hartcodierte 5er-Modell-Liste (`MODEL_FILTER_OPTIONS`) ist im HistoryPane lokal — wenn weitere Phase-2-Features eine Modell-Picker-UI brauchen (z.B. globaler Filter in der Stats-Section), wäre der Schritt: gemeinsame Konstante in `shared/constants.ts` plus Label-Mapping in einem `formatModelLabel`-Util neben dem bestehenden im HistoryPane. Heute kein vorziehen, weil noch nicht doppelt gebraucht.
+- Memory-Eintrag „Kein Spec-Doc + Self-Review-Loop" gilt jetzt projekt-weit für TakumiDeck. Falls eine zukünftige Season ein größeres/architektur-kritisches Feature ist und ein formales Spec-Dokument doch nützlich wäre, sagt der User das explizit — Default bleibt: in den Code.
+
+---
+
 ## Phase 2 Season 9 — 20 %-Kontext-Soft-Warning
 
 **Ziel:** Phase-2-Roadmap-Eintrag „20 %-Kontext-Soft-Warning" produktiv machen. Konfigurierbarer Schwellwert (Default 20 %) an der Per-Session-Kontext-Bar, dezenter Hinweis bei Überschreitung, Settings-Toggle zum Abschalten, plus eine kleine Markierung in der Bar, die die Distanz zum Schwellwert zeigt. User hat in den Hinweisen explizit den Nebenfund mit-bestellt: aktuelle Kontext-Anzeige misst gegen die `started_at`-jüngste Session statt die im Terminal sichtbare — das mit-fixen.

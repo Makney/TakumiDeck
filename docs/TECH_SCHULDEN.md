@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Backfill-Approximation für `messages.model` bei Pre-Migration-Daten (Phase-2 Season 10)
+
+**Bereich:** `src/main/db/migrations/0006_messages_model.sql` (Backfill-UPDATE), `src/main/db/repos/messages.ts` (Aggregat-Konsumenten)
+
+**Was:** Migration 0006 ergänzt `messages.model` als nullable Spalte und backfillt bestehende Rows mit dem `current_model` der jeweiligen Session. Das ist ein einzelner Hint-Wert pro Session — bei Sessions, die im Lauf der Zeit das Modell gewechselt haben (z.B. via `/model`-Slash-Befehl oder Resume mit anderem Modell), bekommen alle historischen Messages denselben Modell-String, obwohl in Wirklichkeit ein Mix vorlag. Das Detail-Pane-Aggregat („Modelle · Opus 4.7 · 12 · Sonnet 4.6 · 5") spiegelt diese Verzerrung: für eine Pre-Migration-Session zeigt es nur ein Modell mit voller Message-Anzahl.
+
+**Warum so:** Die exakte Pre-Migration-Information ist nicht rekonstruierbar — die JSONL-Files würden zwar die per-Message-Modelle enthalten, aber ein Re-Read aller historischen JSONLs würde den `jsonl_offsets`-Mechanismus aushebeln (Idempotenz-Verlust) und einen mehrere-MB-langen Migration-Job triggern. Der gewählte Backfill ist eine pragmatische Approximation, die für Sessions ohne Modell-Wechsel exakt richtig ist (die Mehrheit aller Sessions im Daily-Use) und nur bei der kleineren Teilmenge der Wechsel-Sessions verzerrt. Ab dem Watcher-Patch in derselben Season schreiben alle neuen Messages das per-Message-Modell exakt, sodass die Verzerrung sich von selbst aus den aktiven Sessions herauswächst.
+
+**Risiko:** Detail-Pane für historische Sessions kann irreführend sein — eine Session, die laut Aggregat „nur Opus" hatte, könnte real auch Sonnet-Messages enthalten haben. Tabellen-Spalte (`current_model`) ist unberührt; Filter funktioniert weiter korrekt, weil er ohnehin auf `sessions.current_model` filtert (nicht auf das Aggregat). Kein Datenverlust, keine falschen Schreib-Operationen.
+
+**Auflösung:** Löst sich von selbst über die Zeit. Sobald Pre-Migration-Sessions archiviert sind und neue Messages mit exaktem per-Message-Modell die Daten dominieren, ist die Verzerrung weg. Falls vorher eine Session-spezifische Korrektheit nötig wird (z.B. Stats-Section in einer späteren Phase will pro Modell exakte Token-Counts), wäre ein Re-Scan-Job über die JSONL-Files denkbar, der den `jsonl_offsets`-Reset für diese Sessions explizit macht. Aktuell kein Bedarf.
+
+---
+
 ## Renderer-FileTabs des entfernten Projekts werden nicht aufgeräumt (Phase-2 Season 8)
 
 **Bereich:** `src/renderer/stores/fileTabs.ts`, `src/renderer/panels/LeftSidebar.tsx` (`handleConfirmRemove`)

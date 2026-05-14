@@ -74,7 +74,7 @@ Zusätzliche Warnung für die persönliche Erfahrungsgrenze.
 
 **Trigger:** Wenn die 20%-Beobachtung sich im Daily-Use bestätigt.
 
-### Feature: Modell-Filter im Verlauf-Panel
+### Feature: Modell-Filter im Verlauf-Panel ✅
 
 Zusätzlicher Filter zum Phase-1-Set.
 

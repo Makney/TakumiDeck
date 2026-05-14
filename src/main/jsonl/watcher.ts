@@ -167,6 +167,11 @@ export class JsonlWatcher {
             tokens_in: msg.totalTokens,
             tokens_out: msg.outputTokens,
             ts: msg.ts,
+            // Phase-2 Season-10: per-Message-Modell mitschreiben. Der Parser
+            // setzt das Feld auf null, wenn message.model fehlt; das landet 1:1
+            // in der Spalte und wird vom Detail-Pane-Aggregat als „kein Modell"
+            // gefiltert.
+            model: msg.model,
           });
           wroteContext = true;
         }

@@ -3,6 +3,7 @@ import type {
   AppSettings,
   ProjectRow,
   SessionHistoryEntry,
+  SessionModelAggregateEntry,
   SessionStatus,
   SessionType,
 } from '@shared/types';
@@ -75,6 +76,23 @@ const MODEL_LABELS: Record<string, string> = {
   'claude-haiku-4-5': 'Haiku 4.5',
 };
 
+// Phase-2 Season-10: feste Pillen-Liste fuer den Modell-Filter. Bewusst statisch
+// gehalten (statt dynamisch aus den im Projekt vorkommenden Modellen), weil
+// verschwindende/erscheinende Pillen beim Projekt-Wechsel verwirren wuerden.
+// Reihenfolge folgt der Modell-Familie (Opus → Sonnet → Haiku) und innerhalb
+// der Familie absteigend nach Version.
+const MODEL_FILTER_OPTIONS: string[] = [
+  'claude-opus-4-7',
+  'claude-opus-4-6',
+  'claude-sonnet-4-6',
+  'claude-sonnet-4-5',
+  'claude-haiku-4-5',
+];
+
+function formatModelLabel(modelId: string): string {
+  return MODEL_LABELS[modelId] ?? modelId;
+}
+
 interface Props {
   project: ProjectRow;
   settings: AppSettings;
@@ -86,6 +104,9 @@ export function HistoryPane({ project, settings }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [selectedTypes, setSelectedTypes] = useState<SessionType[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<SessionStatus[]>([]);
+  // Phase-2 Season-10: Modell-Filter analog zu Typ/Status. Leeres Array = kein
+  // Filter aktiv. Werte sind Modell-IDs (claude-opus-4-7 etc.), nicht die Labels.
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null);
   // Sprint 8 — gezielter Resume-Fehler-Hint für SESSION_NO_CLAUDE_UUID
@@ -110,6 +131,7 @@ export function HistoryPane({ project, settings }: Props) {
   useEffect(() => {
     setSelectedTypes([]);
     setSelectedStatuses([]);
+    setSelectedModels([]);
     setQuery('');
     setArchiveConfirmId(null);
   }, [project.id]);
@@ -139,6 +161,7 @@ export function HistoryPane({ project, settings }: Props) {
         projectId: project.id,
         types: selectedTypes,
         statuses: effectiveStatuses,
+        models: selectedModels,
         query: query.trim(),
       })
       .then((result) => {
@@ -156,7 +179,7 @@ export function HistoryPane({ project, settings }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [project.id, selectedTypes, selectedStatuses, query]);
+  }, [project.id, selectedTypes, selectedStatuses, selectedModels, query]);
 
   const selectedEntry = useMemo(
     () => entries.find((e) => e.id === selectedId) ?? null,
@@ -171,6 +194,11 @@ export function HistoryPane({ project, settings }: Props) {
   const toggleStatus = (s: SessionStatus) => {
     setSelectedStatuses((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
+    );
+  };
+  const toggleModel = (m: string) => {
+    setSelectedModels((prev) =>
+      prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m],
     );
   };
 
@@ -347,6 +375,21 @@ export function HistoryPane({ project, settings }: Props) {
             ))}
           </div>
         </div>
+        <div className="td-history-filter-group">
+          <span className="td-history-filter-label">Modell</span>
+          <div className="td-form-pills">
+            {MODEL_FILTER_OPTIONS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`td-pill ${selectedModels.includes(m) ? 'active' : ''}`}
+                onClick={() => toggleModel(m)}
+              >
+                {formatModelLabel(m)}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="td-history-filter-group td-history-filter-query">
           <span className="td-history-filter-label">Suche</span>
           <input
@@ -398,7 +441,7 @@ export function HistoryPane({ project, settings }: Props) {
                       {STATUS_LABELS[entry.status]}
                     </span>
                   </td>
-                  <td>{entry.current_model ? (MODEL_LABELS[entry.current_model] ?? entry.current_model) : '—'}</td>
+                  <td>{entry.current_model ? formatModelLabel(entry.current_model) : '—'}</td>
                   <td className="td-history-col-date">{formatDate(entry.started_at)}</td>
                   <td className="td-history-col-notes">
                     {entry.notes_md.trim().length > 0 ? '✓' : ''}
@@ -516,6 +559,8 @@ function HistoryDetail({
         </div>
       </div>
 
+      <ModelsBreakdown entry={entry} />
+
       <div className="td-history-detail-notes">
         <div className="td-history-detail-notes-label">Notizen</div>
         {entry.notes_md.trim().length > 0 ? (
@@ -587,6 +632,33 @@ function HistoryDetail({
         >
           {entry.status === 'running' ? 'Tab fokussieren' : 'Resume'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Phase-2 Season-10: Modell-Aufschluesselung pro Session. Liest das `models`-
+// Aggregat aus dem History-Entry (vom Sessions-Repo per messages.model-GROUP-BY
+// nachgereicht), rendert eine kompakte Inline-Liste. Ausgeblendet, wenn die
+// Session genau ein Modell oder gar keins hat — der Single-Modell-Fall ist
+// redundant zur Tabellen-Spalte rechts, der Null-Fall hat keinen Mehrwert.
+function ModelsBreakdown({ entry }: { entry: SessionHistoryEntry }) {
+  const models = entry.models;
+  if (models.length <= 1) return null;
+  return (
+    <div className="td-history-detail-models">
+      <div className="td-history-detail-models-label">Modelle</div>
+      <div className="td-history-detail-models-list">
+        {models.map((m: SessionModelAggregateEntry, i) => (
+          <span key={m.model} className="td-history-detail-models-item">
+            {i > 0 && <span className="td-history-detail-models-sep"> · </span>}
+            <span className="td-history-detail-models-name">{formatModelLabel(m.model)}</span>
+            <span className="td-history-detail-models-count">
+              {' · '}
+              {m.count.toLocaleString('de-DE')}
+            </span>
+          </span>
+        ))}
       </div>
     </div>
   );

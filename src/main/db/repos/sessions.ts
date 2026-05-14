@@ -7,6 +7,7 @@ import type {
   SessionStatus,
   SessionType,
 } from '@shared/types';
+import type { MessageRepository } from './messages';
 
 // SessionRepository und der dazugehörige SessionDbDriver — Trennung wie beim
 // Migration-Runner aus Sprint 1: die Klasse trägt die Geschäftslogik, der Driver
@@ -101,7 +102,14 @@ const PATCHABLE_COLUMNS = new Set<keyof SessionPatch>([
 ]);
 
 export class SessionRepository {
-  constructor(private readonly driver: SessionDbDriver) {}
+  // Phase-2 Season-10: optionales MessageRepository, damit `listHistoryForProject`
+  // pro Eintrag das Modell-Aggregat (messages.model GROUP BY) mitliefern kann.
+  // Bestands-Tests, die nur SessionRepo brauchen, lassen den Parameter weg —
+  // die History liefert dann `models: []` (kein Detail-Pane-Aggregat).
+  constructor(
+    private readonly driver: SessionDbDriver,
+    private readonly messages?: MessageRepository,
+  ) {}
 
   create(input: CreateSessionInput): SessionRow {
     const id = input.id ?? randomUUID();
@@ -148,7 +156,17 @@ export class SessionRepository {
   }
 
   listHistoryForProject(input: SessionHistoryInput): SessionHistoryEntry[] {
-    return this.driver.listHistoryForProject(input);
+    const entries = this.driver.listHistoryForProject(input);
+    if (entries.length === 0 || !this.messages) return entries;
+    // Phase-2 Season-10: Bulk-Aggregation der Modell-Counts in EINER zusaetzlichen
+    // Query (IN-Liste ueber alle Session-IDs des Listings), Merge in TS. Vermeidet
+    // den N+1-Aufruf, der bei der Default-Listenlaenge (≤100) sonst ein deutlicher
+    // Overhead waere.
+    const aggregates = this.messages.aggregateModelsForSessions(entries.map((e) => e.id));
+    for (const entry of entries) {
+      entry.models = aggregates.get(entry.id) ?? [];
+    }
+    return entries;
   }
 
   setClaudeSessionId(sessionId: string, claudeSessionId: string): boolean {
@@ -251,14 +269,16 @@ export class SqliteSessionDriver implements SessionDbDriver {
   listHistoryForProject(input: SessionHistoryInput): SessionHistoryEntry[] {
     // Dynamisches SQL: alle Bedingungen sind statische Spalten + Bind-Parameter.
     // Statements werden per Filter-Permutation gecached (typesLen × statusesLen ×
-    // hasQuery), damit nicht jeder History-Klick / Tastendruck im Suchfeld einen
-    // SQL-Re-Compile triggert. Permutations-Raum ist klein (~56 Kombinationen),
-    // alle dürfen dauerhaft im Cache leben.
+    // modelsLen × hasQuery), damit nicht jeder History-Klick / Tastendruck im
+    // Suchfeld einen SQL-Re-Compile triggert. Permutations-Raum bleibt klein
+    // (≤7 types × ≤8 statuses × ≤5 models × 2 query = 560), alle duerfen
+    // dauerhaft im Cache leben.
     const typesLen = input.types?.length ?? 0;
     const statusesLen = input.statuses?.length ?? 0;
+    const modelsLen = input.models?.length ?? 0;
     const trimmedQuery = input.query?.trim() ?? '';
     const hasQuery = trimmedQuery.length > 0;
-    const cacheKey = `t${typesLen}_s${statusesLen}_q${hasQuery ? 1 : 0}`;
+    const cacheKey = `t${typesLen}_s${statusesLen}_m${modelsLen}_q${hasQuery ? 1 : 0}`;
 
     let stmt = this.historyStmtCache.get(cacheKey);
     if (!stmt) {
@@ -270,6 +290,13 @@ export class SqliteSessionDriver implements SessionDbDriver {
       if (statusesLen > 0) {
         const placeholders = Array.from({ length: statusesLen }, (_, i) => `@status${i}`).join(', ');
         conditions.push(`s.status IN (${placeholders})`);
+      }
+      if (modelsLen > 0) {
+        // Phase-2 Season-10: Filter auf sessions.current_model. NULL-Modelle
+        // (alte Sessions ohne Modell-Spalten-Wert) matchen nie, was OK ist —
+        // die UI-Pillen filtern positiv ("nur diese Modelle anzeigen").
+        const placeholders = Array.from({ length: modelsLen }, (_, i) => `@model${i}`).join(', ');
+        conditions.push(`s.current_model IN (${placeholders})`);
       }
       if (hasQuery) {
         // case-insensitive title-Match. SQLite LIKE ist per Default case-insensitive
@@ -309,10 +336,21 @@ export class SqliteSessionDriver implements SessionDbDriver {
         params[`status${i}`] = s;
       });
     }
+    if (input.models && modelsLen > 0) {
+      input.models.forEach((m, i) => {
+        params[`model${i}`] = m;
+      });
+    }
     if (hasQuery) {
       params.query = `%${trimmedQuery}%`;
     }
-    return stmt.all(params);
+    // models-Aggregat wird im SessionRepository per Bulk-Query nachgereicht
+    // (sieht aussehender Driver-Output nicht).
+    const rows = stmt.all(params);
+    for (const row of rows) {
+      row.models = [];
+    }
+    return rows;
   }
 
   patch(id: string, patch: SessionPatch): SessionRow | null {
@@ -404,11 +442,16 @@ export class InMemorySessionDriver implements SessionDbDriver {
     const typeSet = input.types && input.types.length > 0 ? new Set(input.types) : null;
     const statusSet =
       input.statuses && input.statuses.length > 0 ? new Set(input.statuses) : null;
+    // Phase-2 Season-10: Modell-Filter. NULL-current_model matcht nie (positive
+    // Filterung — analog zum SQL-Driver).
+    const modelSet =
+      input.models && input.models.length > 0 ? new Set(input.models) : null;
     const matches: SessionHistoryEntry[] = [];
     for (const row of this.rows.values()) {
       if (row.project_id !== input.projectId) continue;
       if (typeSet && !typeSet.has(row.type)) continue;
       if (statusSet && !statusSet.has(row.status)) continue;
+      if (modelSet && (row.current_model === null || !modelSet.has(row.current_model))) continue;
       if (trimmedQuery && !row.title.toLowerCase().includes(trimmedQuery)) continue;
       const stats = this.messageStats.get(row.id);
       matches.push({
@@ -427,6 +470,9 @@ export class InMemorySessionDriver implements SessionDbDriver {
         tokens_in: stats?.tokens_in ?? 0,
         tokens_out: stats?.tokens_out ?? 0,
         message_count: stats?.message_count ?? 0,
+        // models-Aggregat reicht das Repository nach (per MessageRepository-Dep).
+        // Driver-Output startet leer.
+        models: [],
       });
     }
     // Jüngste zuerst — analog zum SQL-Driver.

@@ -169,13 +169,18 @@ export const SessionResumeInputSchema = z.object({
   rows: z.number().int().positive(),
 });
 
-// Sprint 6: Verlauf-Panel-Filter laut Architektur 6.6 (Typ, Status, Volltext-Suche).
-// Leere Listen → kein Filter; query "" → kein Volltext-Filter.
+// Verlauf-Panel-Filter: Typ, Status, Volltext-Suche (Sprint 6) und Modell
+// (Phase-2 Season-10). Leere Listen → kein Filter; query "" → kein Volltext-
+// Filter. models akzeptiert beliebige Strings, weil die `current_model`-Werte
+// der Sessions nicht auf das UI-Whitelist beschraenkt sind (Renderer schickt
+// die fuenf bekannten Modell-IDs, aber alte Sessions mit umbenannten Modellen
+// muessen genauso filterbar bleiben).
 export const SessionHistoryInputSchema = z.object({
   projectId: z.string().min(1),
   types: z.array(SessionTypeSchema).optional(),
   statuses: z.array(SessionStatusSchema).optional(),
   query: z.string().optional(),
+  models: z.array(z.string().min(1)).optional(),
 });
 
 // Sprint-6-UX-Fix: explizites Archivieren via Verlauf-Panel-Detail-Pane.

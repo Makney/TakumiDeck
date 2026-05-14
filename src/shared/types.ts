@@ -202,14 +202,28 @@ export interface SessionResumeInput {
 
 // --- Session-Verlauf (Sprint 6) -------------------------------------
 
-// Filter-Set MVP laut Architektur 6.6: Typ, Status, Volltext-Suche im Titel.
-// Modell-Filter ist Phase 2 — bewusst NICHT mitgenommen.
-// Leere Listen bedeuten "kein Filter aktiv" (= alle Werte erlaubt).
+// Filter-Set: Typ, Status, Volltext-Suche im Titel und (Phase-2 Season-10)
+// Modell. Leere Listen bedeuten "kein Filter aktiv" (= alle Werte erlaubt).
 export interface SessionHistoryInput {
   projectId: string;
   types?: SessionType[];
   statuses?: SessionStatus[];
   query?: string;
+  // Phase-2 Season-10: filtert auf sessions.current_model. Leere Liste oder
+  // weggelassen = kein Filter. Match ist exakt (kein Wildcard, keine
+  // Familien-Aggregation wie "alle Opus") — die UI bietet die fuenf bekannten
+  // Modell-IDs als feste Pillen-Liste.
+  models?: string[];
+}
+
+// Phase-2 Season-10: Aggregat-Eintrag fuer die Detail-Pane-"Modelle"-Liste.
+// Ein Eintrag pro Modell, das in den messages der Session vorkommt. Der
+// Watcher schreibt messages.model ab Migration 0006; Pre-Migration-Rows
+// haben einen Backfill aus sessions.current_model. NULL-Modelle (externe
+// Sessions ohne Modell-Info) werden vom Aggregat ausgeschlossen.
+export interface SessionModelAggregateEntry {
+  model: string;
+  count: number;
 }
 
 // Ergebnis-Eintrag fürs Verlauf-Panel.
@@ -234,6 +248,12 @@ export interface SessionHistoryEntry {
   tokens_in: number;
   tokens_out: number;
   message_count: number;
+  // Phase-2 Season-10: Modell-Aggregat fuer die Detail-Pane-"Modelle"-Liste.
+  // Absteigend sortiert nach count (Tie-Break model ASC). Leer, wenn die
+  // Session keine messages mit Modell-Info hat. Reise mit jedem Eintrag mit,
+  // damit der Detail-Pane keinen zweiten Round-Trip braucht (max 5 Eintraege
+  // pro Session = vernachlaessigbare Payload).
+  models: SessionModelAggregateEntry[];
 }
 
 // --- Workspace / Projects (Sprint 4) --------------------------------
@@ -502,6 +522,13 @@ export interface MessageInsert {
   tokens_in: number;
   tokens_out: number;
   ts: number;
+  // Phase-2 Season-10: per-Message-Modell aus message.model in der JSONL-Zeile
+  // (parser.ts liefert das Feld). NULL fuer externe Sessions ohne Modell-Info
+  // bzw. fuer Pre-Migration-Backfill, der die Session nicht aufloesen kann.
+  // Optional, damit aeltere Caller (z.B. State-Detection-Tests, die nur den
+  // Last-Event-Pfad brauchen) das Feld weglassen koennen — die Driver mappen
+  // undefined auf null.
+  model?: string | null;
 }
 
 // Repository-Insert/Upsert für einen usage_buckets-Row.

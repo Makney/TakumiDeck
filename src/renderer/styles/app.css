@@ -2026,6 +2026,45 @@ body,
   font-weight: 600;
 }
 
+/* Phase-2 Season-10: Modell-Aufschluesselung im Detail-Pane.
+   Sitzt zwischen Token-Block und Notizen, gleiche Typografie wie das
+   Notes-Label fuer die Caption (10 px uppercase, mute), Body in 12 px
+   mit tabular-nums fuer die Counts. */
+.td-history-detail-models {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.td-history-detail-models-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-history-detail-models-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  font-size: 12px;
+  color: var(--td-text);
+  line-height: 1.4;
+}
+
+.td-history-detail-models-item {
+  white-space: nowrap;
+}
+
+.td-history-detail-models-sep {
+  color: var(--td-text-mute);
+}
+
+.td-history-detail-models-count {
+  color: var(--td-text-mute);
+  font-variant-numeric: tabular-nums;
+}
+
 .td-history-detail-notes {
   display: flex;
   flex-direction: column;
