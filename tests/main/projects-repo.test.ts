@@ -221,3 +221,83 @@ describe('ProjectRepository.remapSessionsByCwdPrefix', () => {
     expect(newProjectId).not.toBe(DEFAULT_PROJECT_ID);
   });
 });
+
+// Phase-2 Season-8: Projekt aus der Liste entfernen. Sessions werden auf den
+// Default-Bucket umgehängt, die projects-Row anschließend gelöscht. Tests decken
+// die Gegenrichtung zum Sprint-4-Remap und die Default-Bucket-Immutability ab.
+describe('ProjectRepository.removeProject', () => {
+  it('hängt Sessions auf den Default-Bucket um und löscht die projects-Row', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({
+      id: DEFAULT_PROJECT_ID,
+      name: '__default__',
+      path: '/ws',
+      added_manually: 0,
+      has_git: 0,
+      next_season_number: 1,
+      created_at: 1,
+    });
+    const real = repo.insert({
+      name: 'proj',
+      path: '/ws/proj',
+      has_git: false,
+      added_manually: false,
+    });
+    expect(real.ok).toBe(true);
+    if (!real.ok) return;
+    driver.seedSession({ id: 'a', cwd: '/ws/proj', project_id: real.data.id });
+    driver.seedSession({ id: 'b', cwd: '/ws/proj/sub', project_id: real.data.id });
+
+    const result = repo.removeProject(real.data.id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.sessionsRemapped).toBe(2);
+    expect(repo.getById(real.data.id)).toBeNull();
+    expect(driver.sessions.get('a')?.project_id).toBe(DEFAULT_PROJECT_ID);
+    expect(driver.sessions.get('b')?.project_id).toBe(DEFAULT_PROJECT_ID);
+  });
+
+  it('lehnt das Default-Project ab (PROJECT_DEFAULT_IMMUTABLE)', () => {
+    const { repo, driver } = makeRepo();
+    driver.insert({
+      id: DEFAULT_PROJECT_ID,
+      name: '__default__',
+      path: '/ws',
+      added_manually: 0,
+      has_git: 0,
+      next_season_number: 1,
+      created_at: 1,
+    });
+    const result = repo.removeProject(DEFAULT_PROJECT_ID);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('PROJECT_DEFAULT_IMMUTABLE');
+    // Default-Project liegt nach dem Reject unverändert im Repo.
+    expect(repo.getById(DEFAULT_PROJECT_ID)).not.toBeNull();
+  });
+
+  it('lehnt unbekannte Project-IDs ab (PROJECT_NOT_FOUND)', () => {
+    const { repo } = makeRepo();
+    const result = repo.removeProject('ghost-id');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('PROJECT_NOT_FOUND');
+  });
+
+  it('läuft sauber durch, wenn das Projekt keine Sessions hat', () => {
+    const { repo } = makeRepo();
+    const real = repo.insert({
+      name: 'leer',
+      path: '/leer',
+      has_git: false,
+      added_manually: false,
+    });
+    expect(real.ok).toBe(true);
+    if (!real.ok) return;
+    const result = repo.removeProject(real.data.id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.sessionsRemapped).toBe(0);
+    expect(repo.getById(real.data.id)).toBeNull();
+  });
+});

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { Channels } from '@shared/ipc-channels';
 import { ok, err, errFromUnknown } from '@shared/result';
-import { ProjectReadCfgInputSchema } from '@shared/schemas';
+import { ProjectReadCfgInputSchema, ProjectRemoveInputSchema } from '@shared/schemas';
 import type { ProjectRow } from '@shared/types';
 import type { ProjectRepository } from '../db/repos/projects';
 import type { SettingsStore } from '../settings/store';
@@ -110,6 +110,24 @@ export function registerProjectIpc(deps: {
       return ok<ProjectRow | null>(insertResult.data);
     } catch (e) {
       return errFromUnknown(e, 'PROJECT_ADD');
+    }
+  });
+
+  ipcMain.handle(Channels.ProjectRemove, (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = ProjectRemoveInputSchema.parse(payload);
+      const removeResult = projects.removeProject(input.projectId);
+      if (!removeResult.ok) return removeResult;
+      log.info(
+        `[project:remove] entfernt id=${input.projectId} sessions_remapped=${removeResult.data.sessionsRemapped}`,
+      );
+      // Wie scanWorkspace: aktuelle Liste zurückliefern, damit der Renderer-Store
+      // ohne separaten list-Call konsistent bleibt.
+      return ok(projects.listAll());
+    } catch (e) {
+      return errFromUnknown(e, 'PROJECT_REMOVE');
     }
   });
 

@@ -21,6 +21,7 @@ import type {
   GitStatusResult,
   IpcResult,
   ProjectReadCfgInput,
+  ProjectRemoveInput,
   ProjectRow,
   PtyCreateInput,
   PtyDataEvent,
@@ -162,6 +163,10 @@ const api: RendererApi = {
     readClaudeMd: (input: ProjectReadCfgInput) =>
       ipcRenderer.invoke(Channels.ProjectReadCfg, input) as Promise<
         IpcResult<ClaudeMdParseResult>
+      >,
+    remove: (input: ProjectRemoveInput) =>
+      ipcRenderer.invoke(Channels.ProjectRemove, input) as Promise<
+        IpcResult<ProjectRow[]>
       >,
   },
   usage: {

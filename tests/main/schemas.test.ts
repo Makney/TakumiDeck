@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   AppSettingsSchema,
   AppSettingsPatchSchema,
+  ProjectRemoveInputSchema,
   PtyCreateInputSchema,
   SessionTypeSchema,
 } from '@shared/schemas';
@@ -96,5 +97,24 @@ describe('PtyCreateInputSchema', () => {
     expect(() =>
       PtyCreateInputSchema.parse({ ...base, type: 'custom', customTypeLabel: tooLong }),
     ).toThrow();
+  });
+});
+
+// Phase-2 Season-8: ProjectRemoveInputSchema. Default-Bucket-Immutability ist
+// Server-Logik (siehe ProjectRepository.removeProject) — das Schema validiert
+// nur Shape und projectId-Mindestlänge, analog zu den anderen Project-Channels.
+describe('ProjectRemoveInputSchema', () => {
+  it('akzeptiert eine projectId-string', () => {
+    expect(() =>
+      ProjectRemoveInputSchema.parse({ projectId: 'abc-123' }),
+    ).not.toThrow();
+  });
+
+  it('lehnt leere projectId ab', () => {
+    expect(() => ProjectRemoveInputSchema.parse({ projectId: '' })).toThrow();
+  });
+
+  it('lehnt fehlende projectId ab', () => {
+    expect(() => ProjectRemoveInputSchema.parse({})).toThrow();
   });
 });

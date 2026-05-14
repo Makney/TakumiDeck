@@ -20,6 +20,11 @@ interface ProjectStoreState {
   reload: () => Promise<void>;
   addViaDialog: () => Promise<ProjectRow | null>;
   scanWorkspace: () => Promise<void>;
+  // Phase-2 Season-8: Projekt aus der Liste entfernen. Sessions des Projekts
+  // wandern serverseitig auf den Default-Bucket; der Store ersetzt die Liste
+  // mit dem aus dem IPC-Result zurückgelieferten Stand. true = entfernt,
+  // false = abgelehnt (z. B. Default-Bucket oder Fehler — Details in state.error).
+  remove: (projectId: string) => Promise<boolean>;
 }
 
 export const useProjectStore = create<ProjectStoreState>((set, get) => ({
@@ -56,5 +61,16 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     } else {
       set({ error: result.error, loading: false });
     }
+  },
+
+  remove: async (projectId: string) => {
+    set({ loading: true, error: null });
+    const result = await window.api.projects.remove({ projectId });
+    if (result.ok) {
+      set({ projects: result.data, loading: false });
+      return true;
+    }
+    set({ error: result.error, loading: false });
+    return false;
   },
 }));

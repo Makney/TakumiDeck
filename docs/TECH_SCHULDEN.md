@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Renderer-FileTabs des entfernten Projekts werden nicht aufgeräumt (Phase-2 Season 8)
+
+**Bereich:** `src/renderer/stores/fileTabs.ts`, `src/renderer/panels/LeftSidebar.tsx` (`handleConfirmRemove`)
+
+**Was:** Beim Entfernen eines Projekts via `project:remove` werden die offenen Session-Tabs des Projekts vor dem Server-Call sauber geschlossen (`handleCloseTab` killt den PTY, Lifecycle wandert auf `completed`). Die per-Projekt-Datei-Tabs aus `useFileTabsStore` (Markdown-Editor + Diff-Tab) bleiben aber im Store-State hängen. Da das Projekt nicht mehr aktivierbar ist, sieht der User die Stub-Tabs auch nicht — sie werden beim App-Restart implizit verworfen (FileTab-Store ist nicht persistent). Keine UI-Sichtbarkeit, kein Crash.
+
+**Warum so:** Der Cleanup-Pfad hätte einen neuen Store-Aktion (`closeAllForProject(projectId)`) gebraucht, plus eine Entscheidung, ob „Dirty"-Tabs (ungesicherte Editor-Änderungen) verworfen oder vorher gesichert werden. Im realistischen Use-Case (User entfernt das Projekt explizit) ist „verwerfen" die richtige Antwort, aber der Edge-Case „User hat dirty Editor-Tab, klickt versehentlich Trash" hätte eine zusätzliche Warnung im RemoveProjectModal verlangt. Season-Scope war bewusst eng — Tabs-Cleanup ist Edge-Case, nicht Spec-Anforderung.
+
+**Risiko:** Kein User-sichtbarer Effekt, weil die Tabs am unaktivierbaren Projekt hängen. Beim App-Restart sind sie ohnehin weg. Einziger theoretischer Pfad: wenn der User in derselben Session ein gleichnamiges neues Projekt mit identischer `relPath`-Konvention anlegt, könnten die alten Tabs versehentlich wieder auftauchen — sehr unwahrscheinlich, da neue Projekte eine neue UUID bekommen.
+
+**Auflösung:** In `useFileTabsStore` eine `closeAllForProject(projectId: string)`-Aktion ergänzen; im `handleConfirmRemove` der LeftSidebar nach erfolgreichem `removeProject` aufrufen. Falls dirty Tabs vorhanden sind, im RemoveProjectModal eine zusätzliche Warn-Zeile rendern (analog zur `openTabCount`-Warnung). ~20 LOC + ein Renderer-Test, lohnt sich erst, wenn der Edge-Case im Daily-Use auffällt.
+
+---
+
 ## Squirrel-Installer ohne setupIcon und Branding
 
 **Bereich:** `forge.config.ts` (`MakerSquirrel`-Konfiguration), Repo-Wurzel (`.ico` fehlt)

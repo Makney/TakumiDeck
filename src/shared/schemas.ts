@@ -316,6 +316,15 @@ export const ProjectReadCfgInputSchema = z.object({
   projectId: z.string().min(1),
 });
 
+// Phase-2 Season-8: project:remove. Identische projectId-Form wie die anderen
+// Project-Channels (string.min(1) statt uuid(), weil DEFAULT_PROJECT_ID intern
+// auch als UUID kommt aber die anderen Schemas die laxere Variante nutzen —
+// Konsistenz schlägt strikte UUID-Validierung). Der Handler lehnt
+// DEFAULT_PROJECT_ID separat ab.
+export const ProjectRemoveInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
 // --- JSONL-Watcher (Sprint 5) ----------------------------------------
 
 // Schema für das, was claude-code in `~/.claude/projects/<encoded-cwd>/<sid>.jsonl`

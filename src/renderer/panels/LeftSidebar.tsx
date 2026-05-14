@@ -11,6 +11,7 @@ import { useSessionStore, type SessionTab } from '../stores/sessions';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
 import { displayProjectName } from '../components/displayProjectName';
 import { estimateTerminalCols } from '../components/estimateTerminalCols';
+import { RemoveProjectModal } from '../modals/RemoveProjectModal';
 
 // LeftSidebar — Sprint-6-UI-Fix mit 3-Sektionen-Layout aus dem Design-Handoff
 // (docs/design/UI_DECISIONS.md + claude-export/components.jsx).
@@ -44,6 +45,7 @@ export function LeftSidebar({ settings }: Props) {
   const reload = useProjectStore((s) => s.reload);
   const scanWorkspace = useProjectStore((s) => s.scanWorkspace);
   const addViaDialog = useProjectStore((s) => s.addViaDialog);
+  const removeProject = useProjectStore((s) => s.remove);
 
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const setActiveProject = useUiStore((s) => s.setActiveProject);
@@ -66,6 +68,12 @@ export function LeftSidebar({ settings }: Props) {
   const frontmatterLoadedFor = useRef<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<SessionHistoryEntry[]>([]);
+  // Phase-2 Season-8: ID des Projekts, dessen Remove-Modal gerade offen ist.
+  // Lokaler State statt UI-Store, weil das Modal nur aus der Sidebar getriggert
+  // wird und kein zweites Renderer-Surface darauf reagieren muss.
+  const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   // Sprint-5-Hydrate: persistierte Project-ID aus localStorage laden, BEVOR der
   // erste reload() läuft, damit die Auto-Select-Logik unten den persistierten
@@ -192,6 +200,60 @@ export function LeftSidebar({ settings }: Props) {
     [setTabStatus, setActiveTab, settings.terminal_font_size],
   );
 
+  // Phase-2 Season-8: vor dem Server-Remove die offenen Tabs des Projekts
+  // schließen — sonst verweisen die Tabs im SessionStore weiter auf die alte
+  // projectId, die in der DB nicht mehr existiert. handleCloseTab kümmert sich
+  // um PTY-Kill + Session-Lifecycle (Status wandert auf completed), womit die
+  // Sessions korrekt im Legacy-Bucket im Verlauf landen.
+  const handleConfirmRemove = useCallback(async () => {
+    if (!removeTargetId) return;
+    setRemoveBusy(true);
+    setRemoveError(null);
+    try {
+      const tabsToClose = tabs.filter((t) => t.projectId === removeTargetId);
+      for (const tab of tabsToClose) {
+        await handleCloseTab(tab.sessionId);
+      }
+      const ok = await removeProject(removeTargetId);
+      if (!ok) {
+        setRemoveError(useProjectStore.getState().error ?? 'Entfernen fehlgeschlagen');
+        setRemoveBusy(false);
+        return;
+      }
+      // Aktives Projekt zurücksetzen, wenn es gerade das entfernte war. Der
+      // useEffect oben springt dann beim nächsten Render auf das erste echte
+      // Projekt (oder den Legacy-Bucket, falls keins mehr da ist).
+      if (activeProjectId === removeTargetId) {
+        setActiveProject(null);
+      }
+      setRemoveTargetId(null);
+      setRemoveBusy(false);
+    } catch (e) {
+      setRemoveError(e instanceof Error ? e.message : String(e));
+      setRemoveBusy(false);
+    }
+  }, [
+    removeTargetId,
+    tabs,
+    handleCloseTab,
+    removeProject,
+    activeProjectId,
+    setActiveProject,
+  ]);
+
+  const handleCloseRemoveModal = useCallback(() => {
+    if (removeBusy) return;
+    setRemoveTargetId(null);
+    setRemoveError(null);
+  }, [removeBusy]);
+
+  const removeTargetProject = removeTargetId
+    ? projects.find((p) => p.id === removeTargetId) ?? null
+    : null;
+  const removeTargetTabCount = removeTargetId
+    ? tabs.filter((t) => t.projectId === removeTargetId).length
+    : 0;
+
   const workspaceMissing = !settings.workspace_path || settings.workspace_path.trim() === '';
 
   return (
@@ -207,6 +269,10 @@ export function LeftSidebar({ settings }: Props) {
         onPick={(id) => setActiveProject(id, 'terminals')}
         onAdd={() => void handleAdd()}
         onRefresh={() => void scanWorkspace()}
+        onRequestRemove={(id) => {
+          setRemoveError(null);
+          setRemoveTargetId(id);
+        }}
         runningCountByProject={runningCountByProject}
       />
 
@@ -230,6 +296,17 @@ export function LeftSidebar({ settings }: Props) {
         onPick={(entry) => setHistoryActionEntry(entry)}
         onOpenAll={() => setMainView('history')}
       />
+
+      {removeTargetProject && (
+        <RemoveProjectModal
+          project={removeTargetProject}
+          openTabCount={removeTargetTabCount}
+          busy={removeBusy}
+          error={removeError}
+          onConfirm={() => void handleConfirmRemove()}
+          onClose={handleCloseRemoveModal}
+        />
+      )}
     </aside>
   );
 }
@@ -247,6 +324,10 @@ interface ProjectsPanelProps {
   onPick: (id: string) => void;
   onAdd: () => void;
   onRefresh: () => void;
+  // Phase-2 Season-8: Trash-Icon im Hover-Slot eines echten Projekts.
+  // Legacy-Bucket (DEFAULT_PROJECT_ID) bekommt kein Icon — die Aktion ist
+  // dort serverseitig verboten und soll auch UI-seitig nicht angeboten werden.
+  onRequestRemove: (id: string) => void;
 }
 
 function ProjectsPanel({
@@ -260,6 +341,7 @@ function ProjectsPanel({
   onPick,
   onAdd,
   onRefresh,
+  onRequestRemove,
 }: ProjectsPanelProps) {
   return (
     <div className="td-panel">
@@ -308,6 +390,20 @@ function ProjectsPanel({
                   <span className="td-badge running">{runningCount}</span>
                 ) : (
                   p.session_count > 0 && <span className="td-badge">{p.session_count}</span>
+                )}
+                {!isLegacy && (
+                  <button
+                    type="button"
+                    className="td-row-x td-row-hover"
+                    title="Projekt aus Liste entfernen"
+                    aria-label={`Projekt ${displayProjectName(p)} aus Liste entfernen`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRequestRemove(p.id);
+                    }}
+                  >
+                    🗑
+                  </button>
                 )}
               </div>
             );

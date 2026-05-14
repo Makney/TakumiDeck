@@ -60,6 +60,12 @@ export interface ProjectDbDriver {
   // existiert. Lücken bei späterem Spawn-Fehler sind explizit akzeptiert
   // (Architektur 6.6: "Lücken bei Abbruch akzeptiert").
   allocateSeasonNumber(projectId: string): number | null;
+  // Phase-2 Season-8: atomare Projekt-Entfernung. Hängt zuerst alle Sessions
+  // (inkl. ihrer messages-Rows) auf newProjectId um, löscht dann die projects-
+  // Row. Returnt die Anzahl der umgehängten Sessions. Im SQLite-Driver läuft
+  // das Ganze in einer better-sqlite3-Transaction, damit ein Crash zwischen
+  // Reassign und Delete keinen inkonsistenten Zwischenstand hinterlässt.
+  removeProjectAndReassignSessions(projectId: string, newProjectId: string): number;
 }
 
 // Path-Match-Helper: prüft, ob `cwd` ein Pfad innerhalb von `projectPath` ist.
@@ -160,6 +166,32 @@ export class ProjectRepository {
   allocateSeasonNumber(projectId: string): number | null {
     return this.driver.allocateSeasonNumber(projectId);
   }
+
+  // Phase-2 Season-8: Projekt aus der Liste entfernen. Sessions + zugehörige
+  // messages werden zuerst auf den Default-Bucket umgehängt (Gegenrichtung zum
+  // remapSessionsByCwdPrefix aus Sprint 4), danach wird die projects-Row gelöscht.
+  // Default-Project selbst ist immutable — der Bucket ist die letzte Auffanglinie
+  // für Sessions ohne Zuordnung und darf nicht entfallen.
+  removeProject(projectId: string): IpcResult<{ sessionsRemapped: number }> {
+    if (projectId === DEFAULT_PROJECT_ID) {
+      return err<{ sessionsRemapped: number }>(
+        'Default-Bucket kann nicht entfernt werden',
+        'PROJECT_DEFAULT_IMMUTABLE',
+      );
+    }
+    const existing = this.driver.findById(projectId);
+    if (!existing) {
+      return err<{ sessionsRemapped: number }>(
+        `Projekt ${projectId} nicht gefunden`,
+        'PROJECT_NOT_FOUND',
+      );
+    }
+    const sessionsRemapped = this.driver.removeProjectAndReassignSessions(
+      projectId,
+      DEFAULT_PROJECT_ID,
+    );
+    return ok({ sessionsRemapped });
+  }
 }
 
 // --- SQLite-Driver --------------------------------------------------
@@ -178,6 +210,16 @@ export class SqliteProjectDriver implements ProjectDbDriver {
   private readonly readSeasonStmt: Database.Statement<[string], { next_season_number: number }>;
   private readonly bumpSeasonStmt: Database.Statement;
   private readonly allocateSeasonTxn: Database.Transaction<(projectId: string) => number | null>;
+  // Phase-2 Season-8: bulk-Reassign + Delete in einer Transaction; ein einziges
+  // UPDATE pro Tabelle reicht (alle Sessions des Projekts auf einmal), kein
+  // Per-Session-Loop wie beim Sprint-4-Remap nötig — dort entscheidet die
+  // cwd-Match-Logik pro Session, hier wandert die komplette Mannschaft.
+  private readonly bulkReassignSessionsStmt: Database.Statement;
+  private readonly bulkReassignMessagesStmt: Database.Statement;
+  private readonly deleteProjectStmt: Database.Statement;
+  private readonly removeProjectTxn: Database.Transaction<
+    (projectId: string, newProjectId: string) => number
+  >;
 
   constructor(private readonly db: Database.Database) {
     this.insertStmt = db.prepare(
@@ -236,6 +278,31 @@ export class SqliteProjectDriver implements ProjectDbDriver {
       this.bumpSeasonStmt.run(projectId);
       return row.next_season_number;
     });
+
+    this.bulkReassignSessionsStmt = db.prepare(
+      'UPDATE sessions SET project_id = @newProjectId WHERE project_id = @oldProjectId',
+    );
+    this.bulkReassignMessagesStmt = db.prepare(
+      'UPDATE messages SET project_id = @newProjectId WHERE project_id = @oldProjectId',
+    );
+    this.deleteProjectStmt = db.prepare('DELETE FROM projects WHERE id = ?');
+    this.removeProjectTxn = db.transaction(
+      (projectId: string, newProjectId: string): number => {
+        const sessionsResult = this.bulkReassignSessionsStmt.run({
+          oldProjectId: projectId,
+          newProjectId,
+        });
+        // messages werden mitumgehängt (Sprint-5-Konvention: denormalisiertes
+        // project_id pro Message, damit Per-Projekt-Token-Aggregate ohne Join
+        // sind). Ergebnis-Count interessiert hier nicht — die SQL ist idempotent.
+        this.bulkReassignMessagesStmt.run({
+          oldProjectId: projectId,
+          newProjectId,
+        });
+        this.deleteProjectStmt.run(projectId);
+        return Number(sessionsResult.changes);
+      },
+    );
   }
 
   insert(row: ProjectInsert): void {
@@ -270,6 +337,10 @@ export class SqliteProjectDriver implements ProjectDbDriver {
 
   allocateSeasonNumber(projectId: string): number | null {
     return this.allocateSeasonTxn(projectId);
+  }
+
+  removeProjectAndReassignSessions(projectId: string, newProjectId: string): number {
+    return this.removeProjectTxn(projectId, newProjectId);
   }
 }
 
@@ -365,6 +436,17 @@ export class InMemoryProjectDriver implements ProjectDbDriver {
     const previous = project.next_season_number;
     project.next_season_number = previous + 1;
     return previous;
+  }
+
+  removeProjectAndReassignSessions(projectId: string, newProjectId: string): number {
+    let moved = 0;
+    for (const session of this.sessions.values()) {
+      if (session.project_id !== projectId) continue;
+      session.project_id = newProjectId;
+      moved += 1;
+    }
+    this.projects.delete(projectId);
+    return moved;
   }
 
   // Test-Hilfe: Session zur Map hinzufügen, ohne über Sessions-Repo zu gehen.

@@ -37,7 +37,7 @@ Buttons in der App für die in CLAUDE.md definierten Trigger-Phrasen.
 
 Lücken im Phase-1-Sidebar-CRUD schließen. Phase 1 kann Projekte nur **anlegen** (Scan + Add), nicht entfernen — und scannt beim ersten Start kommentarlos den Default-Workspace `<home>/Projekte`.
 
-### Feature: Projekt entfernen
+### Feature: Projekt entfernen ✅
 
 Sidebar-Action zum Entfernen eines Projekts aus der Liste.
 

@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 8 — Projekt entfernen
+
+**Ziel:** Phase-2-Roadmap-Eintrag „Projekt entfernen" produktiv machen. Sidebar-Action mit Bestätigungs-Dialog, neuer IPC `project:remove`, Sessions des entfernten Projekts wandern auf den Default-Bucket (Gegenrichtung zum Sprint-4-Remap), Default-Bucket selbst ist immutable. Spec ließ den UI-Trigger offen („Rechtsklick oder Hover-Trash-Icon").
+
+**Ergebnis:** Variante A (Hover-Trash-Icon + eigenes Bestätigungs-Modal mit Doppel-Confirm) umgesetzt; Memory-Hinweis „konvenient vor traditionell" trug die Lead-Empfehlung in der Variants-Diskussion. Server-Pfad als Hard-Delete mit Bulk-Reassign-Transaction: ein UPDATE pro Tabelle (sessions + messages) + `DELETE FROM projects`, alles in `removeProjectTxn`. Renderer schließt offene Tabs des Projekts vor dem IPC-Call (PTY-Kill via `session:close`, Lifecycle wandert sauber auf `completed`). Default-Bucket-Schutz doppelt: UI rendert das Trash-Icon nicht, Server lehnt `DEFAULT_PROJECT_ID` mit `PROJECT_DEFAULT_IMMUTABLE` ab. Sieben neue Tests (vier Repo-Cases + drei Schema-Cases), Gesamtsuite 556/556 grün, typecheck + lint sauber. Ein TECH_SCHULDEN-Eintrag dokumentiert nicht-aufgeräumte FileTabs des entfernten Projekts (kein User-sichtbarer Effekt, beim Restart implizit verworfen).
+
+**Gut gelaufen:**
+
+- **Variants-Tabelle in zwei Dimensionen vor dem ersten Edit.** UI-Trigger (Hover / Rechtsklick / beides) und Datenpfad (Hard-Delete + Remap / Soft-Archive / FK-Cascade) jeweils als eigene Variants-Achse präsentiert. Empfehlung pro Achse vor dem ersten Code-Edit. User-Entscheidung „Variante A" war ein einziger Klick; danach lief die Implementierung in einem Strich durch. Die zweidimensionale Auftrennung hat geholfen, weil die Spec den UI-Trigger offen ließ aber den Datenpfad bereits präjudiziert hatte — separate Achsen machten das transparent.
+- **Bulk-UPDATE statt Per-Session-Loop wie beim Sprint-4-Remap.** Beim ersten Code-Plan war der Reflex, die remap-Logik 1:1 zu spiegeln (iterieren über Sessions, pro Session `reassignSession`-Call). Beim Driver-Entwurf wurde klar, dass die cwd-Match-Bedingung wegfällt — alle Sessions des Projekts wandern, keine Auswahl-Logik nötig. Ein UPDATE pro Tabelle reicht, hält die Transaction kurz und macht den Driver-Code lesbar. Vermiedener Overhead.
+- **Doppelter Default-Bucket-Schutz aus dem Stand heraus.** UI rendert das Icon nicht für `DEFAULT_PROJECT_ID`, Server lehnt im Repo-Layer ab. Belt-and-Suspenders ist hier billig und richtig, weil der User via DevTools jederzeit einen direkten IPC-Call absetzen kann — UI-Disable allein wäre kein echter Schutz.
+
+**Gebremst durch:**
+
+- **`useCallback`-Reihenfolge-Falle.** Erste Implementierung hat `handleConfirmRemove` direkt nach `handleAdd` eingesetzt, obwohl es `handleCloseTab` referenziert — das später deklariert ist. TypeScript hat das nicht gefangen (die deps-Array-Referenz auf `handleCloseTab` ist syntaktisch gültig), aber zur Runtime wäre ein Temporal-Dead-Zone-ReferenceError gefallen. Korrigiert während des Schreibens, vor dem ersten Run. Lehre: bei mehreren `useCallback`-Blöcken mit gegenseitigen Dependencies einmal die deps-Spalte gedanklich durchgehen, bevor man Reihenfolge festschreibt.
+- **Kein UI-Smoke im Browser.** typecheck + lint + vitest haben alle grün gezeigt, aber Hover-Sichtbarkeit, Modal-Esc/Backdrop und der Sprung auf den Legacy-Bucket nach Remove sind alles UI-Pfade, die die 556 Vitest-Tests nicht abdecken. Hat im Bericht explizit erwähnt. Für rein Renderer-State-getriebene Features wäre ein React-Testing-Library-Test ein günstiger Mittelweg, aber hier ist es ein Cross-Cutting-Concern aus mehreren Stores — der Aufwand vs. die manuelle Smoke-Geste lohnt sich (heute) noch nicht.
+
+**Für nächste Season:**
+
+- Der heutige Hard-Delete-Pfad ist umkehrbar, weil die Sessions weiter in der DB liegen (nur am Default-Bucket). Falls Phase 3 mal „Projekt-Papierkorb mit Restore" verlangt, ist Soft-Archive (Variante E in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)) der spätere Pfad — neue `projects.archived`-Spalte plus Restore-Logik, die Sessions per gespeicherter pre-Remap-projectId zurück-umhängt. Heute nicht vorbauen.
+- FileTabs-Cleanup ist als TECH_SCHULDEN dokumentiert. Wenn der nächste Phase-2-Feature im Right-Pane-Bereich landet, lohnt sich ein `closeAllForProject(projectId)` als allgemeine Store-Aktion — auch andere Workflows könnten davon profitieren (z. B. „Projekt vom Disk entfernt erkannt → Tabs schließen").
+- Trash-Icon-Glyph ist ein Emoji (🗑), während Sidebar sonst Unicode-Glyphs (`×`, `↻`) nutzt. Das Emoji rendert auf Windows 11 sauber als monochrome Linie und passt zum Token-Stil. Falls die Cross-Platform-Konsistenz in einer späteren Phase relevant wird (macOS-Build, Linux), wäre ein SVG-Icon der nächste Schritt — heute überdimensioniert.
+
+---
+
 ## Phase 2 Zwischenstand — Mini-Review + Produktiv-Pack-Hardening
 
 **Ziel:** Phase 2 für Produktiv-Schwenk vorbereiten. Mini-Review aller Änderungen aus Seasons 1–5 + Templates-Non-Modal-Nachzug auf Produktiv-Reife (Backend, Renderer, Shared, Build), drei Verify-Gates (typecheck + lint + tests) grün halten, und dann den ersten echten Pack via `npm run package` + `npm run make` durchziehen.

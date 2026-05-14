@@ -395,6 +395,18 @@ body,
   color: var(--td-red);
 }
 
+/* Phase-2 Season-8 — Trash-Icon im Sidebar-Projekt-Eintrag erscheint nur, wenn
+   der Mauszeiger über dem Item liegt (oder das Icon den Keyboard-Fokus hat).
+   opacity statt visibility, damit das Item beim Hover-Wechsel nicht „springt". */
+.td-row-hover {
+  opacity: 0;
+  transition: opacity .12s;
+}
+.td-list-item:hover .td-row-hover,
+.td-row-hover:focus-visible {
+  opacity: 1;
+}
+
 /* Action-Buttons (Add Project / Neue Session) im Panel-Foot */
 .td-action-btn {
   width: 100%;
@@ -3686,6 +3698,58 @@ body,
 }
 
 .td-history-action-footer .td-action-btn {
+  width: auto;
+  flex-shrink: 0;
+}
+
+/* Phase-2 Season-8 — RemoveProjectModal. Modal-Größe und Inhalts-Stil
+   orientieren sich am HistoryActionModal (gleiche Doppel-Confirm-Geste,
+   gleicher Footer mit Abbrechen + bestätigender Primary-Action). */
+.td-remove-project-modal {
+  width: min(440px, 92vw);
+}
+
+.td-remove-project-lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--td-text);
+}
+
+.td-remove-project-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-mute);
+}
+
+.td-remove-project-warn {
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(239, 175, 93, 0.08);
+  border: 1px solid var(--td-warn, var(--td-line));
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text);
+}
+
+.td-remove-project-error {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: rgba(239, 93, 93, 0.1);
+  border: 1px solid var(--td-red);
+  border-radius: 2px;
+  color: var(--td-red);
+  font-size: 12px;
+}
+
+.td-remove-project-footer {
+  align-items: center;
+  gap: 8px;
+}
+
+.td-remove-project-footer .td-action-btn {
   width: auto;
   flex-shrink: 0;
 }

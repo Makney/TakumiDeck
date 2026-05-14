@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-14 — Phase 2 Season 8: Projekt aus Liste entfernen
+
+### Was jetzt geht
+
+- **Trash-Icon im Sidebar-Eintrag bei Hover.** Cursor über einem Projekt zeigt rechts einen Mülleimer-Knopf; Klick öffnet ein eigenes Bestätigungs-Modal mit dem Hinweis „Sessions und Verlauf bleiben erhalten und wandern in den Legacy-Bucket". Doppel-Confirm im Footer (erster Klick wechselt den Primary-Button auf „⚠ Wirklich entfernen?", zweiter Klick führt aus) — analog zur HistoryActionModal-Geste. Das Default-/Legacy-Bucket-Item bekommt kein Icon, der Server-Handler lehnt `DEFAULT_PROJECT_ID` zusätzlich mit `PROJECT_DEFAULT_IMMUTABLE` ab.
+- **Neuer IPC `project:remove` mit atomarem Bulk-Remap.** Sessions des entfernten Projekts wandern in einer better-sqlite3-Transaction (ein UPDATE pro Tabelle, kein Per-Session-Loop wie beim Sprint-4-Remap) auf den Default-Bucket; `messages.project_id` wird mitumgehängt, damit die Per-Projekt-Token-Aggregate konsistent bleiben. Erst danach läuft `DELETE FROM projects`. Crash zwischen Reassign und Delete hinterlässt keinen inkonsistenten Zwischenstand, weil alles in einer Transaction sitzt.
+- **Offene Tabs des entfernten Projekts werden vor dem Remove geschlossen.** Vor dem IPC-Call iteriert der Renderer über die Tabs des Projekts und ruft den bestehenden `handleCloseTab` (PTY-Kill via `session:close` + Tab-Store-Cleanup), sodass die Sessions sauber auf `completed` wandern und im Legacy-Bucket-Verlauf landen. Wenn das gerade aktive Projekt entfernt wird, fällt die Auto-Select-Logik der LeftSidebar auf das erste echte Projekt zurück (oder den Legacy-Bucket, falls keins mehr da ist).
+
+### Architektur-Notiz
+
+Variante A (Hover-Trash + Modal) statt Rechtsklick-Kontextmenü oder Inline-Confirmation — Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md). Repo-Methode `removeProject` ist Result-Typed mit `PROJECT_DEFAULT_IMMUTABLE` und `PROJECT_NOT_FOUND` als expliziten Codes; der SQLite-Driver hält die Transaction (`removeProjectTxn`), der InMemory-Driver bildet das Verhalten ohne Transaction für die Tests nach. IPC-Handler returnt `projects.listAll()` wie `scanWorkspace` — der Store ersetzt seinen Stand ohne separaten list-Call. Sieben neue Tests (vier Repo-Cases inkl. Default-Bucket-Reject + leeres Projekt, drei Schema-Cases), Gesamtsuite weiterhin grün (556/556). Retrospektive in [SEASON_LOG.md](./SEASON_LOG.md), ein neuer TECH_SCHULDEN-Eintrag dokumentiert nicht-aufgeräumte FileTabs des entfernten Projekts im Renderer-Store.
+
+---
+
 ## 2026-05-13 — Phase 2 Zwischenstand: Produktiv-Pack mit ASAR-Hardening
 
 ### Was jetzt geht

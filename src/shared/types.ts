@@ -265,6 +265,13 @@ export interface ProjectReadCfgInput {
   projectId: string;
 }
 
+// Phase-2 Season-8: project:remove. Renderer schickt die DB-UUID; der Main
+// hängt alle Sessions des Projekts auf den Default-Bucket um (samt messages)
+// und löscht die projects-Row. DEFAULT_PROJECT_ID ist server-seitig immutable.
+export interface ProjectRemoveInput {
+  projectId: string;
+}
+
 // --- Datei-Browser-Tree (Sprint 7, Phase 5) ---------------------------
 
 // Hierarchischer Tree-Knoten für den Right-Pane-Datei-Browser. Verzeichnisse
@@ -640,6 +647,10 @@ export interface RendererApi {
     // der zurückgegebenen Liste.
     scanWorkspace: () => Promise<IpcResult<ProjectRow[]>>;
     readClaudeMd: (input: ProjectReadCfgInput) => Promise<IpcResult<ClaudeMdParseResult>>;
+    // Phase-2 Season-8: Projekt aus der Liste entfernen. Returnt die finale,
+    // sortierte Liste (analog scanWorkspace) — der Store ersetzt seinen Stand
+    // ohne separaten list-Call. Sessions hängen nach dem Call am Legacy-Bucket.
+    remove: (input: ProjectRemoveInput) => Promise<IpcResult<ProjectRow[]>>;
   };
   usage: {
     // 5h / weekly_all / weekly_design / weekly_sonnet etc. — eine Bar pro Aufruf.

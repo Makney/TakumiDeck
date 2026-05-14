@@ -24,6 +24,30 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Projekt entfernen: Hover-Trash + Modal statt Kontextmenü, Hard-Delete + Bulk-Remap statt Soft-Archive
+
+**Entscheidung:** „Projekt aus Liste entfernen" wird durch ein Hover-Trash-Icon im Sidebar-Eintrag getriggert und durch ein eigenes Bestätigungs-Modal mit Doppel-Confirm vollzogen. Server-seitig löscht der neue IPC `project:remove` die `projects`-Row tatsächlich (kein `archived`-Flag) und hängt vorher alle Sessions und ihre `messages`-Rows in einer better-sqlite3-Transaction auf den Default-Bucket um.
+
+**Varianten (UI-Trigger):**
+
+- **A** Hover-Trash-Icon im Sidebar-Eintrag + Modal (gewählt). Aktion ist beim Hovern entdeckbar, der Modal-Body hat Platz für den vollen Hinweis-Text („Sessions und Verlauf bleiben erhalten und wandern in den Legacy-Bucket"). Default-Bucket bekommt kein Icon.
+- **B** Rechtsklick-Kontextmenü + Inline-Confirmation. Sehr leise UI, aber Rechtsklick als Trigger existiert bisher nicht im Renderer — neue Infrastruktur (Custom-Menü mit Click-Outside-Close, Tastatur-Handling, Viewport-Bounding) für eine seltene Aktion, und der Hinweis-Text passt nicht ins Menü.
+- **C** Hover-Trash **und** Rechtsklick (beide öffnen das Modal). Maximal entdeckbar, aber zwei UI-Pfade ohne Wiederverwendungs-Hebel und neue Menu-Infra-Auslöser.
+
+**Varianten (Datenpfad):**
+
+- **D** Hard-Delete + Bulk-Reassign-Transaction (gewählt). Sessions wandern serverseitig auf den Default-Bucket, dann `DELETE FROM projects`. Ein UPDATE pro Tabelle, kein Per-Session-Loop — der Sprint-4-Remap iteriert pro Session, weil die cwd-Match-Logik dort pro Session entscheidet; hier wandert die ganze Mannschaft, also reicht ein Statement.
+- **E** Soft-Archive mit neuem `projects.archived`-Flag. Migration nötig, plus jede Liste/Filter/Lookup-Stelle muss das Flag respektieren (Sidebar, Verlauf-Filter, History-Quickliste, Repo-Selects).
+- **F** FK-Cascade `ON DELETE CASCADE` für `sessions.project_id`. Sessions wären weg statt im Legacy-Bucket — verletzt die explizite Spec-Anforderung.
+
+**Grund:** A löst das Reibungsproblem („Aktion entdecken ohne Manual") direkt, ohne neue Renderer-Infrastruktur zu fordern — der Trash-Slot reiht sich ins bestehende `td-row-x`-Pattern ein, sichtbar gemacht durch eine kleine Opacity-Regel auf `.td-row-hover`. Memory-Hinweis „konvenient vor traditionell" trägt das Argument: der moderne Daily-Driver-Pfad ist die Empfehlung, nicht der konservative. B wäre eine Vor-Investition in Kontextmenü-Infrastruktur, die heute kein zweiter Use-Case einlöst. C kostet das Doppelte ohne erkennbaren Mehrwert. D ist der einzige Datenpfad, der Sessions wie gewünscht im Legacy-Bucket weiterleben lässt und gleichzeitig den Repo-State sauber hält: kein neues Flag, das in 8 Lese-Stellen mitgepflegt werden müsste, kein zweiter View-Filter, der irgendwann mal nicht-archivierte Projekte mit archivierten verwechselt. E wäre eine substantielle Schema-Erweiterung für ein UX-Feature, das ohne sie auskommt. F bricht die Spec.
+
+**Konsequenz:** Wenn Phase 3 mal „Projekt-Papierkorb mit Restore" verlangt, ist E der spätere Pfad — die heutige Hard-Delete-Wahl ist umkehrbar, weil die zugehörigen Sessions weiter in der DB liegen (nur am Default-Bucket); eine zukünftige Restore-Funktion müsste die `projects`-Row neu anlegen und die Sessions per cwd-Match (oder gespeicherter Pre-Remap-projectId) zurück-umhängen. Aktuell kein Use-Case, daher kein Vorab-Aufwand. Hover-Sichtbarkeit über `opacity` (nicht `visibility`) — das Item springt beim Hover-Wechsel nicht, Layout-Breite bleibt konstant. `:focus-visible`-Regel auf dem Trash-Button hält das Icon auch bei Keyboard-Fokus sichtbar (Tab-Navigation soll die Aktion erreichen können).
+
+**Implementierungsdetail:** Doppel-Confirm sitzt im RemoveProjectModal-Footer (lokaler `confirmStage`-State), nicht im Sidebar-Eintrag — der erklärende Hinweis-Text braucht den Modal-Body als Bühne, eine Inline-„⚠ Wirklich?"-Geste im Listen-Item wäre zu knapp gewesen. Default-Bucket-Schutz ist doppelt: UI rendert das Trash-Icon nur für `p.id !== DEFAULT_PROJECT_ID`, und der Server-Handler lehnt `DEFAULT_PROJECT_ID` zusätzlich mit `PROJECT_DEFAULT_IMMUTABLE` ab — Belt-and-Suspenders, weil der User über DevTools jederzeit einen direkten IPC-Call absetzen könnte. Vor dem `project:remove` schließt der Renderer alle offenen Tabs des Projekts via `handleCloseTab` (PTY-Kill + Lifecycle-Übergang auf `completed`), sonst hätten die Tabs im `useSessionStore` weiter auf eine projectId verwiesen, die in der DB nicht mehr existiert.
+
+---
+
 ## Seed-basierte Native-Dep-Closure im ASAR-Build statt prune-Vertrauen oder Denylist
 
 **Entscheidung:** Der `ignore`-Filter in `forge.config.ts` lässt von `node_modules/` nur die Pakete durch, die in der transitive Dep-Closure einer expliziten Seed-Liste liegen — und diese Seed-Liste ist exakt die Externals aus `vite.main.config.ts` (heute `better-sqlite3`, `@lydell/node-pty`). Alle anderen prod-Deps werden von Vite ins Main-/Renderer-Bundle inlined und sind im ASAR-`node_modules` redundant.

@@ -6,6 +6,9 @@ export const Channels = {
   ProjectAdd: 'project:add',
   ProjectScan: 'project:scan-workspace',
   ProjectReadCfg: 'project:read-claude-md',
+  // Phase-2 Season-8: Projekt aus der Liste entfernen. Sessions wandern auf den
+  // Default-Bucket; das Default-Project selbst ist server-seitig immutable.
+  ProjectRemove: 'project:remove',
 
   // Session-Management (Sprint 2: update; Sprint 3: close/resume; Sprint 6: history/archive)
   SessionClose: 'session:close',
