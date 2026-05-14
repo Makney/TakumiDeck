@@ -54,11 +54,14 @@ export interface ProjectDbDriver {
   // Wird beim Remap-Pass gebraucht: liefert die Sessions, die noch am Default-Project hängen.
   // Nur die Felder, die der Remap-Algorithmus liest (id + cwd) — kein Volltext-Join.
   listSessionsForProject(projectId: string): Array<{ id: string; cwd: string }>;
-  // Sprint 6: atomar (Transaktion) den aktuellen next_season_number-Wert lesen und
-  // um 1 erhöhen. Returnt den VORHERIGEN Wert (= die Season-Nummer, die der Caller
-  // der frisch zu erstellenden Session zuweisen kann). null, wenn das Project nicht
-  // existiert. Lücken bei späterem Spawn-Fehler sind explizit akzeptiert
-  // (Architektur 6.6: "Lücken bei Abbruch akzeptiert").
+  // Phase-2 Season-11: Counter ist jetzt dynamisch abgeleitet — MAX(season_number)+1
+  // ueber alle sessions des Projekts. Frueher schrieb diese Methode auf
+  // projects.next_season_number; das hat den Counter aber nur bei neu gespawnten
+  // Feature-Sessions hochgezaehlt, nicht bei Templates-Send-Workflow. Jetzt ist
+  // der Wert immer konsistent mit dem tatsaechlichen Maximum in sessions.
+  // null, wenn das Project nicht existiert. Bestehende Luecken (Season N wurde
+  // nie als Session persistiert) bleiben Luecken — das ist Architektur 6.6 aus
+  // Sprint 6 weiterhin treu.
   allocateSeasonNumber(projectId: string): number | null;
   // Phase-2 Season-8: atomare Projekt-Entfernung. Hängt zuerst alle Sessions
   // (inkl. ihrer messages-Rows) auf newProjectId um, löscht dann die projects-
@@ -207,9 +210,15 @@ export class SqliteProjectDriver implements ProjectDbDriver {
     [string],
     { id: string; cwd: string }
   >;
-  private readonly readSeasonStmt: Database.Statement<[string], { next_season_number: number }>;
-  private readonly bumpSeasonStmt: Database.Statement;
-  private readonly allocateSeasonTxn: Database.Transaction<(projectId: string) => number | null>;
+  // Phase-2 Season-11: allocateSeasonNumber liest jetzt einen aggregierten Wert
+  // ueber sessions.season_number. Kein UPDATE mehr noetig — der Counter wird
+  // erst beim tatsaechlichen Insert (pty:create) oder UPDATE (assignSeasonNumber)
+  // verbraucht. Das verbleibende projects.next_season_number-Feld ist tot.
+  private readonly projectExistsStmt: Database.Statement<[string], { exists_flag: number }>;
+  private readonly maxSeasonForProjectStmt: Database.Statement<
+    [string],
+    { max_season: number | null }
+  >;
   // Phase-2 Season-8: bulk-Reassign + Delete in einer Transaction; ein einziges
   // UPDATE pro Tabelle reicht (alle Sessions des Projekts auf einmal), kein
   // Per-Session-Loop wie beim Sprint-4-Remap nötig — dort entscheidet die
@@ -231,8 +240,23 @@ export class SqliteProjectDriver implements ProjectDbDriver {
     );
     // Findet ein Projekt + Session-Count über LEFT JOIN. Die COALESCE-Wrapper sind
     // für den Fall, dass keine Sessions vorhanden sind (NULL → 0).
+    //
+    // Phase-2 Season-11: next_season_number kommt jetzt als korrelierte Subquery
+    // ueber sessions.season_number, NICHT mehr aus projects.next_season_number.
+    // Damit zieht der Wert auch dann mit, wenn eine Season per Templates-Send
+    // auf eine bestehende Session geschrieben wird (statt ueber pty:create mit
+    // type='feature'). Die Spalte projects.next_season_number wird damit dead
+    // (siehe TECH_SCHULDEN-Eintrag) — sie bleibt als Default 1 bei Project-Insert,
+    // wird aber nicht mehr ausgelesen.
     const PROJECT_SELECT_WITH_COUNT = `
-      SELECT p.*, COALESCE(s.cnt, 0) AS session_count
+      SELECT
+        p.id, p.name, p.path, p.added_manually, p.has_git, p.created_at,
+        COALESCE(s.cnt, 0) AS session_count,
+        COALESCE(
+          (SELECT MAX(season_number) FROM sessions
+           WHERE project_id = p.id AND season_number IS NOT NULL),
+          0
+        ) + 1 AS next_season_number
       FROM projects p
       LEFT JOIN (
         SELECT project_id, COUNT(*) AS cnt FROM sessions GROUP BY project_id
@@ -262,22 +286,17 @@ export class SqliteProjectDriver implements ProjectDbDriver {
     this.listSessionsStmt = db.prepare<[string], { id: string; cwd: string }>(
       'SELECT id, cwd FROM sessions WHERE project_id = ?',
     );
-    // Sprint 6: atomare Counter-Allocation. SELECT+UPDATE in einer better-sqlite3-
-    // Transaction (synchron, lokales File → Race nur theoretisch). Die Side-Effects
-    // einer fehlgeschlagenen Spawn-Folge (Counter incrementiert, kein Insert) sind
-    // bewusst akzeptierte Lücken laut Architektur 6.6.
-    this.readSeasonStmt = db.prepare<[string], { next_season_number: number }>(
-      'SELECT next_season_number FROM projects WHERE id = ?',
+    // Phase-2 Season-11: Allocation ist jetzt eine reine SELECT-Operation —
+    // MAX(sessions.season_number)+1 fuer das Projekt. Der erste Helper prueft,
+    // ob das Projekt ueberhaupt existiert (damit der null-Fall des alten
+    // Vertrags erhalten bleibt), der zweite zieht das Maximum aus sessions.
+    this.projectExistsStmt = db.prepare<[string], { exists_flag: number }>(
+      'SELECT 1 AS exists_flag FROM projects WHERE id = ?',
     );
-    this.bumpSeasonStmt = db.prepare(
-      'UPDATE projects SET next_season_number = next_season_number + 1 WHERE id = ?',
+    this.maxSeasonForProjectStmt = db.prepare<[string], { max_season: number | null }>(
+      `SELECT MAX(season_number) AS max_season FROM sessions
+       WHERE project_id = ? AND season_number IS NOT NULL`,
     );
-    this.allocateSeasonTxn = db.transaction((projectId: string): number | null => {
-      const row = this.readSeasonStmt.get(projectId);
-      if (!row) return null;
-      this.bumpSeasonStmt.run(projectId);
-      return row.next_season_number;
-    });
 
     this.bulkReassignSessionsStmt = db.prepare(
       'UPDATE sessions SET project_id = @newProjectId WHERE project_id = @oldProjectId',
@@ -336,7 +355,11 @@ export class SqliteProjectDriver implements ProjectDbDriver {
   }
 
   allocateSeasonNumber(projectId: string): number | null {
-    return this.allocateSeasonTxn(projectId);
+    const exists = this.projectExistsStmt.get(projectId);
+    if (!exists) return null;
+    const row = this.maxSeasonForProjectStmt.get(projectId);
+    const max = row?.max_season ?? null;
+    return (max ?? 0) + 1;
   }
 
   removeProjectAndReassignSessions(projectId: string, newProjectId: string): number {
@@ -354,10 +377,22 @@ export class InMemoryProjectDriver implements ProjectDbDriver {
   // Wird in Tests vom Driver-Konsumenten gefüttert, damit listSessionsForProject etwas
   // zurückliefert. Sprint 4 fasst Sessions im echten Repo an — der In-Memory-Pfad
   // braucht eine ähnliche Brücke, ohne SessionRepository zu importieren.
-  public readonly sessions = new Map<string, { id: string; cwd: string; project_id: string }>();
+  // Phase-2 Season-11: optionales season_number erlaubt es, das Verhalten von
+  // allocateSeasonNumber (= MAX(season_number)+1) im Test zu simulieren.
+  public readonly sessions = new Map<
+    string,
+    { id: string; cwd: string; project_id: string; season_number?: number | null }
+  >();
 
   private toRow(insert: ProjectInsert): ProjectRow {
-    return { ...insert, session_count: this.countSessionsForProject(insert.id) };
+    return {
+      ...insert,
+      session_count: this.countSessionsForProject(insert.id),
+      // Phase-2 Season-11: dynamisch ueber sessions.season_number berechnet,
+      // damit die InMemory-Variante exakt das gleiche Verhalten zeigt wie
+      // der SQLite-Driver mit der korrelierten Subquery.
+      next_season_number: this.computeNextSeasonNumber(insert.id),
+    };
   }
 
   private countSessionsForProject(projectId: string): number {
@@ -366,6 +401,16 @@ export class InMemoryProjectDriver implements ProjectDbDriver {
       if (s.project_id === projectId) count += 1;
     }
     return count;
+  }
+
+  private computeNextSeasonNumber(projectId: string): number {
+    let max = 0;
+    for (const s of this.sessions.values()) {
+      if (s.project_id !== projectId) continue;
+      const n = s.season_number;
+      if (typeof n === 'number' && n > max) max = n;
+    }
+    return max + 1;
   }
 
   insert(row: ProjectInsert): void {
@@ -433,9 +478,10 @@ export class InMemoryProjectDriver implements ProjectDbDriver {
   allocateSeasonNumber(projectId: string): number | null {
     const project = this.projects.get(projectId);
     if (!project) return null;
-    const previous = project.next_season_number;
-    project.next_season_number = previous + 1;
-    return previous;
+    // Phase-2 Season-11: keine schreibende Operation mehr — der Wert wird
+    // dynamisch aus sessions.season_number abgeleitet. Mehrfach-Aufrufe ohne
+    // dazwischenliegenden Session-Insert/Update liefern denselben Wert.
+    return this.computeNextSeasonNumber(projectId);
   }
 
   removeProjectAndReassignSessions(projectId: string, newProjectId: string): number {
@@ -450,7 +496,14 @@ export class InMemoryProjectDriver implements ProjectDbDriver {
   }
 
   // Test-Hilfe: Session zur Map hinzufügen, ohne über Sessions-Repo zu gehen.
-  seedSession(session: { id: string; cwd: string; project_id: string }): void {
+  // Phase-2 Season-11: season_number optional, damit Tests den dynamischen
+  // Counter (MAX+1) bequem ohne SessionRepository-Dependency simulieren koennen.
+  seedSession(session: {
+    id: string;
+    cwd: string;
+    project_id: string;
+    season_number?: number | null;
+  }): void {
     this.sessions.set(session.id, { ...session });
   }
 }

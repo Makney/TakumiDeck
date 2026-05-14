@@ -7,6 +7,7 @@ import type {
   ProjectRow,
 } from '@shared/types';
 import { findSensitiveFiles } from '../components/sensitiveFiles';
+import { useUiStore } from '../stores/ui';
 
 // PreCommitModal (Sprint 7, Phase 7, Architektur 6.7).
 //
@@ -71,6 +72,15 @@ export function PreCommitModal({
       }
     };
   }, []);
+
+  // Phase-2 Season-11: Frontmatter beim Modal-Open frisch laden. Sonst zeigt
+  // der Commit-Trigger (workbench.trigger_phrases.commit) den Stand vom letzten
+  // Project-Switch — wenn der User die Trigger-Phrase zwischenzeitlich in
+  // CLAUDE.md geaendert hat, war die alte Phrase stale.
+  const loadActiveProjectFrontmatter = useUiStore((s) => s.loadActiveProjectFrontmatter);
+  useEffect(() => {
+    void loadActiveProjectFrontmatter(project.id);
+  }, [project.id, loadActiveProjectFrontmatter]);
 
   // Beim Mount git:status pullen. Read-only IPC, kein useRef-Guard
   // (Memory-Konvention: Guard nur für Server-Mutationen).

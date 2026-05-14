@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Dead-Code-Spalte `projects.next_season_number` (Phase-2 Season 11)
+
+**Bereich:** `src/main/db/migrations/0001_init.sql` (Schema-Definition), `src/main/db/repos/projects.ts` (Insert-Pfad)
+
+**Was:** Die Spalte `projects.next_season_number` existiert seit Sprint 6 und wurde damals als atomarer Counter (SELECT-und-bump in einer Transaction) für die Season-Vergabe genutzt. Mit Season 11 wurde die Logik umgestellt: der Counter wird zur Lesezeit als korrelierte Subquery (`MAX(sessions.season_number) + 1`) im `PROJECT_SELECT_WITH_COUNT` berechnet, und `allocateSeasonNumber` ist eine reine SELECT-Operation ohne Schreib-Pfad. Die Spalte bleibt im Schema bestehen, wird beim `INSERT INTO projects` weiter mit Default `1` befüllt, aber an keiner Stelle des Codes mehr ausgelesen.
+
+**Warum so:** Drop-Migration (0007) wäre ein eigener Schema-Brüch mit `ALTER TABLE ... DROP COLUMN`, das SQLite erst ab 3.35 unterstützt (better-sqlite3 v12 bündelt 3.45+, also technisch möglich). Die Migration ist aber rückwirkungslos auf das Verhalten — das System läuft mit der toten Spalte exakt gleich — und ein Drop birgt das Risiko, dass externe Tools (z.B. `scripts/inspect-db.py`) auf den Spaltennamen zugreifen und nach dem Drop kommentarlos ausfallen. Aufschieben war der pragmatische Pfad: Code ist schon konsistent, die Spalte verbraucht ein paar Byte pro Project-Row, mehr nicht.
+
+**Risiko:** Praktisch null. Ein zukünftiger Programmierer könnte den Default `1` im Insert-Pfad sehen und versehentlich darauf bauen — der Code-Kommentar in `projects.ts` und der Hinweis in dieser Datei sind die einzigen Anker, dass die Spalte tot ist. Wenn ein Code-Review-Pass die Spalte ohne Doku-Lookup findet, könnte er sie fälschlich als "noch verwendet" einschätzen und eine Drop-PR ablehnen.
+
+**Auflösung:** Eigene Mini-Migration in einer späteren Phase: `ALTER TABLE projects DROP COLUMN next_season_number;` plus Update des `ProjectInsert`-Interfaces (`next_season_number`-Property raus), Anpassung des `INSERT INTO projects`-Statements und des `ensureDefaultProject`-Pfads. ~30 LOC + Test-Anpassung in `projects-repo.test.ts` (das `seedProject`-Default kann dann raus). Auch das `scripts/inspect-db.py` muss schauen, ob es die Spalte irgendwo zeigt — aktuell tut es das nicht (es liest nur `id, status, current_model, cwd, started_at` aus `sessions` und die Counts der `projects`-Tabelle).
+
+---
+
 ## Backfill-Approximation für `messages.model` bei Pre-Migration-Daten (Phase-2 Season 10)
 
 **Bereich:** `src/main/db/migrations/0006_messages_model.sql` (Backfill-UPDATE), `src/main/db/repos/messages.ts` (Aggregat-Konsumenten)

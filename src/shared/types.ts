@@ -491,6 +491,20 @@ export interface TemplatesResolveAutoVarsResult {
   letzte_entscheidungen: string;
 }
 
+// Phase-2 Season-11: Templates-Send mit {{NEXT_SEASON_NR}} alloziert eine Nummer
+// fuer die aktive Session. Antwort enthaelt die finale Nummer (frisch zugeteilt
+// oder bereits vergeben, falls die Session schon eine hatte).
+export interface TemplatesAllocateSeasonForSessionInput {
+  sessionId: string;
+}
+
+export interface TemplatesAllocateSeasonForSessionResult {
+  seasonNumber: number;
+  // True, wenn diese Methode den Wert frisch gesetzt hat; false, wenn die
+  // Session bereits eine Season-Nummer hatte (idempotenter Pfad).
+  freshlyAssigned: boolean;
+}
+
 // --- Token-Tracking (Sprint 5) ---------------------------------------
 
 // Geparste JSONL-Zeile, gefiltert auf das, was wir tatsächlich brauchen.
@@ -644,6 +658,12 @@ export interface RendererApi {
     resolveAutoVars: (
       input: TemplatesResolveAutoVarsInput,
     ) => Promise<IpcResult<TemplatesResolveAutoVarsResult>>;
+    // Phase-2 Season-11: vom Templates-Send aufgerufen, wenn das Template
+    // {{NEXT_SEASON_NR}} verwendet. Idempotent — gibt die bereits zugewiesene
+    // Nummer zurueck, falls die Session schon eine hatte.
+    allocateSeasonForSession: (
+      input: TemplatesAllocateSeasonForSessionInput,
+    ) => Promise<IpcResult<TemplatesAllocateSeasonForSessionResult>>;
   };
   fs: {
     listTemplates: (input: FsListTemplatesInput) => Promise<IpcResult<TemplateFile[]>>;

@@ -57,6 +57,14 @@ export const Channels = {
   // aus Markdown-Dateien). Renderer ruft pro Modal-Open einmal; ohne Auflösung
   // landen die Variablen leer im Prompt (graceful Fallback).
   TemplatesResolveAutoVars: 'templates:resolve-auto-vars',
+  // Phase-2 Season-11: vom Templates-Send aufgerufen, wenn das Template
+  // `{{NEXT_SEASON_NR}}` verwendet. Atomar: liest MAX(season_number)+1 fuer
+  // das Projekt der Session und schreibt den Wert auf die Session, falls sie
+  // noch keinen Wert hat. Idempotent — eine bereits zugewiesene Nummer wird
+  // nicht ueberschrieben. Damit zieht der Season-Counter auch ohne neuen
+  // pty:create-Spawn mit (Bug aus Season 8/9/10: Counter blieb stehen, weil
+  // Seasons per Templates-Send statt neuer Feature-Session gestartet wurden).
+  TemplatesAllocateSeasonForSession: 'templates:allocate-season-for-session',
   FsListTree: 'fs:list-tree',
   // Phase-2 Season-2: Screenshot-Drop ins Terminal. Renderer speichert
   // Image-Bytes über diesen Channel in <userData>/screenshots/, bekommt

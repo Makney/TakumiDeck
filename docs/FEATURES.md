@@ -76,7 +76,7 @@ Nummerierung und Verlauf von Sessions.
 
 | Feature                         | Status | Bemerkung |
 | ------------------------------- | ------ | --------- |
-| `Season-Nummerierung`           | ✅      | 2026-05-10 — atomar im Main-Handler via better-sqlite3-Transaction (Variante B); nur für `feature`-Sessions, Lücken bei Spawn-Fehler akzeptiert; Vorschau im NewSessionModal |
+| `Season-Nummerierung`           | ✅      | 2026-05-10 — atomar im Main-Handler. Phase-2-Season-11-Refit: Counter ist jetzt aus `sessions.season_number` abgeleitet (`MAX+1`) statt aus eigener Spalte; Templates-Send mit `{{NEXT_SEASON_NR}}` alloziert die Nummer auf die aktive Session (kein Drift mehr, wenn Seasons per Templates-Send statt neuer Feature-Session laufen). Vorschau im NewSessionModal + TemplatesModal-Sidebar. |
 | `Verlauf-Panel`                 | ✅      | 2026-05-10 — Replace-View (Variante A) mit Filter (Typ/Status/Volltext) + Detail-Pane mit Resume + Archive (Inline-Confirmation); Legacy-Bucket sichtbar mit Hinweis-Banner (Variante A) |
 
 ## Editor + Git (Sprint 7)

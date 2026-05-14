@@ -17,6 +17,23 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-14 — Phase 2 Season 11: Season-Counter-Fix + Frontmatter-Cache-Bust
+
+### Was jetzt geht
+
+- **Season-Nummer zieht jetzt mit, auch wenn die Season per Templates-Send statt neuer Feature-Session läuft.** Bisheriger Bug: der Counter (`projects.next_season_number`) wurde nur beim Spawn einer `type='feature'`-Session über das NewSessionModal hochgezählt. Wer Seasons stattdessen über den Templates-Send-Workflow in eine bestehende Session schickte (oder per Resume / Bug-Typ arbeitete), bekam beim nächsten Modal-Open eine zu niedrige Nummer angeboten — z.B. „Diese Season wäre #8", obwohl in den git-Commits schon Season 9 / 10 existierten. Der Counter ist jetzt aus den Daten abgeleitet: `MAX(sessions.season_number) + 1` über die Feature-Sessions des Projekts. Templates-Send mit `{{NEXT_SEASON_NR}}` allociert die Nummer atomar im Main und schreibt sie auf die aktive Session — der nächste Aufruf sieht den frischen Wert im MAX. Idempotent: hat die Session schon eine Nummer, bleibt sie bei der alten (kein Drift bei mehrfachem Send in dieselbe Session).
+- **CLAUDE.md-Frontmatter wird beim Modal-Open neu gelesen.** Bisheriger Bug: das Frontmatter wurde nur beim Projekt-Switch in den Renderer-Store geladen und danach gecached. Eine zwischenzeitliche Änderung an `workbench.current_phase_file` (z.B. Phase-1 → Phase-2-Schwenk) wirkte erst nach Project-Reklick oder App-Neustart — das Templates-Modal zeigte weiter den alten `{{CURRENT_PHASE_FILE}}`-Wert. `TemplatesModal` und `PreCommitModal` triggern jetzt beim Mount `loadActiveProjectFrontmatter(project.id)`; jede CLAUDE.md-Änderung greift beim nächsten Modal-Open ohne Workaround.
+
+### Architektur-Notiz
+
+Counter-Fix ist Variante B aus den drei vorgestellten Optionen (A = DB-Wert einmalig korrigieren, B = dynamisch ableiten + Templates-Send alloziert, C = `SEASON_LOG.md` als Source of Truth). A wäre nur ein Pflaster gewesen — das gleiche Drift-Problem kommt nach der nächsten Templates-Session wieder. C hätte einen Markdown-Parser auf den Allokations-Pfad gehängt und das Konzept „Season-Nummer" komplett vom Session-Modell entkoppelt — zu viel für den Schmerz. Entscheidungs-Why in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md). `ProjectRow.next_season_number` kommt jetzt als korrelierte SQL-Subquery (`COALESCE((SELECT MAX(season_number) FROM sessions WHERE project_id = p.id), 0) + 1`) — die `projects.next_season_number`-Spalte ist damit dead-code-Feld; bleibt im Schema, wird beim Insert default `1` geschrieben, aber nicht mehr ausgelesen (TECH_SCHULDEN-Eintrag dokumentiert die Spalte als Drop-Kandidat für eine zukünftige Migration). Neue Methode `SessionRepository.assignSeasonNumber(sessionId)` mit better-sqlite3-Transaction: idempotent bei vorhandener Nummer, sonst MAX+1 + UPDATE. Neuer IPC `templates:allocate-season-for-session` ruft die Methode auf, `TemplatesModal.handleSend` refillt den finalen Prompt-Text mit der zurückgegebenen Nummer und zeigt einen Toast („Session als Season #N markiert" vs. „Session war bereits Season #N"). Frontmatter-Refetch beim Modal-Mount ist Variante A der zwei vorgestellten Optionen (A = Refetch beim Open, B = chokidar-Watcher auf CLAUDE.md) — Watcher hätte ActionBar-Trigger-Pills und EditorPane mit-aktualisiert, A deckt aber den realen Daily-Use-Pfad (Modal-Open) zuverlässig ab und bleibt minimal. 13 neue Tests (7 in `season-counter.test.ts` für die neue MAX+1-Semantik inkl. Cross-Project-Trennung und Mehrfach-Read-Konsistenz, 6 in `session-assign-season.test.ts` für Idempotenz + Cross-Project + Lücken), Gesamtsuite 600/600 grün.
+
+### Bestandsdaten-Hinweis
+
+Der dynamische Counter spiegelt nur Sessions, die `sessions.season_number` gesetzt haben — historisch sind das nur die als `type='feature'` über `pty:create` gespawnten. Wer Seasons 8/9/10 per Templates-Send oder Bug-Typ bearbeitet hat, sieht im neuen MAX nur den letzten Feature-Spawn — der nächste Allocate startet entsprechend tief. Mit dem Fix zieht der Counter ab dem ersten Templates-Send mit `{{NEXT_SEASON_NR}}` mit; eine einmalige SQL-Korrektur (z.B. `UPDATE sessions SET season_number = 10 WHERE id = '<letzte-Session>'`) springt direkt auf den richtigen Wert.
+
+---
+
 ## 2026-05-14 — Phase 2 Season 10: Modell-Filter im Verlauf-Panel
 
 ### Was jetzt geht

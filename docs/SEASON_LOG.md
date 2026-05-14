@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 11 — Season-Counter-Fix + Frontmatter-Cache-Bust
+
+**Ziel:** Zwei live im Daily-Use beobachtete Bugs fixen. (1) Der Season-Counter zeigte zu niedrige Nummern — beim Modal-Open wurde „Diese Season wäre #8" angeboten, obwohl in der git-History schon Season 9 / 10 existierten. (2) Das Template-Modal zeigte weiter `docs/roadmap/PHASE1.md` als aktuelle Phase, obwohl `CLAUDE.md` schon auf PHASE2 stand.
+
+**Ergebnis:** Bug 1 mit Variante B (Counter dynamisch aus `MAX(sessions.season_number)+1` + Templates-Send alloziert und persistiert auf die aktive Session) gefixt. `projects.next_season_number`-Spalte ist damit dead-code-Feld (TECH_SCHULDEN-Eintrag dokumentiert sie als Drop-Kandidat für eine zukünftige Migration). Neue Methode `SessionRepository.assignSeasonNumber(sessionId)` mit better-sqlite3-Transaction (idempotent), neuer IPC `templates:allocate-season-for-session`, `TemplatesModal.handleSend` refillt den finalen Prompt mit der allozierten Nummer und zeigt einen Toast. Bug 2 mit Variante A (Refetch beim Modal-Open) gefixt — `TemplatesModal` und `PreCommitModal` triggern beim Mount `loadActiveProjectFrontmatter`. 13 neue Tests (7 in `season-counter.test.ts` mit neuer MAX+1-Semantik inkl. Cross-Project + Mehrfach-Read-Konsistenz, 6 in `session-assign-season.test.ts` mit Idempotenz + Lücken), Gesamtsuite 600/600 grün, typecheck + lint sauber.
+
+**Gut gelaufen:**
+
+- **Diagnose vor Variants — beide Bugs erst sauber root-causet, dann Optionen vorgeschlagen.** Erste Antwort an den User war keine Lösung, sondern eine Analyse von zwei orthogonalen Ursachen pro Bug (für Bug 1: Allokations-Pfad nur bei `pty:create` mit `feature`-Typ; für Bug 2: Frontmatter-Cache wird nur beim Project-Switch geladen). Erst danach drei Varianten pro Bug mit klarer Empfehlung. User-Entscheidung lief in einem einzigen Klick durch („Bug 1 mit B, Bug 2 mit 1"). Pattern aus Season 9/10 erneut bestätigt: Diagnose-Block lohnt sich, weil er die Variants-Diskussion auf die *richtige* Achse legt.
+- **Sub-Variants nur dort, wo wirklich offen.** Bug 2 hatte innerhalb von Fix 1 zwei legitime Sub-Ansätze (Refetch-on-Open vs. chokidar-Watcher); die wurden als separates AskUserQuestion nachgereicht statt vorab spekuliert. User hat den minimal-invasiven Pfad gewählt (Refetch-on-Open). Vermeidet das Anti-Pattern, alle Kombinationen vorab durchzudenken, wenn die Hälfte davon nur durch die Hauptfrage relevant wird.
+- **Korrelierte SQL-Subquery statt neuer Spalte oder Trigger.** Reflex bei „Counter wird inkonsistent" wäre, einen DB-Trigger auf `sessions` zu hängen, der `projects.next_season_number` neu setzt. Wäre invasiv (Migration, Cross-Table-Side-Effect, Test-Setup für Trigger). Die korrelierte Subquery in `PROJECT_SELECT_WITH_COUNT` ist eine reine Read-Time-Berechnung — null Schreib-Pfade, null Migration, null Trigger-Lifecycle. Memory-Hinweis „pragmatisch vor invasiv" trug die Wahl.
+
+**Gebremst durch:**
+
+- **Bestandsdaten-Effekt erst nach der Implementierung mit-gedacht.** Der dynamische Counter ist ab dem Moment der Implementierung korrekt — aber die historischen Sessions 8/9/10, die per Templates-Send liefen, haben kein `season_number` in der DB. Der erste Allocate nach dem Fix kann also tiefer einsteigen als die git-History (Beispiel TakumiDeck: MAX = 7 in der DB, nächste Allocate liefert 8 trotz Season 10 im git). Wurde erst im Abschluss-Kommentar an den User mit-erklärt, hätte aber direkt im ersten Diagnose-Block stehen können. Lehre: bei Logik-Refits, die historische Daten neu interpretieren, gleich die Bestandsdaten-Implikation mit-diagnostizieren — nicht erst nach dem Code.
+- **`season-counter.test.ts` musste komplett umgeschrieben werden.** Die alten Tests testeten die Semantik „bump beim Read" (1, 2, 3, ... sequenziell ohne Schreib-Aktion), was mit Variante B nicht mehr gilt. Neu-Schreiben statt patchen war richtig, weil die Test-Aussagen sich fundamental ändern — aber initial habe ich `npm test` laufen lassen, gesehen dass 4 Tests roten, und dann erst die Test-Datei umgebaut. Effizienter wäre gewesen, beim Plan-Schritt schon zu erkennen, dass die Test-Semantik sich mit-ändert und die Test-Datei in derselben Iteration anzupassen. Kein großer Verlust, aber ein vermeidbarer Round-Trip.
+
+**Für nächste Season:**
+
+- **Dead-Column-Drop-Migration (`0007_drop_projects_next_season_number.sql`) ist als TECH_SCHULDEN-Eintrag erfasst.** ~30 LOC + ein Test-Anpassung im `seedProject`-Helper. Lohnt sich, wenn die nächste Season ohnehin das Schema antippt — sonst aufschieben.
+- **Frontmatter-Watcher (Bug 2 Variante B) bleibt als Erweiterung offen.** Der aktuelle Modal-Open-Refetch deckt den Daily-Use ab, aber ActionBar-Trigger-Pills und EditorPane-Anzeige bleiben stale, bis ein Modal geöffnet wird. Bei Bedarf nachrüstbar ohne Schema-Bruch — chokidar-Watcher auf der CLAUDE.md des aktiven Projekts mit IPC-Push-Event, Renderer löst denselben `loadActiveProjectFrontmatter` aus. Heute kein Trigger.
+- **Hardcoded `docs/roadmap/PHASE1.md` im SEASON_PROMPT.md-Beispiel-Block (Zeile 92) und im README.md (Zeile 9) bleibt stehen.** User hat Bug-2-Fix-2 (Doku-Glättung) bewusst nicht mit-bestellt — diese Texte zeigen Phase 1 als ob es noch aktuell wäre. Im aktuellen Body-Extraktions-Pfad landen sie nicht im gesendeten Prompt (`extractTemplateBody` zieht nur den `## Vorlage`-Code-Fence), sind aber im Editor-Lesepfad sichtbar. Bei nächster Doku-Sync gleich mit-anfassen — ein paar Sed-Edits, kein Code-Touch.
+
+---
+
 ## Phase 2 Season 10 — Modell-Filter im Verlauf-Panel
 
 **Ziel:** Phase-2-Roadmap-Eintrag „Modell-Filter im Verlauf-Panel" produktiv machen. Spec war minimal: „Filter nach `current_model` der Sessions" plus „Modell-Wechsel-History als Detail-Info pro Session". Letzteres ließ offen, ob eine echte Timeline oder eine Aggregat-Sicht gemeint ist und woher die Daten kommen sollen.

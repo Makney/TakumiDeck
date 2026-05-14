@@ -24,6 +24,39 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Season-Counter: dynamisch aus sessions.season_number statt separater Spalte
+
+**Entscheidung:** Die nächste Season-Nummer eines Projekts wird zur Lesezeit als `COALESCE(MAX(sessions.season_number), 0) + 1` aus der `sessions`-Tabelle abgeleitet — und beim Templates-Send mit `{{NEXT_SEASON_NR}}` atomar auf die aktive Session geschrieben. Die ursprüngliche `projects.next_season_number`-Spalte (Sprint 6) ist damit dead-code und wird im Schema nur noch aus Backwards-Kompatibilität mit Default `1` befüllt.
+
+**Varianten:**
+
+- **A** DB-Wert einmalig per SQL korrigieren (`UPDATE projects SET next_season_number = N`). Pflasterfix; der ursprüngliche Drift-Mechanismus bleibt — der Counter geht beim nächsten Templates-Send-Workflow erneut auseinander.
+- **B** Counter dynamisch aus `sessions.season_number` ableiten + Templates-Send alloziert und persistiert die Nummer auf der aktiven Session (gewählt). Robust gegen Drift, weil der "Verbrauch" der Nummer und ihre persistente Spur (die `sessions`-Row) zusammenfallen.
+- **C** `docs/SEASON_LOG.md` als Source of Truth, Markdown-Parser auf den Allokations-Pfad. Käme der Roadmap-Realität am nächsten, weil "Season" eigentlich ein Doku-Konzept ist und nicht an PTY-Spawns gekoppelt sein muss — koppelt aber den IPC-Allokations-Pfad an einen Datei-Parser, der bei kaputter `SEASON_LOG.md`-Section silent failed wäre.
+
+**Grund:** Der ursprüngliche Bug entstand, weil die Sprint-6-Spalte nur entlang eines Allokations-Pfads (`pty:create` mit `type='feature'`) hochgezählt wurde. Im realen Daily-Use läuft eine Season aber häufig per Templates-Send in eine bestehende Session — und dieser Pfad bumpte den Counter nicht. A fixt das Symptom, nicht die Ursache. C ist zu groß für den Nutzen: ein Markdown-Parser am Allokations-Pfad braucht eigene Fehler-Modi (was passiert bei kaputter Section?), und die Doku-Datei wäre dann implizit Schema. B koppelt die Daten-Realität (eine Session mit `season_number = N`) an die Anzeige der nächsten Nummer — keine zweite Wahrheit, kein Drift möglich. Der atomare UPDATE-Pfad beim Templates-Send (`SessionRepository.assignSeasonNumber`) ist idempotent: ein zweiter Send in dieselbe Session liefert dieselbe Nummer zurück, kein zufälliges Hochzählen.
+
+**Konsequenz:** Sessions ohne `season_number` (Bug/Custom/Review/Resume und alle pre-Patch-Templates-Send-Sessions) tauchen im neuen MAX nicht auf — der Counter spiegelt nur Feature-Sessions, die als solche markiert sind. Für Projekte mit historisch gemischten Allokations-Pfaden bedeutet das: der erste Allocate nach dem Fix kann tiefer einsteigen als die git-Realität (Beispiel TakumiDeck: git-Commits zeigen Season 10, MAX in der DB steht bei Season 7, der nächste Allocate liefert 8). Die Lücken füllen sich automatisch über die nächsten Templates-Sends. Eine einmalige SQL-Korrektur (`UPDATE sessions SET season_number = N WHERE id = '<latest>'`) springt direkt auf den richtigen Wert, ist aber kein Pflicht-Schritt. `projects.next_season_number` bleibt im Schema, wird beim Project-Insert default `1` gesetzt und nirgends mehr ausgelesen — dokumentiert als TECH_SCHULDEN-Eintrag (Drop in einer zukünftigen Migration).
+
+**Implementierungsdetail:** `ProjectDbDriver.allocateSeasonNumber` ist jetzt eine reine SELECT-Operation (keine Transaktion mehr), weil der eigentliche „Verbrauch" der Nummer erst beim Session-Insert (`pty:create`) bzw. UPDATE (`assignSeasonNumber`) passiert. Better-sqlite3 ist synchron und der Electron-Main-Prozess single-threaded — zwei Allokationen werden zwangsweise serialisiert, ein Race-Fenster gibt es nicht. Die korrelierte Subquery im `PROJECT_SELECT_WITH_COUNT` (`COALESCE(...) + 1`) wirkt pro Project-Row; bei Listen-Reads (`listAll`) ist das ein Subquery-pro-Projekt, was bei der realen Projekt-Anzahl (<50 in jedem realistischen Setup) vernachlässigbar bleibt.
+
+---
+
+## Frontmatter-Refetch beim Modal-Open statt CLAUDE.md-Watcher
+
+**Entscheidung:** Das CLAUDE.md-Frontmatter (im Renderer-Store `useUiStore.activeProjectFrontmatter`) wird beim Mount des `TemplatesModal` und `PreCommitModal` per `loadActiveProjectFrontmatter(project.id)` neu gelesen — nicht über einen kontinuierlich laufenden Watcher.
+
+**Varianten:**
+
+- **A** Refetch beim Modal-Open (gewählt). Minimale Diff: zwei `useEffect`-Hooks in den Modals, kein neuer Watcher-Lifecycle, kein zusätzlicher IPC-Push-Channel.
+- **B** chokidar-Watcher auf der CLAUDE.md des aktiven Projekts, Push-Event an den Renderer bei Änderung. Robuster gegen externe Edits in dem Sinn, dass ActionBar-Trigger-Pills und EditorPane mit-aktualisiert würden, ohne dass der User ein Modal öffnen muss.
+
+**Grund:** Der reale Schmerzpunkt ist „ich habe CLAUDE.md geändert und das Template zeigt noch die alte Phase" — und der Pfad zum Template-Senden geht zwangsweise durch den Modal-Open. A deckt diesen Pfad zuverlässig ab. B würde zusätzlich die Live-Anzeige in ActionBar/EditorPane synchron halten, aber dort hat das Frontmatter im Daily-Use weniger Sichtbarkeit (Trigger-Pills sind primär `commit` und `docs_update`-Phrasen, deren Wechsel sehr selten ist; EditorPane zeigt den Body, nicht das Frontmatter). Der Watcher-Lifecycle (Setup beim Projekt-Wechsel, Cleanup beim Schließen, chokidar-`awaitWriteFinish`-Tuning, Re-Entry beim Datei-Lösch-und-Neu-Anlegen) ist ein eigenes Stück Infrastruktur — Aufwand-Nutzen ist hier ungünstig.
+
+**Konsequenz:** Frontmatter-Stale-Cache greift nur noch, wenn der User CLAUDE.md ändert UND danach kein Modal öffnet (= keine Templates-Send, kein PreCommit). In diesem Edge-Case bleibt der `effectiveDefaultModel`-Hint in der ActionBar oder die Trigger-Phrasen-Pille stale bis zum nächsten Project-Switch oder App-Neustart. Akzeptierte Lücke — der Daily-Use-Pfad (CLAUDE.md ändern → Templates senden) ist gefixt. Bei Bedarf nachrüstbar (Watcher) ohne Schema-Brüche, die Refetch-Logik bleibt unter dem Watcher.
+
+---
+
 ## Modell-Filter im Verlauf-Panel: current_model statt Join über messages.model
 
 **Entscheidung:** Die neue Modell-Filter-Pillen-Reihe im Verlauf-Panel filtert auf `sessions.current_model` (Single-Column-`IN(...)`-WHERE), nicht auf eine `EXISTS`-Subquery über `messages.model`. Sessions tauchen unter genau einem Modell auf — dem, mit dem sie zuletzt liefen. Das aggregierte „welche Modelle wurden in dieser Session benutzt"-Bild lebt separat im Detail-Pane-Block „Modelle".

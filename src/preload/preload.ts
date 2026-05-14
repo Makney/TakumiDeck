@@ -39,6 +39,8 @@ import type {
   SessionRow,
   SessionUpdateInput,
   TemplateFile,
+  TemplatesAllocateSeasonForSessionInput,
+  TemplatesAllocateSeasonForSessionResult,
   TemplatesResolveAutoVarsInput,
   TemplatesResolveAutoVarsResult,
   UsageContextInput,
@@ -120,6 +122,10 @@ const api: RendererApi = {
     resolveAutoVars: (input: TemplatesResolveAutoVarsInput) =>
       ipcRenderer.invoke(Channels.TemplatesResolveAutoVars, input) as Promise<
         IpcResult<TemplatesResolveAutoVarsResult>
+      >,
+    allocateSeasonForSession: (input: TemplatesAllocateSeasonForSessionInput) =>
+      ipcRenderer.invoke(Channels.TemplatesAllocateSeasonForSession, input) as Promise<
+        IpcResult<TemplatesAllocateSeasonForSessionResult>
       >,
   },
   fs: {

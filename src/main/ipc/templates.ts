@@ -3,8 +3,15 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { Channels } from '@shared/ipc-channels';
 import { ok, errFromUnknown, err } from '@shared/result';
-import { TemplatesResolveAutoVarsInputSchema } from '@shared/schemas';
-import type { TemplatesResolveAutoVarsResult, SessionRow } from '@shared/types';
+import {
+  TemplatesAllocateSeasonForSessionInputSchema,
+  TemplatesResolveAutoVarsInputSchema,
+} from '@shared/schemas';
+import type {
+  TemplatesAllocateSeasonForSessionResult,
+  TemplatesResolveAutoVarsResult,
+  SessionRow,
+} from '@shared/types';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
 import type { ProjectRepository } from '../db/repos/projects';
 import type { SessionRepository } from '../db/repos/sessions';
@@ -42,6 +49,39 @@ export function registerTemplatesIpc(deps: {
   log: Logger;
 }): void {
   const { projects, sessions, log } = deps;
+
+  // Phase-2 Season-11: vom Templates-Send-Flow gerufen, sobald der Prompt
+  // {{NEXT_SEASON_NR}} verwendet. Der Renderer schickt die aktive Session-ID;
+  // wir alloziere atomar (siehe SessionRepository.assignSeasonNumber) und
+  // geben die finale Nummer + Frisch-Flag zurueck. Idempotent — eine bereits
+  // markierte Session bleibt bei ihrer alten Nummer.
+  ipcMain.handle(
+    Channels.TemplatesAllocateSeasonForSession,
+    (event, payload: unknown) => {
+      const guard = assertFromMainWindow(event);
+      if (!guard.ok) return guard;
+      try {
+        const input = TemplatesAllocateSeasonForSessionInputSchema.parse(payload);
+        const result = sessions.assignSeasonNumber(input.sessionId);
+        if (!result) {
+          return err<TemplatesAllocateSeasonForSessionResult>(
+            `Session ${input.sessionId} nicht gefunden`,
+            'SESSION_NOT_FOUND',
+          );
+        }
+        log.info(
+          `[templates:allocate-season-for-session] sessionId=${input.sessionId} ` +
+            `season=${result.seasonNumber} fresh=${result.freshlyAssigned}`,
+        );
+        return ok<TemplatesAllocateSeasonForSessionResult>({
+          seasonNumber: result.seasonNumber,
+          freshlyAssigned: result.freshlyAssigned,
+        });
+      } catch (e) {
+        return errFromUnknown(e, 'TEMPLATES_ALLOCATE_SEASON');
+      }
+    },
+  );
 
   ipcMain.handle(Channels.TemplatesResolveAutoVars, async (event, payload: unknown) => {
     const guard = assertFromMainWindow(event);

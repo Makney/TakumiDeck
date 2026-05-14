@@ -4,10 +4,13 @@ import {
   InMemoryProjectDriver,
 } from '../../src/main/db/repos/projects';
 
-// Sprint 6 (Q6 Variante B): Counter wird atomar im Main alloziert.
-// Tests fahren gegen den InMemory-Driver — die SQL-Transaction-Variante in
-// SqliteProjectDriver bleibt durch das Interface gedeckt, der eigentliche
-// race-frei-Beweis kommt durch better-sqlite3's synchrone Transaction-API.
+// Phase-2 Season-11 — Counter ist jetzt dynamisch aus sessions.season_number
+// abgeleitet (MAX+1). allocateSeasonNumber liest, schreibt aber nicht mehr —
+// die "Verwendung" einer Nummer passiert erst beim Session-Insert (pty:create)
+// bzw. UPDATE (assignSeasonNumber im SessionRepository). Damit zieht der
+// Counter auch dann mit, wenn Seasons per Templates-Send statt neuer Feature-
+// Session laufen — der Bug, der die Vorgaenger-Implementierung mit der
+// projects.next_season_number-Spalte zerschossen hat.
 
 function makeRepo() {
   const driver = new InMemoryProjectDriver();
@@ -21,27 +24,47 @@ function seedProject(driver: InMemoryProjectDriver, id: string) {
     path: `/${id}`,
     added_manually: 0,
     has_git: 0,
+    // next_season_number-Spalte wird seit Season-11 nicht mehr ausgelesen,
+    // bleibt im Insert-Schema aber als Default 1 (Backwards-Compat).
     next_season_number: 1,
     created_at: 1,
   });
 }
 
 describe('ProjectRepository.allocateSeasonNumber', () => {
-  it('liefert beim ersten Allocate die Default-Nummer 1 und incrementiert auf 2', () => {
-    const { repo, driver } = makeRepo();
-    seedProject(driver, 'proj');
-    const first = repo.allocateSeasonNumber('proj');
-    expect(first).toBe(1);
-    expect(driver.findById('proj')?.next_season_number).toBe(2);
-  });
-
-  it('vergibt aufeinanderfolgende Nummern bei mehreren Calls', () => {
+  it('returnt 1 bei leerem Projekt ohne Sessions', () => {
     const { repo, driver } = makeRepo();
     seedProject(driver, 'proj');
     expect(repo.allocateSeasonNumber('proj')).toBe(1);
-    expect(repo.allocateSeasonNumber('proj')).toBe(2);
-    expect(repo.allocateSeasonNumber('proj')).toBe(3);
-    expect(driver.findById('proj')?.next_season_number).toBe(4);
+    // Mehrfach-Aufrufe ohne dazwischenliegende Schreibaktion bleiben bei 1 —
+    // die Spalte projects.next_season_number wird NICHT mehr hochgezaehlt.
+    expect(repo.allocateSeasonNumber('proj')).toBe(1);
+    expect(driver.findById('proj')?.next_season_number).toBe(1);
+  });
+
+  it('returnt MAX(sessions.season_number)+1 fuer das Projekt', () => {
+    const { repo, driver } = makeRepo();
+    seedProject(driver, 'proj');
+    driver.seedSession({ id: 's1', cwd: '/x', project_id: 'proj', season_number: 1 });
+    driver.seedSession({ id: 's2', cwd: '/x', project_id: 'proj', season_number: 2 });
+    driver.seedSession({ id: 's3', cwd: '/x', project_id: 'proj', season_number: 5 });
+    // MAX = 5, naechste Nummer = 6 — Luecken (3, 4) werden NICHT gefuellt.
+    expect(repo.allocateSeasonNumber('proj')).toBe(6);
+    expect(driver.findById('proj')?.next_season_number).toBe(6);
+  });
+
+  it('ignoriert Sessions ohne season_number (Bug/Custom/Resume) und Sessions anderer Projekte', () => {
+    const { repo, driver } = makeRepo();
+    seedProject(driver, 'a');
+    seedProject(driver, 'b');
+    // a: zwei Feature-Sessions + eine Bug-Session ohne Season-Nummer.
+    driver.seedSession({ id: 'a1', cwd: '/x', project_id: 'a', season_number: 1 });
+    driver.seedSession({ id: 'a2', cwd: '/x', project_id: 'a', season_number: 2 });
+    driver.seedSession({ id: 'a-bug', cwd: '/x', project_id: 'a', season_number: null });
+    // b: groessere Nummer, darf a nicht beeinflussen.
+    driver.seedSession({ id: 'b1', cwd: '/y', project_id: 'b', season_number: 99 });
+    expect(repo.allocateSeasonNumber('a')).toBe(3);
+    expect(repo.allocateSeasonNumber('b')).toBe(100);
   });
 
   it('returnt null, wenn das Projekt nicht existiert', () => {
@@ -49,28 +72,37 @@ describe('ProjectRepository.allocateSeasonNumber', () => {
     expect(repo.allocateSeasonNumber('ghost')).toBeNull();
   });
 
-  it('hält die Counter pro Projekt getrennt', () => {
-    const { repo, driver } = makeRepo();
-    seedProject(driver, 'a');
-    seedProject(driver, 'b');
-    expect(repo.allocateSeasonNumber('a')).toBe(1);
-    expect(repo.allocateSeasonNumber('a')).toBe(2);
-    expect(repo.allocateSeasonNumber('b')).toBe(1);
-    expect(driver.findById('a')?.next_season_number).toBe(3);
-    expect(driver.findById('b')?.next_season_number).toBe(2);
-  });
-
-  it('akzeptiert Lücken: ein nicht-konsumiertes Allocate (z.B. bei Spawn-Fehler) bleibt verbraucht', () => {
-    // Architektur 6.6: "Lücken bei Abbruch akzeptiert". Die Repo-Schicht selbst
-    // hat keinen Rollback — sie soll ihn bewusst NICHT haben, damit ein Spawn-Fehler
-    // nicht durch komplizierten Rollback-Code kompensiert werden muss.
+  it('haelt den Counter konsistent, wenn der Renderer mehrfach liest ohne dass eine Nummer verbraucht wird (Modal-Open + Send)', () => {
+    // Praxisszenario: User oeffnet das NewSessionModal (zeigt nextSeasonPreview),
+    // schliesst es wieder, oeffnet es nochmal. Beide Reads sollen dieselbe
+    // Nummer zeigen — und nicht versehentlich zwei verschiedene wie in der
+    // alten Spalten-Implementierung.
     const { repo, driver } = makeRepo();
     seedProject(driver, 'proj');
-    const allocated = repo.allocateSeasonNumber('proj');
-    expect(allocated).toBe(1);
-    // Caller ruft sessions.create() nie auf (z.B. PTY-Spawn fehlgeschlagen).
-    // Beim nächsten Versuch bekommt die Session Nummer 2 — Nummer 1 fehlt in der
-    // DB. Verlauf-Panel zeigt einfach #2, #3, ... ohne #1.
-    expect(repo.allocateSeasonNumber('proj')).toBe(2);
+    driver.seedSession({ id: 's1', cwd: '/x', project_id: 'proj', season_number: 10 });
+    const first = repo.allocateSeasonNumber('proj');
+    const second = repo.allocateSeasonNumber('proj');
+    const third = repo.allocateSeasonNumber('proj');
+    expect(first).toBe(11);
+    expect(second).toBe(11);
+    expect(third).toBe(11);
+  });
+});
+
+describe('ProjectRow.next_season_number (dynamisch ueber sessions)', () => {
+  it('listAll/findById zeigen MAX+1 ueber sessions.season_number', () => {
+    const { repo, driver } = makeRepo();
+    seedProject(driver, 'proj');
+    driver.seedSession({ id: 's1', cwd: '/x', project_id: 'proj', season_number: 7 });
+    expect(repo.getById('proj')?.next_season_number).toBe(8);
+    expect(repo.listAll().find((p) => p.id === 'proj')?.next_season_number).toBe(8);
+  });
+
+  it('zeigt 1, wenn das Projekt noch keine Feature-Sessions hat', () => {
+    const { repo, driver } = makeRepo();
+    seedProject(driver, 'proj');
+    // Bug-Session ohne season_number existiert, aber zaehlt nicht.
+    driver.seedSession({ id: 'bug', cwd: '/x', project_id: 'proj', season_number: null });
+    expect(repo.getById('proj')?.next_season_number).toBe(1);
   });
 });

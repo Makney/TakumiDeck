@@ -307,6 +307,7 @@ export function TabContainer({ settings }: Props) {
           project={activeProject}
           frontmatter={activeProjectFrontmatter}
           hasActiveTerminal={activeId !== null}
+          activeSessionId={activeId}
           onClose={() => setShowTemplatesModal(false)}
         />
       )}

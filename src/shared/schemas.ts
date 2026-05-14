@@ -205,6 +205,13 @@ export const TemplatesResolveAutoVarsInputSchema = z.object({
   projectId: z.string().min(1),
 });
 
+// Phase-2 Season-11: Eingabe-Schema fuer templates:allocate-season-for-session.
+// Renderer schickt die aktive Session-ID; der Main resolved dazu das Projekt
+// und alloziert eine Season-Nummer (idempotent, siehe Channel-Doku).
+export const TemplatesAllocateSeasonForSessionInputSchema = z.object({
+  sessionId: z.string().min(1),
+});
+
 // --- Filesystem read/write (Sprint 7) ---------------------------------
 
 // fs:read / fs:write laufen ausschließlich relativ zu einem registrierten Projekt.

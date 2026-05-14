@@ -18,6 +18,7 @@ import {
 import { extractTemplateBody } from '../components/templateBody';
 import { displayProjectName } from '../components/displayProjectName';
 import { useFileTabsStore } from '../stores/fileTabs';
+import { useUiStore } from '../stores/ui';
 
 // TemplatesModal (Sprint 6, Architektur 6.5).
 //
@@ -62,10 +63,20 @@ interface Props {
   project: ProjectRow;
   frontmatter: ClaudeMdFrontmatter | null;
   hasActiveTerminal: boolean;
+  // Phase-2 Season-11: aktive Session des Tab-Containers (oder null). Wird
+  // beim Send genutzt, falls das Template {{NEXT_SEASON_NR}} verwendet — der
+  // Main alloziert dann eine Nummer und schreibt sie auf genau diese Session.
+  activeSessionId: string | null;
   onClose: () => void;
 }
 
-export function TemplatesModal({ project, frontmatter, hasActiveTerminal, onClose }: Props) {
+export function TemplatesModal({
+  project,
+  frontmatter,
+  hasActiveTerminal,
+  activeSessionId,
+  onClose,
+}: Props) {
   const [templates, setTemplates] = useState<TemplateFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -212,6 +223,17 @@ export function TemplatesModal({ project, frontmatter, hasActiveTerminal, onClos
     };
   }, [project.id]);
 
+  // Phase-2 Season-11: Frontmatter beim Modal-Open frisch laden. Sonst zeigt
+  // {{CURRENT_PHASE_FILE}} im Preview den Stand vom letzten Project-Switch —
+  // wenn der User CLAUDE.md zwischenzeitlich editiert hat (z.B. Phase-Update
+  // PHASE1 → PHASE2), war das Template stale. Der Store deduped ueber das
+  // aktive Project — Doppel-Aufrufe sind unschaedlich, aber wir vermeiden sie
+  // im StrictMode mit dem Cancel-Guard.
+  const loadActiveProjectFrontmatter = useUiStore((s) => s.loadActiveProjectFrontmatter);
+  useEffect(() => {
+    void loadActiveProjectFrontmatter(project.id);
+  }, [project.id, loadActiveProjectFrontmatter]);
+
   // Beim Template-Wechsel die User-Vars aufräumen — sonst hängen Werte aus
   // einem vorherigen Template an Variablen, die im neuen Template fehlen.
   useEffect(() => {
@@ -266,10 +288,46 @@ export function TemplatesModal({ project, frontmatter, hasActiveTerminal, onClos
     fill.missingRequired.length === 0 &&
     hasActiveTerminal;
 
-  const handleSend = () => {
+  const flashToast = useUiStore((s) => s.flashToast);
+
+  // Phase-2 Season-11: wenn das Template {{NEXT_SEASON_NR}} verwendet UND eine
+  // aktive Session vorhanden ist, allozieren wir die Nummer atomar im Main
+  // und schreiben sie auf die Session. Damit zieht der Counter auch ohne neuen
+  // pty:create-Spawn mit (Bug: Counter blieb stehen, weil Seasons per Templates-
+  // Send statt neuer Feature-Session gestartet wurden). Wir refillen das
+  // Template danach mit der finalen Nummer — das spaerlichere Preview-Vorzeigen
+  // bleibt unveraendert, der gesendete Text ist autoritativ.
+  const handleSend = async () => {
     if (!canSend || !fill) return;
+    let finalText = fill.filled;
+    const usesSeasonVar = usedVariables.includes('NEXT_SEASON_NR');
+    if (usesSeasonVar && activeSessionId) {
+      const result = await window.api.templates.allocateSeasonForSession({
+        sessionId: activeSessionId,
+      });
+      if (!result.ok) {
+        // Hard-Stop: ohne korrekte Season-Nummer abschicken ist schlimmer als
+        // gar nicht abschicken (die Nummer landet sonst stale im Prompt und im
+        // git-Commit-Titel danach). Toast informiert den User; Modal bleibt
+        // offen, damit er reagieren kann.
+        flashToast(`Season-Nummer konnte nicht alloziert werden: ${result.error}`);
+        return;
+      }
+      const allocated = String(result.data.seasonNumber);
+      const refill = fillTemplateVariables(selectedBody, {
+        ...autoVars,
+        ...(userVars as Partial<Record<KnownVariable, string>>),
+        NEXT_SEASON_NR: allocated,
+      });
+      finalText = refill.filled;
+      flashToast(
+        result.data.freshlyAssigned
+          ? `Session als Season #${allocated} markiert`
+          : `Session war bereits Season #${allocated}`,
+      );
+    }
     window.dispatchEvent(
-      new CustomEvent<{ text: string }>('td-template-send', { detail: { text: fill.filled } }),
+      new CustomEvent<{ text: string }>('td-template-send', { detail: { text: finalText } }),
     );
     onClose();
   };

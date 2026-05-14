@@ -68,6 +68,20 @@ export interface SessionDbDriver {
   // Status-agnostisch, weil auch completed/interrupted-Sessions waehrend des Resume
   // wieder JSONL-Lines bekommen.
   findByClaudeSessionId(claudeSessionId: string): SessionRow | null;
+  // Phase-2 Season-11: atomare Allokation einer Season-Nummer fuer eine
+  // bestehende Session. Wird vom Templates-Send-Flow gerufen, wenn der Prompt
+  // {{NEXT_SEASON_NR}} verwendet. In einer Transaction: hat die Session schon
+  // eine season_number, gewinnt sie (idempotent); sonst MAX(season_number)+1
+  // ueber alle Sessions des gleichen Projekts und UPDATE. Returnt das
+  // Ergebnis-Tupel, damit der Caller dem User ein passendes Feedback geben
+  // kann ("Season #N markiert" vs. "Session war schon #N"). null, wenn die
+  // Session nicht existiert.
+  assignSeasonNumber(sessionId: string): AssignSeasonResult | null;
+}
+
+export interface AssignSeasonResult {
+  seasonNumber: number;
+  freshlyAssigned: boolean;
 }
 
 export interface CreateSessionInput {
@@ -184,6 +198,14 @@ export class SessionRepository {
   findByClaudeSessionId(claudeSessionId: string): SessionRow | null {
     return this.driver.findByClaudeSessionId(claudeSessionId);
   }
+
+  // Phase-2 Season-11: durchreichen — die Atomizitaet sitzt im Driver
+  // (better-sqlite3-Transaction bzw. simulierte Sequenz im InMemory-Driver).
+  // Vertragsfreiheit der Repo-Schicht: gibt null zurueck, wenn die Session
+  // nicht existiert; sonst { seasonNumber, freshlyAssigned }.
+  assignSeasonNumber(sessionId: string): AssignSeasonResult | null {
+    return this.driver.assignSeasonNumber(sessionId);
+  }
 }
 
 function rowFromInsert(row: SessionInsert): SessionRow {
@@ -200,6 +222,22 @@ export class SqliteSessionDriver implements SessionDbDriver {
   private readonly listMissingClaudeIdStmt: Database.Statement<[], SessionRow>;
   private readonly lastCompletedFeatureStmt: Database.Statement<[string], SessionRow>;
   private readonly findByClaudeIdStmt: Database.Statement<[string], SessionRow>;
+  // Phase-2 Season-11: drei Statements + Transaction fuer assignSeasonNumber.
+  // Read-Step liefert project_id und den aktuellen season_number-Wert; falls NULL,
+  // ermittelt der MAX-Step die naechste freie Nummer und der UPDATE-Step schreibt
+  // sie auf die Session-Row.
+  private readonly readSessionForAssignStmt: Database.Statement<
+    [string],
+    { project_id: string; season_number: number | null }
+  >;
+  private readonly maxSeasonForProjectStmt: Database.Statement<
+    [string],
+    { max_season: number | null }
+  >;
+  private readonly setSeasonNumberStmt: Database.Statement;
+  private readonly assignSeasonNumberTxn: Database.Transaction<
+    (sessionId: string) => AssignSeasonResult | null
+  >;
   // Statement-Cache für patch(): Cache-Key = sortierte Whitelist-Keys, damit jede
   // Patch-Permutation nur einmal vorbereitet wird. Schützt vor Re-Compile bei
   // Bulk-Patches (z.B. before-quit-Handler über alle running-Sessions).
@@ -251,6 +289,34 @@ export class SqliteSessionDriver implements SessionDbDriver {
     // Tie-Break-Regel wie im cwd-Fallback.
     this.findByClaudeIdStmt = db.prepare<[string], SessionRow>(
       'SELECT * FROM sessions WHERE claude_session_id = ? ORDER BY started_at DESC LIMIT 1',
+    );
+    // Phase-2 Season-11: assignSeasonNumber. SELECT+MAX+UPDATE laeuft in einer
+    // better-sqlite3-Transaction; bei bereits zugewiesener Nummer faellt MAX/UPDATE
+    // weg (idempotent). Wir lesen NUR die zwei Spalten, die wir brauchen — full
+    // SELECT * waere unnoetig teuer auf der Hot-Path-Methode.
+    this.readSessionForAssignStmt = db.prepare<
+      [string],
+      { project_id: string; season_number: number | null }
+    >('SELECT project_id, season_number FROM sessions WHERE id = ?');
+    this.maxSeasonForProjectStmt = db.prepare<[string], { max_season: number | null }>(
+      `SELECT MAX(season_number) AS max_season FROM sessions
+       WHERE project_id = ? AND season_number IS NOT NULL`,
+    );
+    this.setSeasonNumberStmt = db.prepare(
+      'UPDATE sessions SET season_number = @value WHERE id = @id',
+    );
+    this.assignSeasonNumberTxn = db.transaction(
+      (sessionId: string): AssignSeasonResult | null => {
+        const row = this.readSessionForAssignStmt.get(sessionId);
+        if (!row) return null;
+        if (row.season_number !== null) {
+          return { seasonNumber: row.season_number, freshlyAssigned: false };
+        }
+        const maxRow = this.maxSeasonForProjectStmt.get(row.project_id);
+        const next = (maxRow?.max_season ?? 0) + 1;
+        this.setSeasonNumberStmt.run({ id: sessionId, value: next });
+        return { seasonNumber: next, freshlyAssigned: true };
+      },
     );
   }
 
@@ -393,6 +459,10 @@ export class SqliteSessionDriver implements SessionDbDriver {
   findByClaudeSessionId(claudeSessionId: string): SessionRow | null {
     return this.findByClaudeIdStmt.get(claudeSessionId) ?? null;
   }
+
+  assignSeasonNumber(sessionId: string): AssignSeasonResult | null {
+    return this.assignSeasonNumberTxn(sessionId);
+  }
 }
 
 // In-Memory-Implementation des Drivers für Tests (analog Migration-Fake-Driver).
@@ -520,6 +590,26 @@ export class InMemorySessionDriver implements SessionDbDriver {
       }
     }
     return best ? { ...best } : null;
+  }
+
+  assignSeasonNumber(sessionId: string): AssignSeasonResult | null {
+    const session = this.rows.get(sessionId);
+    if (!session) return null;
+    if (session.season_number !== null) {
+      return { seasonNumber: session.season_number, freshlyAssigned: false };
+    }
+    // MAX(season_number)+1 ueber alle Sessions des gleichen Projekts berechnen.
+    // Analog zum SQLite-Pfad (MAX-Aggregat) — InMemory hat keine Indizes, aber
+    // Tests bewegen sich im einstelligen Session-Bereich.
+    let max = 0;
+    for (const row of this.rows.values()) {
+      if (row.project_id !== session.project_id) continue;
+      if (row.season_number === null) continue;
+      if (row.season_number > max) max = row.season_number;
+    }
+    const next = max + 1;
+    this.rows.set(sessionId, { ...session, season_number: next });
+    return { seasonNumber: next, freshlyAssigned: true };
   }
 
   // Test-Hilfe: Token-Aggregate für eine Session direkt setzen (ohne MessageRepo).
