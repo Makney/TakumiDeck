@@ -2,7 +2,7 @@
 workbench:
   project_name: TakumiDeck
   default_model: claude-sonnet-4-6
-  current_phase_file: docs/roadmap/PHASE1.md
+  current_phase_file: docs/roadmap/PHASE2.md
   trigger_phrases:
     docs_update: "ist korrekt umgesetzt"
     commit: "commit"
@@ -72,9 +72,9 @@ Git repo: https://github.com/Makney/TakumiDeck.git
 
 ## Current Status
 
-Phase 1 (v0.1) actively in development.
+Phase 1 (v0.1) abgeschlossen. Phase 2 (v1.0) aktiv in Entwicklung.
 ```
-→ [docs/roadmap/PHASE1.md](./docs/roadmap/PHASE1.md) — Open features of the current phase
+→ [docs/roadmap/PHASE2.md](./docs/roadmap/PHASE2.md) — Offene Features der aktuellen Phase
 → [docs/FEATURES.md](./docs/FEATURES.md)        — Feature status matrix (✅/🟡/⛔)
 → [docs/CHANGELOG.md](./docs/CHANGELOG.md)      — Recently built features
 → [docs/TAKUMIDECK_ARCHITEKTUR.md](./docs/TAKUMIDECK_ARCHITEKTUR.md) — Master architecture reference

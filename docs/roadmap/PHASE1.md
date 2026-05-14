@@ -445,7 +445,7 @@ die Design-Handoff-Spec in `docs/design/claude-export/`.
 - Kanji-/Display-Font-Konsistenz prüfen (`var(--td-display)` vs.
   `var(--td-mono)` in den richtigen Slots)
 
-### Feature: Code-Review + Debugging ⛔
+### Feature: Code-Review + Debugging ✅
 
 Fokussierter Review-Pass über den Sprint-1- bis Sprint-8-Code, plus
 gezielte Debugging-Session für UI- und IPC-Pfade, die in den Tests

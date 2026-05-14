@@ -7,12 +7,12 @@ Features haben **keine feste Reihenfolge** innerhalb einer Phase – jede Implem
 | Phase                              | Ziel                                          | Milestone | Status |
 | ---------------------------------- | --------------------------------------------- | --------- | ------ |
 | [Phase 1](./PHASE1.md)             | MVP — lauffähige Multi-Session-Workbench      | v0.1      | ✅      |
-| [Phase 2](./PHASE2.md)             | Komfort und Stabilisierung                    | v1.0      | ⛔      |
+| [Phase 2](./PHASE2.md)             | Komfort und Stabilisierung                    | v1.0      | 🟡      |
 | [Phase 3](./PHASE3.md)             | Power-Features und Erweiterungen              | —         | ⛔      |
 
 Abgeschlossene Features → [CHANGELOG.md](../CHANGELOG.md)
 
-Phase 2 startet **trigger-getrieben** — kein Auto-Start nach Phase 1, sondern wenn einzelne Phase-2-Features im Daily-Use Schmerzpunkte auslösen (siehe Trigger-Hinweise pro Feature in [PHASE2.md](./PHASE2.md)).
+Phase 2 läuft **trigger-getrieben** — einzelne Features werden gezogen, wenn sie im Daily-Use als Schmerzpunkte spürbar werden (siehe Trigger-Hinweise pro Feature in [PHASE2.md](./PHASE2.md)).
 
 ---
 
