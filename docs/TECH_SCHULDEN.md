@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Pre-Hotfix-Sessions ohne JSONL verlieren Token-Aggregate (Phase-2 Season 16)
+
+**Bereich:** `src/main/db/migrations/0008_messages_cache_split.sql`
+
+**Was:** Migration 0008 leert `messages`, `usage_buckets` und `jsonl_offsets` als Voraussetzung fuer den Full-Rescan, der die neuen `tokens_cache_creation` + `tokens_cache_read`-Spalten retroaktiv befuellt. Sessions, deren JSONL-Datei nicht mehr existiert (dauerhaft resume-tote Pre-Hotfix-Sessions aus Sprint 2/3 + pre-fix Sprint 6, siehe Season-15-SEASON_LOG-Eintrag), verlieren dadurch ihre `tokens_in`/`tokens_out`-Aggregate in der `messages`-Tabelle — der Watcher kann sie nicht aus einer JSONL neu lesen. Die Sessions selbst bleiben mit Titel, Status, Notizen und Modell-Info in der `sessions`-Tabelle erhalten, aber ihre Token-Counts im Verlauf-Panel zeigen ab dem ersten Start nach Update einen `tokens_in=0, tokens_out=0`.
+
+**Warum so:** Wir haben drei Backfill-Strategien verglichen (Full-Rescan, Lazy-on-touch, Kein-Backfill, siehe ENTSCHEIDUNGEN-Eintrag „Cache-Hit-Statistik"). B1 Full-Rescan ist der Roadmap-konforme Pfad und liefert die historische Cache-Hit-Rate ab Tag 1 — die anderen Varianten haetten entweder eine verzerrte Uebergangs-Phase (B2) oder die ersten Wochen nach Update unbrauchbar gemacht (B3). Pre-Hotfix-Sessions ohne JSONL sind ohnehin nicht resume-faehig (Sprint-8-UX-Hint `SESSION_NO_CLAUDE_UUID` deckt das ab); ihre Token-Aggregate sind also fuer den Daily-Use bereits irrelevant. Der pragmatische Tradeoff war: lieber einen klar abgrenzbaren Teilbestand verlieren, als die Mehrwert-Logik fuer alle aktiven Sessions zu verkompliziert machen.
+
+**Risiko:** Niedrig. Realistisch sind ein bis fuenf solcher Sessions pro Daily-User; sie tauchen im Verlauf-Panel mit korrektem Titel + Status auf, nur die Token-Counts in der Detail-Pane stehen auf 0. Keine UI-Komponente kollabiert auf den Null-Werten (Verlauf-Pane formatiert `0 Tokens` sauber). Niemand referenziert die historischen Token-Counts fuer Limit-Berechnungen — `usage_buckets` wird ebenfalls neu aufgebaut, und dort gibt es keinen Anchor zu den Pre-Hotfix-Sessions. Wer den Verlauf-Bestand visuell exakt erhalten will, ist betroffen; wer Daily-Use macht, merkt nichts.
+
+**Aufloesung:** Nicht reparabel ohne die Original-JSONL-Dateien. Wenn ein User vor Update eine Backup-Kopie seiner `~/.claude/projects/`-Files hat, koennte man eine einmalige Restore-Migration schreiben, die diese Files in das aktive Verzeichnis kopiert und dann den naechsten App-Start den Watcher draufgehen laesst — aber das ist Aufwand fuer einen Edge-Case, der niemanden im Daily-Use ernsthaft betrifft. Die Eintraege bleiben mit `0/0`-Token-Counts im Verlauf-Panel; wer sie nicht mehr sehen will, archiviert sie ueber den Verlauf-Detail-Pane.
+
+---
+
 ## Heatmap-Cells leicht rechteckig auf breiten Panes (Phase-2 Season 13)
 
 **Bereich:** `src/renderer/styles/app.css` (`.td-heatmap-grid`)

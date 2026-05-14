@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import type { LimitBar, UsageWindowResult } from '@shared/types';
+import { formatResetFooter } from './formatResetFooter';
 
 // UsageBar (Sprint 5, Architektur 6.4).
 //
@@ -30,6 +32,16 @@ interface Props {
 }
 
 export function UsageBar({ result, thresholds, loading, resetSchedule, onOpenDetail }: Props) {
+  // Phase 2 Season Flacsh: Live-Tick fuer den Reset-Footer-Countdown. 30 s
+  // sind feinmaschig genug, damit „in 2 Std. 37 Min." sich abnutzt, aber
+  // grobgenug, dass die Bar nicht jede Sekunde rerendert.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (result?.windowEndAt === null || result?.windowEndAt === undefined) return;
+    const id = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [result?.windowEndAt]);
+
   if (!result) {
     return (
       <div className="td-usage-bar td-usage-bar-skeleton" aria-busy={loading}>
@@ -48,6 +60,11 @@ export function UsageBar({ result, thresholds, loading, resetSchedule, onOpenDet
   const clampedPercent = Math.min(percent, 100);
   const tone = toneForPercent(percent, thresholds);
 
+  const resetFooter =
+    result.windowEndAt !== null
+      ? formatResetFooter(result.windowEndAt, nowTick)
+      : null;
+
   const sourceLabel = limitSourceLabel(result.limitSource);
   const tooltipLines = [
     `${formatTokens(result.tokens)} / ${formatTokens(result.limit)} (${percent.toFixed(1)} %)`,
@@ -58,7 +75,7 @@ export function UsageBar({ result, thresholds, loading, resetSchedule, onOpenDet
     tooltipLines.push('geschätzt aus den letzten 8 Tagen');
   }
   if (resetSchedule) {
-    tooltipLines.push(`Reset: ${formatResetSchedule(resetSchedule)} (Phase-2-Backend)`);
+    tooltipLines.push(`Reset: ${formatResetSchedule(resetSchedule)}`);
   }
 
   return (
@@ -87,6 +104,7 @@ export function UsageBar({ result, thresholds, loading, resetSchedule, onOpenDet
           />
         )}
       </div>
+      {resetFooter && <div className="td-usage-bar-hint">{resetFooter}</div>}
     </button>
   );
 }

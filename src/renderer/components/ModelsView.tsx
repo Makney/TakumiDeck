@@ -96,7 +96,17 @@ export function ModelsView() {
       </section>
 
       <section className="td-models-table-wrap" aria-label="Modell-Details">
-        <div className="td-models-section-head">Details</div>
+        <div className="td-models-section-head">
+          Details
+          {models.cache_hit_rate_total !== null && (
+            <span
+              className="td-models-cache-summary"
+              title="Anteil cache_read an den gesamten Input-Tokens (input + cache_creation + cache_read)"
+            >
+              Cache-Hit · {formatHitRate(models.cache_hit_rate_total)}
+            </span>
+          )}
+        </div>
         <table className="td-models-table">
           <thead>
             <tr>
@@ -104,6 +114,7 @@ export function ModelsView() {
               <th scope="col" className="num">Sessions</th>
               <th scope="col" className="num">Tokens</th>
               <th scope="col" className="num">⌀ pro Session</th>
+              <th scope="col" className="num">Cache-Hit</th>
             </tr>
           </thead>
           <tbody>
@@ -115,6 +126,9 @@ export function ModelsView() {
                 <td className="num">
                   {row.tokens_per_session !== null ? fmtTokens(row.tokens_per_session) : '—'}
                 </td>
+                <td className="num">
+                  {row.cache_hit_rate !== null ? formatHitRate(row.cache_hit_rate) : '—'}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -122,6 +136,11 @@ export function ModelsView() {
       </section>
     </div>
   );
+}
+
+// Cache-Hit-Rate kommt als 0..1-Wert; Anzeige mit einer Nachkommastelle.
+function formatHitRate(rate: number): string {
+  return `${(rate * 100).toFixed(1)} %`;
 }
 
 // Eine Nachkommastelle bis 9.9 %, ab 10 % nur Ganzzahlen — die Bar-Liste

@@ -88,9 +88,13 @@ export class SqliteMessageDriver implements MessageDbDriver {
   constructor(private readonly db: Database.Database) {
     this.insertStmt = db.prepare(
       `INSERT INTO messages (
-        session_id, project_id, role, content, tokens_in, tokens_out, ts, model
+        session_id, project_id, role, content,
+        tokens_in, tokens_out, tokens_cache_creation, tokens_cache_read,
+        ts, model
       ) VALUES (
-        @session_id, @project_id, @role, @content, @tokens_in, @tokens_out, @ts, @model
+        @session_id, @project_id, @role, @content,
+        @tokens_in, @tokens_out, @tokens_cache_creation, @tokens_cache_read,
+        @ts, @model
       )`,
     );
     this.lastTsStmt = db.prepare<[string], { ts: number }>(
@@ -112,11 +116,17 @@ export class SqliteMessageDriver implements MessageDbDriver {
   }
 
   insert(row: MessageInsert): void {
-    // better-sqlite3 weist `undefined`-Werte an Named-Binds zurueck — der
-    // Watcher liefert `model` ab Season 10 immer, aber aeltere Test-Aufrufer
-    // setzen das Feld nicht. Normalisiere `undefined → null`, damit die
-    // Insert-Signatur tolerant bleibt.
-    this.insertStmt.run({ ...row, model: row.model ?? null });
+    // better-sqlite3 weist `undefined`-Werte an Named-Binds zurueck. Der
+    // Watcher liefert `model` ab Season 10 und die Cache-Spalten ab Season
+    // Flacsh immer; aeltere Test-Aufrufer setzen die Felder nicht.
+    // Normalisiere `undefined → null` (model) bzw. `undefined → 0` (Cache-
+    // Token-Spalten, da NOT NULL DEFAULT 0 in der Tabelle).
+    this.insertStmt.run({
+      ...row,
+      model: row.model ?? null,
+      tokens_cache_creation: row.tokens_cache_creation ?? 0,
+      tokens_cache_read: row.tokens_cache_read ?? 0,
+    });
   }
 
   lastTimestampForSession(sessionId: string): number | null {
@@ -179,7 +189,12 @@ export class InMemoryMessageDriver implements MessageDbDriver {
   private readonly rows: MessageInsert[] = [];
 
   insert(row: MessageInsert): void {
-    this.rows.push({ ...row, model: row.model ?? null });
+    this.rows.push({
+      ...row,
+      model: row.model ?? null,
+      tokens_cache_creation: row.tokens_cache_creation ?? 0,
+      tokens_cache_read: row.tokens_cache_read ?? 0,
+    });
   }
 
   lastTimestampForSession(sessionId: string): number | null {

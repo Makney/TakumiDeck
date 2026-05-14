@@ -23,6 +23,14 @@ export const LimitBarSchema = z.object({
       minute: z.number().int().min(0).max(59),
     })
     .optional(),
+  // Phase 2 Season Flacsh — Aggregations-Modus pro Bar.
+  //   'rolling' (Default): immer die letzten `window_hours` Stunden ab jetzt.
+  //   'session_block': Window startet beim ersten Token nach dem letzten
+  //     Window-Ende und laeuft genau `window_hours` Stunden als fixer Block.
+  //     Anthropic-Realitaet fuer das 5h-Limit. Default-by-Convention im
+  //     Resolver: `window_hours <= 6` → session_block, sonst rolling, wenn das
+  //     Feld weggelassen wird.
+  aggregation_mode: z.enum(['rolling', 'session_block']).optional(),
 });
 
 export const AppSettingsSchema = z.object({

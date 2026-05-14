@@ -172,11 +172,16 @@ export class JsonlWatcher {
             project_id: knownSession.project_id,
             role: 'assistant',
             content: msg.rawLine,
-            // tokens_in summiert input + cache_creation + cache_read; cache_creation und
-            // cache_read getrennt zu persistieren bräuchte ein Schema-Update — Sprint 6
-            // (Verlauf-Panel) entscheidet, ob das nötig wird.
+            // tokens_in bleibt die Summe input + cache_creation + cache_read
+            // (Backward-Compat fuer alle bestehenden Aggregate aus Season
+            // 12/13/14). Phase-2 Season Flacsh ergaenzt die getrennten
+            // Anteile in eigenen Spalten — damit kann die Cache-Hit-Rate
+            // (cache_read / tokens_in) pro Modell berechnet werden, ohne
+            // dass die existierenden Token-Aggregate sich verschieben.
             tokens_in: msg.totalTokens,
             tokens_out: msg.outputTokens,
+            tokens_cache_creation: msg.cacheCreationInputTokens,
+            tokens_cache_read: msg.cacheReadInputTokens,
             ts: msg.ts,
             // Phase-2 Season-10: per-Message-Modell mitschreiben. Der Parser
             // setzt das Feld auf null, wenn message.model fehlt; das landet 1:1

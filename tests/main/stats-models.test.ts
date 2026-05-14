@@ -191,4 +191,65 @@ describe('ModelStatsRepository.getModelsBreakdown', () => {
     expect(out.range).toBe('7d');
     expect(out.generated_at).toBe(NOW.getTime());
   });
+
+  // --- Phase-2 Season Flacsh: Cache-Hit-Rate ---------------------------
+
+  it('cache_hit_rate = cache_read / tokens_in pro Modell', () => {
+    // tokens_in = 300 (= input 100 + cache_creation 50 + cache_read 150);
+    // Hit-Rate = 150/300 = 0.5
+    const messages: InMemoryModelStatsMessageLike[] = [
+      makeMsg({
+        model: 'claude-opus-4-7',
+        tokens_in: 300,
+        tokens_out: 50,
+        tokens_cache_creation: 50,
+        tokens_cache_read: 150,
+      }),
+    ];
+    const repo = new ModelStatsRepository(new InMemoryModelStatsDriver(messages));
+    const out = repo.getModelsBreakdown({ projectId: PROJ_A, range: 'all', now: NOW });
+    expect(out.rows[0]!.cache_hit_rate).toBeCloseTo(0.5, 6);
+    expect(out.rows[0]!.tokens_cache_read).toBe(150);
+    expect(out.rows[0]!.tokens_cache_creation).toBe(50);
+  });
+
+  it('cache_hit_rate = null bei tokens_in=0', () => {
+    const messages: InMemoryModelStatsMessageLike[] = [
+      makeMsg({ tokens_in: 0, tokens_out: 0, tokens_cache_read: 0 }),
+    ];
+    const repo = new ModelStatsRepository(new InMemoryModelStatsDriver(messages));
+    const out = repo.getModelsBreakdown({ projectId: PROJ_A, range: 'all', now: NOW });
+    expect(out.rows[0]!.cache_hit_rate).toBeNull();
+  });
+
+  it('cache_hit_rate_total ueber alle Modelle summiert', () => {
+    // Opus: tokens_in=200, cache_read=80 → 40 %
+    // Sonnet: tokens_in=100, cache_read=20 → 20 %
+    // Total: cache_read=100, tokens_in=300 → 33.33 %
+    const messages: InMemoryModelStatsMessageLike[] = [
+      makeMsg({
+        model: 'claude-opus-4-7',
+        session_id: 's1',
+        tokens_in: 200,
+        tokens_out: 50,
+        tokens_cache_read: 80,
+      }),
+      makeMsg({
+        model: 'claude-sonnet-4-6',
+        session_id: 's2',
+        tokens_in: 100,
+        tokens_out: 50,
+        tokens_cache_read: 20,
+      }),
+    ];
+    const repo = new ModelStatsRepository(new InMemoryModelStatsDriver(messages));
+    const out = repo.getModelsBreakdown({ projectId: PROJ_A, range: 'all', now: NOW });
+    expect(out.cache_hit_rate_total).toBeCloseTo(100 / 300, 6);
+  });
+
+  it('cache_hit_rate_total = null bei leerem Aggregat', () => {
+    const repo = new ModelStatsRepository(new InMemoryModelStatsDriver([]));
+    const out = repo.getModelsBreakdown({ projectId: PROJ_A, range: 'all', now: NOW });
+    expect(out.cache_hit_rate_total).toBeNull();
+  });
 });

@@ -143,7 +143,7 @@ Zusätzlicher Filter zum Phase-1-Set.
 
 **Trigger:** Wenn relevant.
 
-### Feature: Reset-Schedule-Aggregation im usage:window
+### Feature: Reset-Schedule-Aggregation im usage:window ✅
 
 Backend-Nachzug für das in Sprint 9 eingeführte UI-Slot `LimitBar.reset_schedule`.
 
@@ -201,7 +201,7 @@ Globaler Zeit-Filter für Stats-Section.
 - Filter wirkt auf Stats-Cards, Heatmap, Modelle-View
 - Persistiert in Settings (zuletzt gewählter Filter)
 
-### Feature: Cache-Hit-Statistik
+### Feature: Cache-Hit-Statistik ✅
 
 Getrennte Cache-Token-Spalten + Statistik über die Cache-Hit-Rate.
 

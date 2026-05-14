@@ -1501,6 +1501,18 @@ body,
   pointer-events: none;
 }
 
+/* Phase 2 Season Flacsh: dezenter Reset-Footer unter der Bar.
+   „Zurücksetzung in 2 Std. 37 Min. → 15:00 Uhr". */
+.td-usage-bar-hint {
+  font-size: 10px;
+  color: var(--td-text-mute);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ----- Sprint 5: StatsPane Skeleton -----
    Sprint 9 (D3) — Klassen-Naming an Vorlage angeglichen
    (`td-dash-*`/`td-ueb`/`td-stat`, styles.css 808-883). Ehemals
@@ -1986,6 +1998,18 @@ body,
   text-transform: uppercase;
   color: var(--td-text-mute);
   margin-bottom: 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.td-models-cache-summary {
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11px;
 }
 
 .td-models-bars {

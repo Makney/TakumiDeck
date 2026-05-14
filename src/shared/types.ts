@@ -36,6 +36,11 @@ export interface LimitBar {
     hour: number;
     minute: number;
   };
+  // Phase 2 Season Flacsh: Aggregations-Modus. `rolling` (Default) zaehlt die
+  // letzten `window_hours` Stunden ab jetzt; `session_block` startet ein
+  // fixes `window_hours`-Window beim ersten Token nach dem letzten
+  // Window-Ende — Anthropic-Realitaet fuer das 5h-Limit.
+  aggregation_mode?: 'rolling' | 'session_block';
 }
 
 // Vollständige Settings-Shape laut Architektur Kapitel 4.
@@ -549,6 +554,14 @@ export interface MessageInsert {
   // Last-Event-Pfad brauchen) das Feld weglassen koennen — die Driver mappen
   // undefined auf null.
   model?: string | null;
+  // Phase-2 Season Flacsh: getrennte Cache-Token-Anteile aus
+  // message.usage.cache_creation_input_tokens / cache_read_input_tokens.
+  // `tokens_in` bleibt die Summe aus input + cache_creation + cache_read
+  // (Backward-Compat); diese Felder erlauben die Cache-Hit-Rate-Aggregation.
+  // Optional, damit aeltere Caller das Feld weglassen koennen — Driver
+  // mappen undefined auf 0.
+  tokens_cache_creation?: number;
+  tokens_cache_read?: number;
 }
 
 // Repository-Insert/Upsert für einen usage_buckets-Row.
@@ -581,6 +594,15 @@ export interface UsageWindowResult {
   // Per-Modell-Aufschlüsselung (für Tooltips + Detail-Modal).
   perModel: Array<{ model: string; tokens: number }>;
   generatedAt: number;
+  // Phase 2 Season Flacsh: Reset-Zeitstempel des aktiven Windows fuer die
+  // Footer-Anzeige unter der Bar. Beide null fuer rolling-Bars ohne
+  // reset_schedule (keine fixe Reset-Zeit).
+  //   - session_block: windowStartAt = erster Token im aktiven Block,
+  //                    windowEndAt = windowStartAt + window_hours*3600000.
+  //   - reset_schedule: windowStartAt = letzter Reset-Zeitpunkt,
+  //                     windowEndAt = naechster Reset-Zeitpunkt.
+  windowStartAt: number | null;
+  windowEndAt: number | null;
 }
 
 // IPC-Output von usage:context. Per-Session-Kontext der zuletzt aktiven Message,
@@ -706,6 +728,15 @@ export interface StatsModelBreakdownRow {
   // tokens / sessions, gerundet auf eine Ganzzahl. `null`, wenn `sessions=0`
   // (sollte bei Aggregat aus Messages nicht vorkommen, defensiv trotzdem).
   tokens_per_session: number | null;
+  // Phase-2 Season Flacsh: getrennte Cache-Token-Summen aus der neuen
+  // Spalte messages.tokens_cache_read / messages.tokens_cache_creation
+  // (Migration 0008). `cache_hit_rate` ist `cache_read / tokens_in` als
+  // 0..1-Wert; `null`, wenn das Modell keine tokens_in hat (kein Aggregat
+  // moeglich). Pre-Migration-Daten haben die Spalten auf 0 → Hit-Rate
+  // landet auf 0, bis der Watcher die Sessions neu eingelesen hat.
+  tokens_cache_read: number;
+  tokens_cache_creation: number;
+  cache_hit_rate: number | null;
 }
 
 export interface StatsModelsResult {
@@ -714,6 +745,11 @@ export interface StatsModelsResult {
   // Summe ueber alle Rows. Renderer kann daraus Empty-State (0) ableiten,
   // ohne ueber `rows` zu iterieren.
   tokens_total: number;
+  // Phase-2 Season Flacsh: Gesamt-Cache-Hit-Rate ueber alle Modelle =
+  // SUM(tokens_cache_read) / SUM(tokens_in). 0..1, `null` wenn
+  // SUM(tokens_in)==0. Renderer zeigt das als prominente Kennzahl oben
+  // im Modelle-View-Block.
+  cache_hit_rate_total: number | null;
   scope: 'project' | 'global';
   range: StatsRange;
   generated_at: number;

@@ -24,6 +24,54 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## 5h-Bar: Session-Block-Aggregat statt Rolling-Countdown
+
+**Entscheidung:** Das 5h-Limit laeuft als echter Anthropic-Session-Block. Das Window startet beim ersten Token nach dem letzten Block-Ende, summiert genau `window_hours` Stunden lang und faellt am Block-Ende schlagartig auf 0 — keine rolling-Aggregation mehr ueber „letzte 5h ab jetzt". Neues optionales Schema-Feld `LimitBar.aggregation_mode` (`rolling` | `session_block`); Default-by-Convention im Resolver: `window_hours <= 6` → `session_block`, sonst `rolling`.
+
+**Varianten:**
+
+- **A1** Rolling-Window mit Countdown ab aeltestem Token — Window bleibt die letzten 5 h ab jetzt, Countdown zeigt wann der aelteste Bucket rausfaellt.
+- **A2** Echtes Session-Window (gewaehlt) — fixer 5h-Block ab erstem Token, schlagartiger Reset am Block-Ende.
+- **A3** Statischer Label „rolling 5 h" — kein Countdown, kein Block-Bewusstsein.
+
+**Grund:** A1 reduziert das Risiko „ins Limit laufen ohne es zu merken" nicht. Beispiel: erster Token um 10:00, zweiter um 11:00 (Total 2k). Bei A1 sagt der Countdown um 13:00 „in 2 Std." (Bucket 10:00 faellt um 15:00 raus), und der Bar-Wert schwindet schrittweise pro Stunde — der User glaubt, er habe Luft, weil der Counter sinkt. In Wahrheit summiert Anthropic den Block 10:00–15:00 als Einheit und kassiert ab 2k weiter weg, bis der Block faellt. A2 spiegelt genau diese Realitaet: der Counter zeigt waehrend des gesamten Blocks denselben Wert, sodass der User die echte Verbrauchs-Distanz sieht. A3 waere die billigste Variante, verfehlt aber den User-Wunsch nach Countdown. User-Trigger nach Live-Test: „A1 wuerde dazu fuehren, dass ich eventuell ins 5h-Limit laufe ohne es zu merken und Extra-Kosten verursacht die nicht gewollt sind." → A2 als einzig sichere Variante.
+
+**Konsequenz:** Der Resolver bekommt einen dritten Aggregations-Pfad (`session_block` neben `rolling` und `reset_schedule`). `UsageWindowResult` traegt zwei zusaetzliche Felder `windowStartAt`/`windowEndAt`, die der Renderer fuer den Reset-Footer braucht. Bucket-Iteration laeuft ueber einen Lookback von `2 × window_hours` — bei jetzt aktivem Block ist er hoechstens `window_hours` alt, doppelte Spanne deckt den Grenz-Fall (now liegt am Anfang einer Stunde) ab. Die Sprint-5-Bestandstests (`make5hBar` in `usage-aggregation.test.ts`) wurden auf `aggregation_mode: 'rolling'` fixiert, damit ihre Original-Intention (Rolling-Aggregation) erhalten bleibt — Session-Block-Pfad wird separat in `reset-schedule.test.ts` gegen synthetische Buckets geprueft.
+
+**Implementierungsdetail:** Default-by-Convention statt Settings-Migration. Hintergrund: die bestehende 5h-Bar in jeder User-Settings-Datei hat keinen `aggregation_mode`-Eintrag, weil das Feld neu ist. Wir koennten eine Settings-Migration schreiben, die das Feld bei `window_hours <= 6` nachtraegt — das waere aber eine Side-Effect-Migration auf User-Konfiguration ohne klaren Mehrwert. Stattdessen leitet der Resolver bei fehlendem Feld die Convention aus `window_hours` ab; der User kann via JSON-Editor explizit `'rolling'` setzen, wenn er das alte Verhalten zurueck will.
+
+## Cache-Hit-Statistik: Full-DELETE-Migration statt Lazy-on-Touch oder Kein-Backfill
+
+**Entscheidung:** Migration 0008 fuegt `messages.tokens_cache_creation` + `messages.tokens_cache_read` hinzu und leert anschliessend `messages`, `usage_buckets` und `jsonl_offsets`. Beim naechsten App-Start liest der Watcher (`ignoreInitial:false`) alle existierenden JSONL-Dateien neu von Offset 0 und schreibt die getrennten Cache-Anteile mit. Migration laeuft genau einmal via `PRAGMA user_version`.
+
+**Varianten:**
+
+- **B1** Full-Rescan via Migration-DELETE (gewaehlt) — historische Cache-Hit-Rate ab Tag 1 verfuegbar, einmaliger Boot-Spike beim Erst-Lauf nach Update.
+- **B2** Lazy on-touch — Watcher rescannt nur die Files, die nach Migration noch einmal beruehrt werden. Sessions ohne neue Aktivitaet bleiben unaufgeschluesselt.
+- **B3** Kein Backfill — Cache-Hit-Rate gilt nur ab Migrationszeitpunkt; UI braucht einen „Daten ab MM-TT"-Hinweis.
+
+**Grund:** B1 ist Roadmap-konformer Pfad und liefert exakte Aggregate ab Tag 1. Boot-Spike ist einmalig (mehrere Sekunden bei realistischen Datenmengen), absorbierbar unterhalb der wahrgenommenen Schwelle. Der Use-Case ist exakt die historische Frage „wie viel Cache hatte ich rueckblickend" — B2 wuerde die Antwort auf „nur fuer die Sessions, die nach Update noch geprompted haben" verkruepeln. B3 waere Null-Risiko, verlangt aber UI-Polish fuer den „Daten ab"-Hinweis und macht die ersten Wochen nach Update unbrauchbar fuer 30d/7d-Range-Filter in der Modelle-View. Die User-Base ist klein (eine Person aktiv), das Risiko des Boot-Spike ist messbar, der Mehrwert „Hit-Rate sofort akkurat" ist klar.
+
+**Konsequenz:** Migration ist destruktiv — alle bestehenden `messages`-Rows werden geloescht. Pre-Hotfix-Sessions OHNE JSONL-Datei (dauerhaft resume-tot seit Sprint 6) verlieren ihre `tokens_in`/`tokens_out`-Aggregate, weil der Re-Scan keine Quelle dafuer hat. Dokumentiert in TECH_SCHULDEN. `tokens_in` bleibt aus Backward-Compat-Gruenden die Summe der drei Anteile — alle Aggregate aus Season 12/13/14 (`stats:project-overview`, `stats:heatmap`, `stats:models`) bleiben ungeschoren. Neue Spalten sind additive Info; das Repository-Layer berechnet `cache_hit_rate = tokens_cache_read / tokens_in` daraus.
+
+**Implementierungsdetail:** Migration 0008 setzt die Spalten `NOT NULL DEFAULT 0`, damit Bestands-Rows (sollten welche durch den DELETE rutschen) saubere Default-Werte haben. Cache-Hit-Rate in der Modelle-View landet als fuenfte Tabellen-Spalte plus Gesamt-Zahl oben — bewusst NICHT als neunte Stats-Card im Uebersichts-Tab (Variante C1 aus den UI-Achsen), weil das den in Season 13 ausgemessenen 4×2-Cards + Heatmap-Layout aufbrechen wuerde fuer eine einzelne Effizienz-Kennzahl, die thematisch ohnehin zur Modelle-View gehoert (Cache-Verhalten ist Modell-abhaengig — Sonnet/Opus cachen anders, lange Prompts cachen anders als kurze).
+
+## Wochen-Reset-UI: Globale Einstellung statt Per-Bar, JSON-Editor als Fallback
+
+**Entscheidung:** Im Token-Tracking-Tab erscheint ein einzelner Block „Wochen-Reset" (Wochentag-Dropdown + Stunden/Minuten-Input). Beim Apply wird `reset_schedule` einheitlich in alle `limit_bars` mit `window_hours >= 168` geschrieben. Per-Bar-Drift bleibt ueber den Raw-JSON-Editor weiter unten moeglich.
+
+**Varianten:**
+
+- **B1** Globale Einstellung (gewaehlt) — eine Reset-Zeit fuer alle Wochen-Bars, schreibt das Schema in jede Wochen-Bar einheitlich.
+- **B2** Pro Bar einstellbar in der UI — eigene Reset-Zeile pro Wochen-Bar (`Woechentlich · alle Modelle`, `Woechentlich · Nur Sonnet` etc.), mehr Form-Felder.
+- **B3** Kein UI, nur JSON — Status quo, User pflegt `reset_schedule` im JSON-Editor.
+
+**Grund:** B1 spiegelt den Daily-Use-Realfall: Anthropic resettet alle Plan-Limits zur selben Zeit, also haben beide Wochen-Bars (`weekly_all`, `weekly_design` etc.) denselben Reset-Anker. Eine globale Einstellung deckt 100 % des Standard-Use-Cases mit minimaler UI-Komplexitaet. B2 waere die explizite Variante, fuegt aber drei Form-Felder pro Wochen-Bar hinzu — bei drei Bars sind das neun zusaetzliche Inputs fuer einen Fall, der im Daily-Use praktisch nie eintritt. B3 ist die Variante, die der User bisher hatte und die er explizit ablehnt („wäre dafür am besten in den Einstellungen ein Menüpunkt"). Per-Bar-Drift im Daily-Use ist trotzdem moeglich: wer eine Bar mit anderem Reset-Zeitpunkt will, editiert sie im Raw-JSON-Editor weiter unten — der Hinweistext dort dokumentiert beide neuen Felder (`reset_schedule` + `aggregation_mode`).
+
+**Konsequenz:** Die UI-Komponente liest den existierenden `reset_schedule` der ersten Wochen-Bar als Default-Wert (Fallback auf Mo 00:00). Beim Setzen wird das Patch als komplettes `limit_bars`-Array geschrieben (Auto-Save-Pipeline ersetzt das Array atomar). Wer per JSON-Editor pro Bar abweichend einstellt, bekommt beim naechsten globalen UI-Apply die Werte wieder einheitlich gezogen — das ist die UI-Semantik, kein Bug. Wenn das jemals stoert, fuegt eine spaetere Season B2 als zweite Form-Tiefe hinzu (eine Checkbox „Pro Bar einstellen" oeffnet pro Wochen-Bar eigene Felder), oder die globale Einstellung wird durch ein „Werte uebernehmen"-Knopf opt-in gemacht statt automatisch zu schreiben. Aktuell ist kein Trigger dafuer da.
+
+---
+
 ## JSONL-Live-Polling: Per-Session-Timer parallel zu chokidar, kein Global-Single-Timer
 
 **Entscheidung:** Live-Token-Updates kommen aus einem zweiten Pipeline-Pfad parallel zu chokidar: pro „aktive" Session laeuft ein eigener 250-ms-Timer mit `fs.stat`-Diff auf `mtimeMs`+`size`. Bei Aenderung pusht der Timer in den public `JsonlWatcher.notifyChanged`-Hook, der die bestehende `scheduleHandle`-Anti-Reentrancy-Pipeline nutzt. chokidar bleibt fuer `add`-Events und externe Sessions zustaendig.

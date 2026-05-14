@@ -49,6 +49,11 @@ const make5hBar = (): LimitBar => ({
   window_hours: 5,
   filter: 'all',
   limit_method: 'p90',
+  // Sprint-5-Tests pruefen die rolling-Aggregation; die Phase-2-Season-Flacsh-
+  // Default-Convention (window_hours<=6 → session_block) wuerde sonst das
+  // Verhalten umkippen. Session-Block-Pfad wird separat in reset-schedule.test
+  // gegen synthetische Buckets gepruft.
+  aggregation_mode: 'rolling',
 });
 
 const makeWeeklyTopTierBar = (): LimitBar => ({

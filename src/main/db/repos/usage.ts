@@ -18,6 +18,10 @@ export interface UsageDbDriver {
   // Summe tokens für (bucket_start ∈ [fromBucket, toBucket]) ∩ filter.
   sumTokensInWindow(input: WindowQuery): number;
   bucketTokensInWindow(input: WindowQuery): number[];
+  // Phase 2 Season Flacsh: Buckets mit ihren Anker-Zeitstempeln. Wird vom
+  // session_block-Resolver gebraucht, um den Start des aktuellen 5h-Blocks
+  // zu finden. Sortiert nach bucket_start ASC.
+  bucketRangeInWindow(input: WindowQuery): Array<{ bucket: number; tokens: number }>;
   perModelBreakdownInWindow(
     input: Omit<WindowQuery, 'modelLike'>,
   ): Array<{ model: string; tokens: number }>;
@@ -63,6 +67,21 @@ export class UsageRepository {
   }): number[] {
     const def = resolveBarFilter(input.filter, input.customPattern);
     return this.driver.bucketTokensInWindow({
+      fromBucket: input.fromBucket,
+      toBucket: input.toBucket,
+      modelLike: def.sqlLike,
+    });
+  }
+
+  // Phase 2 Season Flacsh: Buckets+Zeitstempel fuer den session_block-Resolver.
+  bucketRange(input: {
+    fromBucket: number;
+    toBucket: number;
+    filter: BarFilter;
+    customPattern?: string;
+  }): Array<{ bucket: number; tokens: number }> {
+    const def = resolveBarFilter(input.filter, input.customPattern);
+    return this.driver.bucketRangeInWindow({
       fromBucket: input.fromBucket,
       toBucket: input.toBucket,
       modelLike: def.sqlLike,
@@ -125,6 +144,14 @@ export class SqliteUsageDriver implements UsageDbDriver {
     [number, number],
     { tokens: number }
   >;
+  private readonly bucketRangeWithFilterStmt: Database.Statement<
+    [number, number, string],
+    { bucket: number; tokens: number }
+  >;
+  private readonly bucketRangeAllStmt: Database.Statement<
+    [number, number],
+    { bucket: number; tokens: number }
+  >;
   private readonly breakdownStmt: Database.Statement<
     [number, number],
     { model: string; tokens: number }
@@ -155,6 +182,22 @@ export class SqliteUsageDriver implements UsageDbDriver {
        WHERE bucket_start BETWEEN ? AND ?
        GROUP BY bucket_start ORDER BY bucket_start ASC`,
     );
+    this.bucketRangeWithFilterStmt = db.prepare<
+      [number, number, string],
+      { bucket: number; tokens: number }
+    >(
+      `SELECT bucket_start AS bucket, SUM(tokens) AS tokens FROM usage_buckets
+       WHERE bucket_start BETWEEN ? AND ? AND model LIKE ?
+       GROUP BY bucket_start ORDER BY bucket_start ASC`,
+    );
+    this.bucketRangeAllStmt = db.prepare<
+      [number, number],
+      { bucket: number; tokens: number }
+    >(
+      `SELECT bucket_start AS bucket, SUM(tokens) AS tokens FROM usage_buckets
+       WHERE bucket_start BETWEEN ? AND ?
+       GROUP BY bucket_start ORDER BY bucket_start ASC`,
+    );
     this.breakdownStmt = db.prepare<[number, number], { model: string; tokens: number }>(
       `SELECT model, SUM(tokens) AS tokens FROM usage_buckets
        WHERE bucket_start BETWEEN ? AND ?
@@ -178,6 +221,12 @@ export class SqliteUsageDriver implements UsageDbDriver {
       ? this.bucketsWithFilterStmt.all(input.fromBucket, input.toBucket, input.modelLike)
       : this.bucketsAllStmt.all(input.fromBucket, input.toBucket);
     return rows.map((r) => r.tokens);
+  }
+
+  bucketRangeInWindow(input: WindowQuery): Array<{ bucket: number; tokens: number }> {
+    return input.modelLike
+      ? this.bucketRangeWithFilterStmt.all(input.fromBucket, input.toBucket, input.modelLike)
+      : this.bucketRangeAllStmt.all(input.fromBucket, input.toBucket);
   }
 
   perModelBreakdownInWindow(
@@ -212,6 +261,10 @@ export class InMemoryUsageDriver implements UsageDbDriver {
   }
 
   bucketTokensInWindow(input: WindowQuery): number[] {
+    return this.bucketRangeInWindow(input).map((r) => r.tokens);
+  }
+
+  bucketRangeInWindow(input: WindowQuery): Array<{ bucket: number; tokens: number }> {
     const acc = new Map<number, number>();
     for (const [bucket, models] of this.buckets) {
       if (bucket < input.fromBucket || bucket > input.toBucket) continue;
@@ -222,7 +275,9 @@ export class InMemoryUsageDriver implements UsageDbDriver {
       }
       if (sum > 0) acc.set(bucket, sum);
     }
-    return [...acc.entries()].sort(([a], [b]) => a - b).map(([, v]) => v);
+    return [...acc.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([bucket, tokens]) => ({ bucket, tokens }));
   }
 
   perModelBreakdownInWindow(

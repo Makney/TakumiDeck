@@ -496,6 +496,28 @@ function UsageTab({
     [settings.token_warning_thresholds, setField],
   );
 
+  // Phase 2 Season Flacsh: Wochen-Reset. Liest den existierenden reset_schedule
+  // der ersten Wochen-Bar (window_hours >= 168) als Defaultwert. Beim Apply
+  // wird das Schema in alle Wochen-Bars geschrieben — der JSON-Editor unten
+  // bleibt als Per-Bar-Override.
+  const weeklyResetCurrent = useMemo(() => {
+    const weekly = settings.limit_bars.find(
+      (b) => b.window_hours >= 168 && b.reset_schedule,
+    );
+    return weekly?.reset_schedule ?? { day_of_week: 1, hour: 0, minute: 0 };
+  }, [settings.limit_bars]);
+
+  const applyWeeklyReset = useCallback(
+    (patch: Partial<{ day_of_week: number; hour: number; minute: number }>) => {
+      const next = { ...weeklyResetCurrent, ...patch };
+      const updated = settings.limit_bars.map((b) =>
+        b.window_hours >= 168 ? { ...b, reset_schedule: next } : b,
+      );
+      setField('limit_bars', updated);
+    },
+    [settings.limit_bars, weeklyResetCurrent, setField],
+  );
+
   return (
     <div className="td-settings-section">
       <Field
@@ -598,13 +620,73 @@ function UsageTab({
         </div>
       </Field>
 
+      {/* Phase 2 Season Flacsh: Wochen-Reset-Block. Schreibt das reset_schedule
+          in alle limit_bars mit window_hours >= 168 (= Wochen-Limits). Das 5h-
+          Window laeuft als session_block automatisch ab erster Nachricht — kein
+          Einstellungs-Slot noetig. Wer pro Wochen-Bar abweichende Zeitpunkte
+          will, kann den Raw-JSON-Editor weiter unten nutzen. */}
+      <Field
+        label="Wochen-Reset"
+        hint="Wochentag und Uhrzeit, an dem die Wochen-Limit-Bars wieder bei 0 anfangen. Wird auf alle Bars mit Fenster ≥ 168 h angewendet. Anthropic resettet i. d. R. zur gleichen Zeit wie beim ersten Plan-Tag."
+      >
+        <div className="td-settings-grid">
+          <label className="td-settings-grid-row">
+            <span className="td-settings-grid-label">Wochentag</span>
+            <select
+              className="td-settings-input td-settings-input--narrow"
+              value={weeklyResetCurrent.day_of_week}
+              onChange={(e) => applyWeeklyReset({ day_of_week: Number(e.target.value) })}
+            >
+              <option value={1}>Montag</option>
+              <option value={2}>Dienstag</option>
+              <option value={3}>Mittwoch</option>
+              <option value={4}>Donnerstag</option>
+              <option value={5}>Freitag</option>
+              <option value={6}>Samstag</option>
+              <option value={0}>Sonntag</option>
+            </select>
+          </label>
+          <label className="td-settings-grid-row">
+            <span className="td-settings-grid-label">Stunde</span>
+            <input
+              type="number"
+              min={0}
+              max={23}
+              className="td-settings-input td-settings-input--narrow"
+              value={weeklyResetCurrent.hour}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isFinite(n) || n < 0 || n > 23) return;
+                applyWeeklyReset({ hour: n });
+              }}
+            />
+          </label>
+          <label className="td-settings-grid-row">
+            <span className="td-settings-grid-label">Minute</span>
+            <input
+              type="number"
+              min={0}
+              max={59}
+              className="td-settings-input td-settings-input--narrow"
+              value={weeklyResetCurrent.minute}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isFinite(n) || n < 0 || n > 59) return;
+                applyWeeklyReset({ minute: n });
+              }}
+            />
+          </label>
+        </div>
+      </Field>
+
       <Field
         label="Plannutzungs-Bars (Raw JSON)"
         hint={
           'Komplexe Settings mit RegEx-Filtern; live-validiert gegen das Schema. ' +
           'Apply nur möglich, wenn das JSON valide ist. ' +
           'Optional pro Bar: "reset_schedule": { "day_of_week": 1, "hour": 0, "minute": 0 } ' +
-          '— Wochentag 0=Sonntag bis 6=Samstag (UI-Slot, Reset-Berechnung kommt mit Phase 2).'
+          '(Wochentag 0=Sonntag bis 6=Samstag) und "aggregation_mode": ' +
+          '"rolling" | "session_block". Default: window_hours ≤ 6 → session_block, sonst rolling.'
         }
       >
         <JsonRawEditor
