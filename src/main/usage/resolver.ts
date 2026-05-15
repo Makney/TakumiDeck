@@ -53,6 +53,13 @@ export function resolveWindow(
     windowStartAt = block.windowStartAt;
     windowEndAt = block.windowEndAt;
   } else if (bar.reset_schedule) {
+    // Zwischen-Review v0.1.2 verifiziert: hourBucket arbeitet auf UTC-epoch-ms
+    // (`floor(epochMs / 3_600_000)`), computeResetWindowStart returnt epoch-ms
+    // aus lokalem Date-Konstruktor (DST-Wechsel werden vom Date-Object
+    // korrekt verschoben). Beide Seiten teilen dieselbe UTC-Bucket-Skala —
+    // der Watcher schreibt Buckets ebenfalls per hourBucket(msg.ts). Damit
+    // bleibt die Aggregat-Range konsistent, auch wenn der Reset ueber einen
+    // DST-Uebergang faellt.
     const resetStart = computeResetWindowStart(bar.reset_schedule, now);
     fromBucket = hourBucket(resetStart);
     windowStartAt = resetStart;

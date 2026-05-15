@@ -1015,29 +1015,35 @@ body,
    sich der Soft-Warn-Bereich farblich klar von echten Limit-Warnungen abhebt. */
 .td-term-bar .td-ctx-fill.soft { background: var(--td-blue); }
 
-/* Phase-2 Season-8: Schwellwert-Marker an der ctx-Bar. 2 px breit und 2 px
-   ueber/unter die Bar-Hoehe hinaus → effektiv 8 px hoch, gut erkennbar.
-   Helles Off-White, damit er auf jedem Fill-Ton (gruen/blau/gelb/rot)
-   sichtbar bleibt. `z-index` haelt ihn ueber dem Fill, sobald die
-   Auslastung die Schwelle ueberholt. */
+/* Phase-2 Season-8: Schwellwert-Marker an der ctx-Bar. 3 px breit und 3 px
+   ueber/unter die Bar-Hoehe hinaus → effektiv ~10 px hoch, robust erkennbar.
+   Hell-weisser Strich plus permanenter dunkler 1-px-Halo: damit haelt der
+   Marker auf jedem Fill-Ton den noetigen Kontrast — speziell vor der
+   Schwelle, wo der primaere Use-Case sitzt („siehe wann du gleich gegen
+   die Grenze laeufst"). z-index ueber dem Fill bleibt erhalten.
+   Zwischen-Review v0.1.2: vorher 2 px / 0.7 alpha ohne permanenten Halo —
+   gegen den vollen Accent-Ton ging der Strich optisch unter. */
 .td-term-bar .td-ctx-marker {
   position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 1px;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  border-radius: 1.5px;
   pointer-events: none;
   z-index: 1;
   transition: background-color .25s, box-shadow .25s;
 }
 
-/* Sobald die Soft-Schwelle gerissen ist, bekommt der Marker einen leichten
-   farbigen Halo in der Soft-Warn-Farbe — verstaerkt das „du bist drueber"-
-   Signal, ohne den Marker selbst einzufaerben (er soll seine Position
-   farbneutral markieren). */
+/* Sobald die Soft-Schwelle gerissen ist, behaelt der Marker den dunklen
+   Kontrast-Halo und bekommt zusaetzlich einen farbigen Soft-Warn-Glow —
+   verstaerkt das „du bist drueber"-Signal, ohne den Marker selbst
+   einzufaerben. */
 .td-term-bar .td-ctx-marker.triggered {
-  box-shadow: 0 0 0 1px rgba(92, 184, 255, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 0 5px 1px rgba(92, 184, 255, 0.75);
 }
 
 .td-term-bar .td-ctx-value {

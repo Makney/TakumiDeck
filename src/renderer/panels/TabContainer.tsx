@@ -548,10 +548,13 @@ interface ContextSlotProps {
 // PlanPane gekoppelt). Wir ziehen den first-load hier nach — read-only
 // IPC, kein useRef-Guard nötig (Memory: Guard nur für Server-Mutationen).
 function ContextSlot({ sessionId, thresholds, softWarning }: ContextSlotProps) {
-  const session = useUsageStore((s) => s.contextBySession[sessionId] ?? null);
+  // Zwischen-Review v0.1.2: kein Inline-`?? null` im Selector (Memory-Regel
+  // „Zustand-Selectors muessen referenz-stabil sein"). `undefined` aus dem
+  // Record-Zugriff ist selbst ein Primitiv und damit stabil.
+  const session = useUsageStore((s) => s.contextBySession[sessionId]);
   const refreshContext = useUsageStore((s) => s.refreshContext);
   useEffect(() => {
-    if (session !== null) return;
+    if (session !== undefined) return;
     void refreshContext(sessionId);
   }, [sessionId, session, refreshContext]);
   // Sprint 9 (L4) — Empty-State erkennt sowohl „noch keine Daten" als auch

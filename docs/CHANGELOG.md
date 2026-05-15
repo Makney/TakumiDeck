@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-15 — Zwischen-Review v0.1.2: Circular-Dep-Fix + Marker-Sichtbarkeit + Selector-Hygiene
+
+### Was jetzt geht
+
+- **Production-Build-Stabilitaet beim Tab-Wechsel auf „Modelle" garantiert.** Mini-Review-Pass hat einen latenten Modul-Zyklus zwischen `ModelsView.tsx` und `StatsPane.tsx` aufgedeckt: ModelsView importierte `prettyModelId` aus StatsPane, StatsPane importiert ModelsView als Child-View. Vite/ESBuild hat das im Dev-Mode immer aufgeloest, aber Production-Bundle-Order ist undefiniert — ein `undefined`-Symbol haette zur Laufzeit als ReferenceError beim ersten Render des Modelle-Tabs (oder umgekehrt der `favorite_model`-Card in der Uebersicht) zugeschlagen. Helper wandert nach `src/renderer/components/prettyModelId.ts`, beide Konsumenten importieren von dort. Tests + typecheck + lint weiter gruen.
+- **Schwellwert-Marker an der Per-Session-Context-Bar deutlich besser erkennbar.** Vorher 2 px Breite, 0.7-α Off-White ohne permanenten Kontrast-Halo — gegen den vollen Accent-Ton (gefuellte ctx-Bar bei hohem Verbrauch) ging der Strich optisch unter. Jetzt 3 px Breite, 3 px Ueber-/Unterstand (effektiv ~10 px hoch), 0.95-α Weiss plus permanenter 1-px-dunkler Halo — der Marker bleibt auf jedem Fill-Ton (gruen/blau/gelb/rot) lesbar, speziell *bevor* die Schwelle gerissen wird (Frueh-Warn-Effekt). Sobald die Schwelle erreicht ist, kommt zusaetzlich ein blauer Soft-Glow oben drauf.
+- **Selector-Hygiene im ContextSlot wiederhergestellt.** `useUsageStore((s) => s.contextBySession[sessionId] ?? null)` hat die Memory-Regel „Zustand-Selektoren muessen referenz-stabil sein" formal verletzt (Inline-Coalesce). Selector liest jetzt direkt das Record-Feld; `undefined` aus dem Record-Zugriff ist selbst ein Primitiv und damit stabil. Verhalten identisch (`!session`-Check funktioniert in beiden Welten).
+
+### Architektur-Notiz
+
+Zwischen-Review v0.1.2 als acht parallele Sub-Agent-Reviews (Shared / DB / Main-Services / IPC / Preload / Stores / Panels / Modals+Components) plus frischer Tooling-Vor-Pass (typecheck + lint + 744/744 Tests + fallow dead-code/dupes/health + npm audit). Sub-Agents bekamen die Geaenderten-Dateien-Liste aus `git diff 989cae5..HEAD` (16 Seasons + 71 Files, +8882/-217 Zeilen) und die in REVIEW_PROMPTS.md vorgegebenen Bereichs-Prompts, ergaenzt um die frischen Fallow-Hotspots. Ergebnis: 7× GO/BEDINGT-GO, 1× NO-GO (Circular Dep). Vier BEDINGT-GO-Punkte direkt abgearbeitet: (a) Circular-Dep-Fix als 9-Zeilen-Helper-Extraktion, (b) Marker-CSS-Tuning, (c) Selector-Inline-Coalesce raus, (d) `reset_schedule` DST-Konsistenz-Pruefung. Punkt (d) ergab: `hourBucket = floor(epochMs / 3_600_000)` arbeitet UTC-basiert, `computeResetWindowStart` returnt UTC-epoch aus lokaler Date-Arithmetik (JS-Date verschiebt DST-Stunde korrekt), beide Seiten teilen dieselbe UTC-Bucket-Skala — kein Code-Fix noetig, nur Verifikations-Kommentar im Resolver. Die `activeProjectId`-Cleanup-Verifikation (BEDINGT-GO Bereich 6) stellte sich als bereits korrekt umgesetzt heraus (`LeftSidebar.tsx:226-228` setzt `setActiveProject(null)` nach erfolgreichem `removeProject`). package.json gebumpt 0.1.0 → 0.1.2. Neun TECH_SCHULDEN-Eintraege dokumentieren die nicht-blockierenden Befunde aus dem Review-Pass (Clone-Groups 5/11/14, TemplatesModal-Regression, listHistoryForProject-Cyclo-Drift, state-detection-loop-Cog 31, Boot-Backfill-Flag-EACCES, „Flacsh"-Codename, layout.ts dead-code).
+
+---
+
 ## 2026-05-14 — Phase 2 Season 16: Reset-Schedule + Cache-Hit + Session-Block-Aggregat
 
 ### Was jetzt geht

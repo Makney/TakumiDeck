@@ -5,6 +5,7 @@ import type { StatsOverviewResult, StatsRange } from '@shared/types';
 import { fmtTokens } from '../components/fmtTokens';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { ModelsView } from '../components/ModelsView';
+import { prettyModelId } from '../components/prettyModelId';
 
 // StatsPane (Phase-2 Season-12 + Season-13 + Season-14).
 //
@@ -247,12 +248,3 @@ function formatFavoriteModel(overview: StatsOverviewResult): string {
   return prettyModelId(overview.favorite_model);
 }
 
-export function prettyModelId(id: string): string {
-  const match = id.match(/^claude-(opus|sonnet|haiku)-(\d)-(\d)/i);
-  if (match && match[1] && match[2] && match[3]) {
-    const family = match[1][0]!.toUpperCase() + match[1].slice(1).toLowerCase();
-    return `${family} ${match[2]}.${match[3]}`;
-  }
-  if (id.length <= 14) return id;
-  return `…${id.slice(-12)}`;
-}

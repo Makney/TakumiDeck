@@ -30,6 +30,118 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Statement-Cache-Pattern in vier Repos dupliziert (Zwischen-Review v0.1.2)
+
+**Bereich:** `src/main/db/repos/stats.ts`, `src/main/db/repos/model-stats.ts`, `src/main/db/repos/heatmap.ts`, `src/main/db/repos/meta-kv.ts`
+
+**Was:** Fallow-Befund „Clone group 5" — 109 Zeilen Code-Duplikat zwischen `stats.ts:109-217` und `model-stats.ts:132-186`. Beide Repos fuehren einen Statement-Cache `Map<StatementKey, Statement>` mit identischem Key-Schema (`'p'|'g' + 'r'|'a'` als Scope×Range-Achsen), identischer `keyFor`-Funktion, identischen `whereClause`/`paramsFor`-Helpern und identischem „if (!stmt) compile + cache.set"-Plumbing pro Query. `heatmap.ts:189` traegt das Pattern in einer reduzierten Variante (nur Scope-Achse, kein Range). `meta-kv.ts` traegt das Pattern nicht, weil dort kein Filter-Variantenraum existiert.
+
+**Warum so:** Drei Repos im Verlauf der Seasons 12/13/14 entstanden, jedes hat das Pattern kopiert und an die eigene Filter-Achse angepasst. Beim Schreiben war die Achsen-Konfiguration jeweils klein genug (zwei bzw. eine Achse), dass eine generische Helper-Komponente uebertrieben wirkte. Der Drift-Effekt sieht man erst nach drei Iterationen.
+
+**Risiko:** Funktional korrekt, aber Drift-Gefahr bei kuenftigen Filtern: wenn ein Repo eine vierte Filter-Achse dazu nimmt (z.B. `model_family`) und der Code im anderen Repo nicht synchron mitgezogen wird, divergieren die Statement-Cache-Keys und die Ergebnisse pro Filter-Set werden inkonsistent. Plus: jede neue Variante erfordert ein eigenes prepared Statement, was die Cache-Groesse mit der Achsen-Anzahl multipliziert.
+
+**Aufloesung:** Generischer `StatementCache<K extends string>`-Helper mit `compile: () => Statement`-Factory und `keyFor(...axes): K`-Builder, plus `MessageWhereClauseBuilder`-Funktion fuer die gemeinsame `WHERE project_id = ? AND ts >= ?`-Logik. ~60 LOC neuer Helper, drei Driver werden umverdrahtet (`stats.ts`, `model-stats.ts`, `heatmap.ts`). Lohnt sich erst, wenn eine vierte Filter-Achse oder ein viertes Repo dazu kommt — der eigentliche Refactor ist erst dann gegen einen klaren Anwendungs-Druck statt gegen eine Befuerchtung.
+
+---
+
+## DoubleConfirmButton-Pattern dupliziert in zwei Modalen (Zwischen-Review v0.1.2)
+
+**Bereich:** `src/renderer/modals/HistoryActionModal.tsx:201-220`, `src/renderer/modals/RemoveProjectModal.tsx:104-131`
+
+**Was:** Fallow-Befund „Clone group 11" — 53 Zeilen Code-Duplikat. Beide Modale rendern einen Doppel-Confirm-Footer-Button mit identischem Pattern: lokaler `confirmStage`-State, Inline-`style={confirmStage ? { borderColor: 'var(--td-red)', color: 'var(--td-red)' } : undefined}`, Title-Tooltip-Wechsel, Label-Switch (`„⌧ Entfernen"` ↔ `„⚠ Wirklich entfernen?"`). HistoryActionModal nutzt das Pattern fuer Archivieren, RemoveProjectModal fuer Projekt-Entfernen.
+
+**Warum so:** Zwei separate Implementierungen, weil die jeweiligen Modale unabhaengig in Season 8 (RemoveProject) und Sprint 7 (HistoryAction) entstanden sind. Beim Schreiben des zweiten war die Aehnlichkeit nicht offensichtlich genug fuer eine sofortige Extraktion — Modal-Spezifika (Label-Variante, Tooltip-Wortlaut) lagen jeweils im Code-Body.
+
+**Risiko:** Bei UI-Polish-Changes (z.B. neue Farb-Konvention fuer destruktive Aktionen, andere Icon-Konvention, Keyboard-Shortcut-Hinweis) muss das Pattern an zwei Stellen synchron gepflegt werden. Beim dritten Aufrufer (z.B. „Session loeschen") wuerde der Pflege-Aufwand quadratisch wachsen.
+
+**Aufloesung:** Neue `<DoubleConfirmButton>`-Komponente in `src/renderer/components/`. Props: `onConfirm`, `initialLabel`, `confirmLabel`, `initialTitle`, `confirmTitle`, `busy`. Lokaler `confirmStage`-State + Style-Switch wandern in die Komponente. ~30 LOC neue Komponente + zwei Aufrufer-Refactors auf je ~5 Zeilen. Lohnt sich beim **dritten** Aufrufer — zwei Stellen sind die Refactor-Schwelle gerade noch nicht ueberschritten, weil die Pattern-Erkennung im Daily-Use nicht stoert.
+
+---
+
+## Session-Action-Pattern Cross-Panel dupliziert (Zwischen-Review v0.1.2)
+
+**Bereich:** `src/renderer/panels/LeftSidebar.tsx:171-201`, `src/renderer/panels/TabContainer.tsx:144-184`
+
+**Was:** Fallow-Befund „Clone group 14" — 41 Zeilen Code-Duplikat. Beide Panels haben jeweils `handleCloseTab`/`handleClose` und `handleResumeFromTabs`/`handleResume`-Aktionen, die identisch `useFileTabsStore.setActiveTab`, `estimateTerminalCols(settings.terminal_font_size)`, das Spawn-Result-Pattern und die `console.warn`-Fehlerbehandlung umsetzen. Sidebar feuert die Aktionen aus dem Projekt-Tree, TabContainer aus den Tab-Pillen — gleiche Semantik, doppelter Implementierungs-Pfad.
+
+**Warum so:** Die Aktionen sind nicht reine Store-Mutationen, sondern haengen am IPC-Call (`pty:create`/`session:close`) plus Settings-Lookup plus Tab-Store-Update plus Lifecycle-Side-Effect. Eine generische Funktion haette Argumente fuer alle drei Stores oder eine Closure ueber die Component-Props gebraucht — und beide Panels haben unterschiedliche Tab-Sources (Sidebar: Tabs aus dem aktiven Projekt, TabContainer: alle offenen Tabs).
+
+**Risiko:** Pflegekosten doppelt: jede Aenderung am Resume-Pfad (z.B. neue Modell-Override-Logik beim Resume) muss synchron in beiden Panels. Das ist in Season 11 (`templates:allocate-season-for-session`-Call beim Resume mit `NEXT_SEASON_NR`-Variable) bereits einmal passiert — beide Stellen brauchten den IPC-Aufruf, wurden nur einmal eingebaut, der zweite blieb unbeachtet.
+
+**Aufloesung:** Custom Hook `useSessionActions(settings)` in `src/renderer/components/`. Liefert `{ closeTab, resumeTab }` mit der gleichen Signatur wie die zwei aktuellen Inline-Funktionen — alle State-/IPC-Touchpoints wandern in den Hook. ~50 LOC neuer Hook + zwei Panel-Refactors auf je ~5 Zeilen. Schwelle: lohnt sich, wenn ein dritter Aufrufer (z.B. eine neue Pane mit Session-Actions) entsteht — oder bei der naechsten echten Aenderung am Resume-Pfad, weil dort der Pflegeschmerz akut wird.
+
+---
+
+## TemplatesModal-Komplexitaets-Regression (Zwischen-Review v0.1.2)
+
+**Bereich:** `src/renderer/modals/TemplatesModal.tsx`
+
+**Was:** Fallow-Health-Befund: TemplatesModal Cyclo 17 → **21**, CRAP 306 → **462** seit dem 2026-05-10-Snapshot. 553 Zeilen jetzt. Sechs separate useEffects (Esc, Mount-Pos, Drag-Listener, Templates-Load, AutoVars-Load, Frontmatter-Load), zwei lokale Drag-States, zwei Store-Konsumenten plus die Season-11-Allocate-Logic. Die Komponente ist zur Sammelstelle fuer alle Side-Effects rund um das Templates-Picking geworden — Drag-V2 (Sprint 9.5), Season-4-AutoVar-Pipeline, Season-11-Allocate-IPC + Frontmatter-Cache-Bust uebereinander.
+
+**Warum so:** Jede Erweiterung war individuell klein und passte „gerade noch" in den bestehenden Komponenten-Rumpf — Drag-Logic 30 Zeilen, AutoVars 40 Zeilen, Allocate-IPC 20 Zeilen. Der Refactor-Druck war je einzeln zu klein fuer eine eigene Extraktion; im Aggregat ergibt sich aber eine Komponente, die schwer zu lesen und zu testen ist.
+
+**Risiko:** Naechste Aenderung am Modal — egal welche — wird teurer als sie sein muesste, weil der Code-Body alle Pfade vermischt. Test-Lesen wird schwierig, weil ein Render-Pass durch sechs Effekte gleichzeitig laeuft. Bei Mehr-User-Use (oder mehr Templates) koennte das Effekt-Chaos Renderer-Stalls verursachen.
+
+**Aufloesung:** Drei Sub-Hooks extrahieren — `useTemplatesModalDrag` (Drag-State + Mount-Position + Drag-Listener, ~50 LOC), `useTemplatesAutoVars` (AutoVars-Load + Frontmatter-Load + User-Var-Reset, ~60 LOC), `useTemplatesAllocateSeason` (Season-11-IPC-Call + Toast, ~30 LOC). Das Modal-Body wird auf JSX + die drei Hook-Returns reduziert (~250 LOC). Lohnt sich vor der naechsten Funktional-Aenderung am Modal — z.B. wenn eine neue AutoVar-Quelle (Phase 3) angedockt werden soll.
+
+---
+
+## `listHistoryForProject` Cyclomatic-Regression durch Modell-Filter (Zwischen-Review v0.1.2)
+
+**Bereich:** `src/main/db/repos/sessions.ts:392-477` (SqliteSessionDriver), `:580-665` (InMemorySessionDriver)
+
+**Was:** Fallow-Health-Befund: Sqlite-`listHistoryForProject` Cyclo 20 → **25** (CRAP 106 → 160) seit dem 2026-05-10-Snapshot, durch den Season-10-Modell-Filter (`input.models?: string[]`) verursacht. Die Funktion verzweigt jetzt drei optionale IN-Listen (Typ/Status/Modell) + optionale Volltext-Suche durch eine Statement-Cache-Permutation `t{n}_s{n}_m{n}_q{n}` mit max ~560 prepared Statements und vier verschachtelten Param-Bind-Schleifen. Der InMemory-Driver (zweite Implementation der gleichen Logik im selben File) zog mit Cyclo 22.
+
+**Warum so:** Der Filter-Stack ist eine bewusste Domain-Anforderung des Verlauf-Panels — alle vier Achsen sind in der UI vorhanden und muessen kombinierbar sein. Eine sauberere Architektur (Filter-Stack-als-Daten, Pure-Functional-Composition) waere moeglich, war in Season 10 aber out-of-scope.
+
+**Risiko:** Bei jeder weiteren Filter-Achse (z.B. „Mit Notizen" / „Mit Custom-Type-Label" / Datum-Range) wird die Cyclo weiter steigen und die Statement-Cache-Grosse multiplizieren — irgendwann ist die Permutation nicht mehr handhabbar (>1000 Cache-Eintraege bei 5 Achsen) und der Hot-Pfad muss zu dynamischer Statement-Komposition wechseln. Die zweite Driver-Implementation (InMemory) muss synchron gepflegt werden.
+
+**Aufloesung:** Filter-Stack-als-Daten-Refactor: `FilterSpec = { kind: 'type'|'status'|'model'|'query', values: ... }[]`, Builder-Funktion komposiert SQL-WHERE-Klausel + Param-Liste pro Spec. Statement-Cache-Key wird Hash der Spec-Struktur. ~80 LOC fuer den Builder + Tests, beide Driver werden umverdrahtet. Lohnt sich, wenn eine fuenfte Filter-Achse kommt — oder wenn die Statement-Cache-Memory-Spitze im Production-Run auffaellt.
+
+---
+
+## state-detection-loop `tick` Cog 31 (Zwischen-Review v0.1.2)
+
+**Bereich:** `src/main/sessions/state-detection-loop.ts:61-128`
+
+**Was:** Fallow-Health-Befund: `tick`-Funktion 68 Zeilen, Cyclo 17 / **Cog 31** / CRAP 79.4. Anstieg seit 2026-05-10-Snapshot durch Phase-2 Season-1 (volle State-Detection): zusaetzliche Branches fuer `permission-prompt`-Skip, `running`-Status mit stale JSONL, nested `lastRole`-Lookup pro Pfad, zwei try/catch-Ebenen. Jede einzelne Verzweigung ist domain-essentiell (Renderer-vs-Loop-Hierarchie fuer Status-Quellen, dokumentiert in den Inline-Kommentaren Zeile 24-26), aber im Aggregat ist die Funktion an der Grenze des Verstaendlichen.
+
+**Warum so:** Die State-Detection ist die kritischste Loop im Main-Process — sie laeuft alle 2 s und entscheidet ueber den Tab-Status (running/waiting/permission-prompt/idle), den die UI als Badge zeigt. Bei jeder Status-Erweiterung war der instinktive Pfad „eine weitere if-Branche im bestehenden tick-Body", weil Refactor mit Tests-Re-Schreiben teurer wirkte als ein neuer Zweig.
+
+**Risiko:** Bei der naechsten Status-Erweiterung (z.B. „session-finished" als eigener Status, oder Detection von Permission-Granted-Folge-Prompts) wird die Cog weiter steigen, und der Diff wird schwerer zu reviewen. Plus: bei Bug-Hunt in der State-Machine („Warum kippt mein Tab von waiting auf idle, obwohl Claude noch arbeitet?") ist die 68-Zeilen-Logik schwer mental zu durchwandern.
+
+**Aufloesung:** Pure-Helper `classifyNextStatus(session, activityState, lastRole, now)` extrahieren, der den Status-Vorschlag als Return-Wert liefert — der `tick`-Body wird auf „pro Session: lese State, ruf classifyNextStatus, vergleiche mit aktuellem Status, persistiere bei Aenderung" reduziert. Tests laufen dann gegen `classifyNextStatus` als Pure-Function statt gegen die Loop-Mechanik. ~40 LOC Refactor + Tests-Re-Schreiben. **Trigger:** bei der naechsten Status-Erweiterung — die soll nicht ohne den Refactor durchgehen. Selbst-Reminder als TECH_SCHULDEN-Eintrag.
+
+---
+
+## Boot-Backfill-Flag setzt auch bei `readdir`-EACCES (Zwischen-Review v0.1.2)
+
+**Bereich:** `src/main/jsonl/backfill.ts:138-149, 187`
+
+**Was:** `runJsonlPathBackfill` iteriert ueber alle `cwd`-Buckets mit Sessions ohne `claude_session_id`. Pro Bucket ruft es `listJsonlFilesWithMtime(cwd)`, was bei `EACCES` (Per-cwd-Folder ohne Read-Rechte) den Fehler loggt und die Iteration mit `continue` fortsetzt. Am Ende der gesamten Iteration setzt das Modul aber unconditional das Flag `backfill_jsonl_link_v1=done` im MetaKvRepository — auch wenn ein oder mehrere Buckets durch EACCES gar nicht gepaart wurden.
+
+**Warum so:** Pragmatisches Best-Effort-Pattern: der Backfill ist ein einmaliger Boot-Pass fuer historische Daten, kein laufender Aufraeum-Job. Pro-cwd-Erfolg zu tracken haette zusaetzlich einen Per-cwd-Flag im MetaKV erfordert (`backfill_jsonl_link_v1_done_cwds: string[]`), plus Diff-Logik beim naechsten Boot. Im Daily-Use sind EACCES-Faelle quasi nicht-existent (User-eigener Folder).
+
+**Risiko:** Wenn der User vor dem ersten Update auf v0.1.2 einen temporaeren Permission-Bug auf einem Folder hatte (z.B. Antivirus haelt eine Datei kurz fest), wuerde der Backfill diesen Bucket beim ersten Boot ueberspringen und beim zweiten Boot (Permissions wieder OK) nicht mehr nachholen, weil das Flag bereits `done` ist. Praktischer Effekt: ein bis zwei resume-tote Sessions bleiben ungepaart. Kein Daten-Verlust, nur fehlende Watcher-Trigger fuer diese Sessions.
+
+**Aufloesung:** Zwei Pfade moeglich. (a) MetaKvRepository um `setJson<T>(key, value)`-Methode erweitern, Backfill speichert eine `{ doneCwds: string[], pendingCwds: string[] }`-Struktur und re-runt nur die pending beim naechsten Boot. ~30 LOC + Tests. (b) Schlankere Variante: Flag bleibt boolean, aber bei `EACCES`-Befund wird das Setzen verschoben (`done = false`) und stattdessen ein `console.warn` mit Hinweis „beim naechsten Boot wird erneut versucht" geloggt. Variante (b) ist die Drei-Zeilen-Loesung mit Defensiv-Charakter; (a) ist die saubere Loesung, wenn der Backfill kuenftig komplexer wird. Aktuell: niedrige Prioritaet, weil EACCES im Daily-Use kein realistischer Pfad ist.
+
+---
+
+## Modul-Zyklen-Risiko bei Helper-Re-Export aus Panels (Zwischen-Review v0.1.2)
+
+**Bereich:** Renderer-Komponenten-Architektur (Lessons learned vom `prettyModelId`-Vorfall)
+
+**Was:** Im Zwischen-Review v0.1.2 ist aufgefallen, dass `prettyModelId` als `export function` im `StatsPane.tsx` lag und von der Schwester-Komponente `ModelsView.tsx` (die selbst in `StatsPane` als Child gerendert wird) importiert wurde. Das ergab einen klassischen Modul-Zyklus, den Vite/ESBuild im Dev-Mode immer aufloeste, aber in Production-Builds undefiniertes Verhalten zeigen kann. Fix war 9 Zeilen — Helper in eigene Datei `src/renderer/components/prettyModelId.ts`, beide Konsumenten importieren von dort. Lessons: Panel-Components sind nicht-zyklus-sicher als Helper-Quelle, wenn ihre Childen die Helper konsumieren.
+
+**Warum so:** Beim Schreiben von `prettyModelId` (Season 12) war ModelsView noch nicht in der Architektur. Als Season 14 ModelsView in StatsPane einhing, war der Helper bereits dort — und „dort lassen" wirkte einfacher als „in eine eigene Datei umziehen". Modul-Zyklen sind in TypeScript/Vite ein Soft-Failure-Mode, sodass der Bug erst beim Production-Smoke aufgefallen waere.
+
+**Risiko:** Latent fuer alle Helper, die heute oder kuenftig in Panels mit Child-Komponenten exportiert werden. Beispiele aus dem Code-Review: `formatFavoriteModel` (lokal in StatsPane, derzeit ohne Konsument ausserhalb — geht in Ordnung), `prettyModelId` (war drin, ist jetzt extrahiert), `ContextSlot`-Helpers (computeTone/computeMarker/buildTitle — heute Inline in TabContainer, kein Konsument ausserhalb).
+
+**Aufloesung:** Pattern-Etablierung: Pure-Helper, die _potenziell_ von mehreren Components konsumiert werden koennten, leben in `src/renderer/components/*.ts` (keine `.tsx`-Endung, kein JSX), nicht in einer Panel-Datei. Beim naechsten Review-Pass (Phase 3-Eintritt oder bei Code-Review-Routine) gezielt nach `export function`-Pattern in `panels/*.tsx` greppen, die nicht-trivial sind — Kandidaten in Schwester-Komponenten-Verzeichnis verschieben. Aufwand pro Kandidat: 5–10 LOC. Aktuell kein anderer akuter Fall identifiziert.
+
+---
+
 ## Pre-Hotfix-Sessions ohne JSONL verlieren Token-Aggregate (Phase-2 Season 16)
 
 **Bereich:** `src/main/db/migrations/0008_messages_cache_split.sql`

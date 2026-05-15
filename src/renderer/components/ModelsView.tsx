@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useUiStore } from '../stores/ui';
 import { useStatsStore } from '../stores/stats';
 import { fmtTokens } from './fmtTokens';
-import { prettyModelId } from '../panels/StatsPane';
+import { prettyModelId } from './prettyModelId';
 
 // ModelsView (Phase-2 Season-14).
 //
