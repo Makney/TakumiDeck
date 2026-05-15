@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-15 — Phase 2 Season 19: Easter-Egg-Vergleiche
+
+### Was jetzt geht
+
+- **Spielerischer Streifen unter der Aktivitaets-Heatmap zeigt deinen Token-Verbrauch als Vielfaches bekannter Werke.** „📚 Du hast etwa 31× Der Hobbit, 6× The Lord of the Rings und 5× Krieg und Frieden geschrieben." Default-Liste sind fuenf Werke (Der Hobbit, The Lord of the Rings, Krieg und Frieden, Die Bibel, Harry-Potter-Reihe) mit groben Token-Schaetzungen (~1.33 × englische Wortzahl). Drei werden angezeigt, sortiert nach Faktor absteigend. Werke unter `factor < 0.1` (= weniger als ein Zehntel des Werks geschrieben) fliegen raus — „0.01× Hobbit" ist eher erniedrigend als spielerisch.
+- **Scope- und Range-Toggle aus der Stats-Header-Bar wirken automatisch mit.** Steht der Range auf „7d", zeigt der Streifen den Verbrauch der letzten sieben Tage als Werk-Vielfaches („0.5× Hobbit in 7 Tagen"). Der Streifen nutzt `overview.tokens_total` aus dem bestehenden `stats:project-overview`-IPC; kein eigener Backend-Pfad, kein eigener Refresh — der bestehende `usage:update`-Push aktualisiert ihn 600 ms nach jedem Token-Tick mit.
+- **Toggle im Settings-Modal-„Allgemein"-Tab schaltet den Streifen ab.** Neue Settings-Property `easter_egg_enabled` (Default `true`, damit Bestandsuser den Streifen nach dem ersten Stats-Refresh ueberraschend sehen). Wer ihn nicht mag, schaltet ihn mit einem Klick aus; ein erneuter Klick holt ihn zurueck.
+
+### Architektur-Notiz
+
+Variante **U1 + K1 + D1** aus drei orthogonalen Achsen (Wo, Konfiguration, Datenquelle). **U1 Streifen unter der Heatmap** statt neunter Mini-Card (U2, sprengt die 2×4-Symmetrie) oder Action-Bar-Pille (U3, reisst Daten-Hierarchie auseinander). **K1 Nur-Toggle mit hartcodierter Werk-Liste** statt voll editierbarer Liste (K2) oder Raw-JSON-Override (K3) — Easter-Eggs sollten ohne Configuration-Surface „einfach da sein"; der Aufholpfad zur K2-Variante ist als TECH_SCHULDEN-Eintrag dokumentiert (Trigger: erster User-Wunsch nach eigenem Werk). **D1 Bestehender `tokens_total`** aus `stats:project-overview` statt eigener Lifetime-Query (D2) — folgt automatisch Scope/Range-Toggles und kostet null zusaetzliche Backend-Arbeit. Pure Logik in neuem Modul `src/shared/easter-egg-works.ts`: `computeEasterEggComparisons(tokensTotal, works?, limit?)` filtert (`factor >= 0.1`), sortiert (factor desc) und schneidet auf Top-N (Default 3); `formatEasterEggFactor(factor)` rendert „0.5×"/„1.2×"/„31×" mit Heuristik (`< 10` → eine Nachkommastelle, `>= 10` → Ganzzahl). Renderer-Komponente `EasterEggStrip` in `src/renderer/panels/StatsPane.tsx` rendert sich selbst `null`, wenn die Pure-Logik leer zurueckliefert (tokens=0 oder alle Faktoren unter Schwelle). Sprach-Fluss („A geschrieben" / „A und B geschrieben" / „A, B und C geschrieben") als reine JSX-Komposition, keine i18n-Pipeline. Neuer CSS-Block `.td-easter-egg-strip` mit `border-top: 1px dashed`-Trenner und `--td-text-dim`-Tonung — sichtbar, aber dezent (analog `.td-usage-bar-hint` aus Season 16). 16 neue Tests (13 Pure-Logic: 0/Negativ/NaN, Filter-Schwelle, Top-3-Sort, Custom-Werke, tokens=0-Werk-Skip, Format-Heuristik; 3 Schema: Default-`true`, akzeptiert `false`, lehnt non-boolean ab). Settings-Fixture in `tests/main/reset-schedule.test.ts` + `usage-aggregation.test.ts` um das neue Feld ergaenzt (vierter Touch-Point — TECH_SCHULDEN-Refactor jetzt explizit ueberfaellig). Gesamtsuite 788/788 gruen (+16 gegenueber Season-18-Endstand 772), typecheck + lint sauber. package.json gebumpt 0.1.4 → 0.1.5.
+
+---
+
 ## 2026-05-15 — Phase 2 Season 18: First-Start-Workspace-Wizard
 
 ### Was jetzt geht

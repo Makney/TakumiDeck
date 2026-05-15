@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUiStore } from '../stores/ui';
 import { useStatsStore, type StatsScope } from '../stores/stats';
 import type { StatsOverviewResult, StatsRange } from '@shared/types';
@@ -6,6 +6,10 @@ import { fmtTokens } from '../components/fmtTokens';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { ModelsView } from '../components/ModelsView';
 import { prettyModelId } from '../components/prettyModelId';
+import {
+  computeEasterEggComparisons,
+  formatEasterEggFactor,
+} from '@shared/easter-egg-works';
 
 // StatsPane (Phase-2 Season-12 + Season-13 + Season-14).
 //
@@ -35,7 +39,14 @@ const SCOPE_LABELS: Record<StatsScope, string> = {
   global: 'Global',
 };
 
-export function StatsPane() {
+export function StatsPane({
+  easterEggEnabled,
+}: {
+  // Phase-2 Season-19: Toggle aus settings.easter_egg_enabled. Steuert
+  // ausschliesslich den Streifen unter der Heatmap in der Uebersicht-
+  // View — die Modelle-View bleibt davon unberuehrt.
+  easterEggEnabled: boolean;
+}) {
   const [view, setView] = useState<View>('overview');
   const scope = useStatsStore((s) => s.scope);
   const range = useStatsStore((s) => s.range);
@@ -88,13 +99,17 @@ export function StatsPane() {
         </div>
       </header>
       <div className="td-dash-body">
-        {view === 'overview' ? <OverviewView /> : <ModelsView />}
+        {view === 'overview' ? (
+          <OverviewView easterEggEnabled={easterEggEnabled} />
+        ) : (
+          <ModelsView />
+        )}
       </div>
     </section>
   );
 }
 
-function OverviewView() {
+function OverviewView({ easterEggEnabled }: { easterEggEnabled: boolean }) {
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const scope = useStatsStore((s) => s.scope);
   const range = useStatsStore((s) => s.range);
@@ -154,52 +169,97 @@ function OverviewView() {
   }
 
   return (
-    <div className="td-overview-split">
-      <div className="td-stats-cards td-stats-cards-compact">
-        <Stat label="Sitzungen" value={overview ? String(overview.sessions_total) : '—'} />
-        <Stat
-          label="Nachrichten"
-          value={overview ? formatCount(overview.messages_total) : '—'}
-        />
-        <Stat
-          label="Tokens"
-          value={overview ? fmtTokens(overview.tokens_total) : '—'}
-        />
-        <Stat
-          label="Aktive Tage"
-          value={overview ? String(overview.active_days) : '—'}
-        />
-        <Stat
-          label="Streak"
-          value={overview ? `${overview.current_streak_days} Tg` : '—'}
-          sub={overview && overview.current_streak_days > 0 ? 'in Folge' : null}
-          accent={overview ? overview.current_streak_days > 0 : false}
-        />
-        <Stat
-          label="Längste Streak"
-          value={overview ? `${overview.longest_streak_days} Tg` : '—'}
-        />
-        <Stat
-          label="Spitzenstunde"
-          value={overview ? formatHour(overview.peak_hour) : '—'}
-          sub={overview && overview.peak_hour !== null ? `${overview.peak_hour_count}×` : null}
-        />
-        <Stat
-          label="Lieblingsmodell"
-          value={overview ? formatFavoriteModel(overview) : '—'}
-          sub={
-            overview && overview.favorite_model
-              ? `${overview.favorite_model_count} Msgs`
-              : null
-          }
+    <>
+      <div className="td-overview-split">
+        <div className="td-stats-cards td-stats-cards-compact">
+          <Stat label="Sitzungen" value={overview ? String(overview.sessions_total) : '—'} />
+          <Stat
+            label="Nachrichten"
+            value={overview ? formatCount(overview.messages_total) : '—'}
+          />
+          <Stat
+            label="Tokens"
+            value={overview ? fmtTokens(overview.tokens_total) : '—'}
+          />
+          <Stat
+            label="Aktive Tage"
+            value={overview ? String(overview.active_days) : '—'}
+          />
+          <Stat
+            label="Streak"
+            value={overview ? `${overview.current_streak_days} Tg` : '—'}
+            sub={overview && overview.current_streak_days > 0 ? 'in Folge' : null}
+            accent={overview ? overview.current_streak_days > 0 : false}
+          />
+          <Stat
+            label="Längste Streak"
+            value={overview ? `${overview.longest_streak_days} Tg` : '—'}
+          />
+          <Stat
+            label="Spitzenstunde"
+            value={overview ? formatHour(overview.peak_hour) : '—'}
+            sub={overview && overview.peak_hour !== null ? `${overview.peak_hour_count}×` : null}
+          />
+          <Stat
+            label="Lieblingsmodell"
+            value={overview ? formatFavoriteModel(overview) : '—'}
+            sub={
+              overview && overview.favorite_model
+                ? `${overview.favorite_model_count} Msgs`
+                : null
+            }
+          />
+        </div>
+        <ActivityHeatmap
+          data={heatmap}
+          weeks={heatmapWeeks}
+          onWeeksChange={setHeatmapWeeks}
+          error={heatmapError}
         />
       </div>
-      <ActivityHeatmap
-        data={heatmap}
-        weeks={heatmapWeeks}
-        onWeeksChange={setHeatmapWeeks}
-        error={heatmapError}
-      />
+      {easterEggEnabled && overview && (
+        <EasterEggStrip tokensTotal={overview.tokens_total} />
+      )}
+    </>
+  );
+}
+
+// Phase-2 Season-19: Easter-Egg-Streifen unter der Heatmap. Rendert sich
+// selbst NULL, wenn computeEasterEggComparisons keine Treffer liefert
+// (z.B. tokensTotal=0 beim ersten Start oder factor < 0.1 fuer alle
+// Werke). Pure Render — kein Effekt, kein Listener; der Refresh laeuft
+// ueber den `usage:update`-Push-Pfad des Parents (overview.tokens_total
+// aendert sich → Komponente rendert neu).
+function EasterEggStrip({ tokensTotal }: { tokensTotal: number }) {
+  const comparisons = useMemo(
+    () => computeEasterEggComparisons(tokensTotal),
+    [tokensTotal],
+  );
+  if (comparisons.length === 0) return null;
+
+  // Sprach-Fluss: 1 Werk → „A geschrieben", 2 Werke → „A und B
+  // geschrieben", 3+ → „A, B und C geschrieben". Faktor + Werk in
+  // einem <span class="factor"> gebuendelt fuer die tabular-nums-
+  // Tonung im CSS.
+  const parts = comparisons.map((c, idx) => {
+    const sep =
+      idx === 0
+        ? ''
+        : idx === comparisons.length - 1
+          ? ' und '
+          : ', ';
+    return (
+      <span key={c.work.name}>
+        {sep}
+        <span className="factor">{formatEasterEggFactor(c.factor)}</span>{' '}
+        {c.work.name}
+      </span>
+    );
+  });
+
+  return (
+    <div className="td-easter-egg-strip" title="Spielerischer Vergleich — Werk-Token-Counts sind grobe Schaetzungen">
+      📚 Du hast etwa {parts} geschrieben.
     </div>
   );
 }

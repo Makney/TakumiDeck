@@ -24,6 +24,29 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Easter-Egg-Vergleiche: Minimal-Slot statt Custom-Werk-Liste (U1+K1+D1)
+
+**Entscheidung:** Easter-Egg-Vergleiche leben als dezenter Streifen unter der Aktivitaets-Heatmap (U1), die Werk-Liste ist hartcodiert mit Toggle-only-Konfiguration (K1), und der Token-Counter zieht den bestehenden `tokens_total` aus `stats:project-overview` (D1) — keine eigene Backend-Query.
+
+**Varianten:**
+
+- **U1** Streifen unter der Heatmap (gewaehlt) — eine Zeile, factor-desc-sortiert, Top-3-Werke.
+- **U2** Neunte Mini-Card im 2×4-Grid — rotiert pro Stats-Refresh durch die Werk-Liste.
+- **U3** Eigene Pille in der Action-Bar — neben dem Status-Badge mit Tooltip-Detail.
+- **K1** Nur Toggle in den Settings, Werk-Liste hartcoded (gewaehlt).
+- **K2** Voll editierbare Liste im Settings-Modal — Add/Remove/Name+Token-Count+Aktiv-Toggle pro Eintrag.
+- **K3** Toggle plus Raw-JSON-Editor-Override fuer Power-User.
+- **D1** Bestehender `tokens_total` aus dem Stats-Overview (gewaehlt) — Scope+Range automatisch dabei.
+- **D2** Eigene Lifetime-Query — immer global, ignoriert Scope/Range.
+
+**Grund:** U2 wuerde die 2×4-Symmetrie der Card-Grid sprengen oder eine echte Datums-Card kosten, was den Easter-Egg ueber seinem Wertbeitrag positioniert. U3 reisst die Daten-Hierarchie auseinander — Token-Statistik gehoert in die Stats-Pane, nicht in den Action-Bar-Status-Bereich, der sonst nur PTY-Lifecycle-Signale traegt. U1 sitzt thematisch im Stats-Kontext, nutzt den `usage:update`-Push-Pfad gratis mit und passt zum „dezent, aber sichtbar"-Stil aus dem Reset-Footer von Season 16. K2 + K3 bauen Configuration-Surface fuer ein spielerisches Feature, das per Definition vom Ueberraschungs-Moment lebt — sobald der User eine Werk-Liste pflegen muss, ist es kein Easter-Egg mehr, sondern ein Setting. K1 trifft das Format am genauesten und laesst dem K2-Aufholpfad explizit Raum, falls der erste User-Wunsch nach eigenem Werk auftaucht. D2 waere ein zusaetzlicher IPC-Pfad fuer eine Spielerei — Aufwand-Risiko-Verhaeltnis stimmt nicht, und der Storytelling-Wert ist mit Scope/Range-Toggles („~0.5× LotR in 7 Tagen") sogar groesser als mit einer starren Lifetime-Zahl.
+
+**Konsequenz:** Werk-Liste lebt in `src/shared/easter-egg-works.ts` als `DEFAULT_EASTER_EGG_WORKS`-Konstante; Pure-Logik akzeptiert eine optionale `works`-Liste als Parameter, sodass die K2-Migration spaeter nur Settings-Schema + UI braucht — die Compute-Logik bleibt unveraendert. Stats-Pane bekommt ein neues Boolean-Prop `easterEggEnabled` statt das ganze `settings`-Objekt, weil aktuell genau ein Feature-Flag konsumiert wird; bei mehr Pane-spezifischen Settings koennte das auf `settings={settings}` zurueckschalten.
+
+**Implementierungsdetail:** Filter-Schwelle `factor >= 0.1` (= mindestens ein Zehntel des Werks geschrieben) statt eines absoluten Token-Cutoffs. Begruendung: relative Schwellen skalieren mit der Werk-Liste (ein neues Werk mit 50k Tokens fliegt nicht automatisch in einen anderen Bucket als die existierende 1M-Token-Bibel), und der „0.0…× Hobbit"-Edge-Case ist eher erniedrigend als spielerisch. Sort nach `factor` desc statt nach Werk-Index, damit bei wachsendem Verbrauch nicht permanent Der Hobbit obenhin steht — die Liste wandert organisch von „0.5× Hobbit" am Anfang zu „50× Hobbit, 10× LotR, 8× Krieg-und-Frieden" spaeter. Format-Heuristik (`< 10` → eine Nachkommastelle, `>= 10` → Ganzzahl) statt fester Nachkommastelle, weil „31.4× LotR" eine Messgenauigkeit suggeriert, die der Easter-Egg nicht hat.
+
+---
+
 ## First-Start-Workspace-Wizard: Erledigt-Flag in den Settings (Variante A)
 
 **Entscheidung:** Der Wizard wird ueber ein neues Boolean-Feld `workspace_wizard_completed` in den Settings detektiert, nicht ueber das Fehlen der `settings.json`-Datei. `buildDefaultSettings()` setzt den Default auf `true` (Bestandsuser-sicher), und `SettingsStore.initialize()` ueberschreibt das nur bei einer wirklich frisch angelegten Datei explizit mit `false`.

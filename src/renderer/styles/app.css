@@ -1507,6 +1507,27 @@ body,
   pointer-events: none;
 }
 
+/* Phase-2 Season-19: Easter-Egg-Streifen unter der Heatmap in der
+   Uebersicht-View. Eine Zeile, dezent, koennte fast uebersehen werden
+   — das ist Absicht. Das Buch-Emoji macht die spielerische Intention
+   sichtbar; .factor hebt die Zahlen leicht heraus, ohne dominant zu
+   werden. */
+.td-easter-egg-strip {
+  margin-top: 6px;
+  padding: 6px 10px 0;
+  font-size: 11px;
+  color: var(--td-text-dim);
+  border-top: 1px dashed var(--td-line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-easter-egg-strip .factor {
+  color: var(--td-text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Phase 2 Season Flacsh: dezenter Reset-Footer unter der Bar.
    „Zurücksetzung in 2 Std. 37 Min. → 15:00 Uhr". */
 .td-usage-bar-hint {

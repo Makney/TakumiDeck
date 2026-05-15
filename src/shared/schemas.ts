@@ -67,6 +67,12 @@ export const AppSettingsSchema = z.object({
     max_age_days: z.number().min(0).max(3650),
     max_total_mib: z.number().min(0).max(1_000_000),
   }),
+  // Phase-2 Season-19: Easter-Egg-Token-Vergleiche („du hast ~31× LotR
+  // geschrieben") in der Stats-Pane-Uebersicht. `false` blendet den
+  // Streifen unter der Heatmap aus. Werk-Liste ist aktuell hartcodiert
+  // in src/shared/easter-egg-works.ts; eine konfigurierbare Liste
+  // kommt erst, wenn der erste User-Wunsch nach eigenem Werk auftaucht.
+  easter_egg_enabled: z.boolean(),
   terminal_font_family: z.string(),
   terminal_font_size: z.number().positive(),
   theme: z.enum(['dark', 'light']),

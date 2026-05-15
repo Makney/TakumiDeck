@@ -111,6 +111,29 @@ describe('AppSettings-Schema', () => {
     };
     expect(() => AppSettingsSchema.parse(broken)).toThrow();
   });
+
+  // Phase-2 Season-19: Easter-Egg-Token-Vergleiche. Default `true`, weil
+  // der Streifen Bestandsuser dezent ueberraschen darf — wer ihn weghaben
+  // will, schaltet ihn im Allgemein-Tab ab.
+  it('easter_egg_enabled Default ist true', () => {
+    const defaults = buildDefaultSettings();
+    expect(defaults.easter_egg_enabled).toBe(true);
+  });
+
+  it('akzeptiert easter_egg_enabled=false', () => {
+    const defaults = buildDefaultSettings();
+    const off = { ...defaults, easter_egg_enabled: false };
+    expect(() => AppSettingsSchema.parse(off)).not.toThrow();
+  });
+
+  it('lehnt non-boolean easter_egg_enabled ab', () => {
+    const defaults = buildDefaultSettings();
+    const broken = {
+      ...defaults,
+      easter_egg_enabled: 'yes' as unknown as boolean,
+    };
+    expect(() => AppSettingsSchema.parse(broken)).toThrow();
+  });
 });
 
 describe('AppSettingsPatch-Schema', () => {

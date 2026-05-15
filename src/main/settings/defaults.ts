@@ -84,6 +84,11 @@ export function buildDefaultSettings(): AppSettings {
       max_total_mib: 500,
     },
 
+    // Phase-2 Season-19: Easter-Egg-Token-Vergleiche standardmaessig an.
+    // Bestandsuser sehen den Streifen nach dem ersten Stats-Refresh; wer
+    // ihn nicht mag, schaltet ihn im Allgemein-Tab ab.
+    easter_egg_enabled: true,
+
     terminal_font_family: 'JetBrains Mono, Cascadia Code, MesloLGS NF',
     terminal_font_size: 13,
 

@@ -41,6 +41,7 @@ function buildSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     shortcuts: {},
     sensitive_file_patterns: [],
     screenshot_retention: { max_age_days: 30, max_total_mib: 500 },
+    easter_egg_enabled: true,
     ...overrides,
   };
 }

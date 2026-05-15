@@ -170,7 +170,7 @@ export function App() {
 
         {/* Spalte 2 unten: Stats (Sprint 5) */}
         <div className="td-col-mid-bottom">
-          <StatsPane />
+          <StatsPane easterEggEnabled={settings.easter_egg_enabled} />
         </div>
 
         {/* Spalte 3 unten: PlanPane (von der Mitte-unten umgezogen, weil das

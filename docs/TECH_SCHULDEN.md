@@ -30,17 +30,31 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## AppSettings-Test-Fixture in drei Test-Dateien dupliziert (Season 18-Update)
+## Easter-Egg-Werk-Liste hartcodiert (Season 19)
 
-**Bereich:** `tests/main/reset-schedule.test.ts`, `tests/main/usage-aggregation.test.ts` (beide mit eigenem `buildSettings(overrides)`-Helper, der das `AppSettings`-Vollschema inline aufbaut). Drittes-Touch-Point-Update aus Season 18: dieselben zwei Files wurden erneut manuell um `workspace_wizard_completed: true` ergaenzt, weil das Vollschema dort inline gebaut wird statt aus `buildDefaultSettings()` zu mergen.
+**Bereich:** `src/shared/easter-egg-works.ts` — `DEFAULT_EASTER_EGG_WORKS`-Konstante mit fuenf Default-Werken (Der Hobbit, The Lord of the Rings, Krieg und Frieden, Die Bibel, Harry-Potter-Reihe).
 
-**Was:** Beide Test-Files definieren oben eine `buildSettings(overrides)`-Funktion, die das komplette `AppSettings`-Objekt mit Test-Default-Werten zusammenstellt. Bei jedem Schema-Add muss in beiden Files das neue Feld manuell nachgezogen werden. Season 17 hat `screenshot_retention` ergaenzt, Season 18 jetzt `workspace_wizard_completed` — drei Touch-Points in zwei Seasons in Folge.
+**Was:** PHASE2.md-Roadmap-Wortlaut spricht von „konfigurierbaren Vergleichs-Werken in Settings". Season 19 hat das auf den Toggle `easter_egg_enabled` reduziert — die Werk-Liste selbst ist nicht im Settings-Schema, sondern als Pure-Konstante im Shared-Modul. Wer eigene Werke (z.B. Stephen-King-Bibliographie, Tolkien-Komplett-Werk, Asterix-Band-Stack) sehen will, muesste den Code editieren und neu builden.
 
-**Warum so:** Bei der initialen Test-Anlage (Sprint 5 / Season Flacsh) gab es keinen Grund, das Vollschema aus `buildDefaultSettings()` zu mergen — die Tests sollten unabhaengig von Produktiv-Defaults laufen. Die Migration auf einen gemeinsamen Helper wurde in den letzten zwei Seasons jeweils als nicht-kritisch zurueckgestellt (zwei Zeilen Fix pro File, sofort sichtbar via Typecheck).
+**Warum so:** Easter-Eggs leben vom Ueberraschungs-Moment; sobald der User eine Werk-Liste pflegen muss, ist es kein Easter-Egg mehr, sondern ein Setting. Die K2-Variante (voll editierbare Liste im Settings-Modal) wurde im Variants-Brief der Season 19 explizit gegen K1 abgewogen und disqualifiziert — Configuration-Surface fuer eine Spielerei lohnt sich nicht, solange noch kein User-Wunsch nach Custom-Werken existiert. Pure-Logik akzeptiert bereits eine optionale `works`-Liste als Parameter, sodass der K2-Aufholpfad nur Settings-Schema + UI-Block braucht — die Compute-Logik bleibt unveraendert.
+
+**Risiko:** Sehr niedrig. Werk-Liste ist statisch und altert kaum (Bibel und LotR existieren seit Jahrzehnten). Edge-Case: User mit extrem hohem Token-Verbrauch (>50× alle Default-Werke) sieht permanent dieselben Top-3 mit gigantischen Faktoren — der Storytelling-Effekt nutzt sich ab. Aufloesung dafuer waere eine groessere Default-Liste (10+ Werke mit mehr Spreizung), nicht zwingend Konfigurierbarkeit.
+
+**Aufloesung:** Wenn der erste User-Wunsch nach eigenem Werk auftaucht: neues Schema-Feld `easter_egg_works: Array<{ name, tokens, enabled }>` in `AppSettings`, Settings-UI-Block im „Allgemein"-Tab mit Add/Remove und Reset-auf-Default-Button, `easterEggEnabled`-Prop in `StatsPane` durch `easterEggWorks` ersetzen oder ergaenzen. `computeEasterEggComparisons` braucht keine Aenderung — der `works`-Parameter ist bereits da. **Trigger:** erster User-Wunsch nach eigenem Werk *oder* zweiter „der Streifen zeigt immer dieselben drei Werke"-Kommentar (= Spreizungs-Problem statt Konfigurierbarkeits-Problem, andere Aufloesung).
+
+---
+
+## AppSettings-Test-Fixture in zwei Test-Dateien dupliziert (Season 19: vierter Touch-Point erreicht)
+
+**Bereich:** `tests/main/reset-schedule.test.ts`, `tests/main/usage-aggregation.test.ts` (beide mit eigenem `buildSettings(overrides)`-Helper, der das `AppSettings`-Vollschema inline aufbaut). **Vierter Touch-Point in drei Seasons in Folge:** Season 19 hat dieselben zwei Files erneut manuell um `easter_egg_enabled: true` ergaenzt, weil das Vollschema dort inline gebaut wird statt aus `buildDefaultSettings()` zu mergen. Der in Season 18 als Trigger gesetzte „vierter Touch-Point"-Schwellwert ist damit erreicht — der Refactor ist jetzt explizit ueberfaellig.
+
+**Was:** Beide Test-Files definieren oben eine `buildSettings(overrides)`-Funktion, die das komplette `AppSettings`-Objekt mit Test-Default-Werten zusammenstellt. Bei jedem Schema-Add muss in beiden Files das neue Feld manuell nachgezogen werden. Season 17 hat `screenshot_retention` ergaenzt (Touch-Points #1 und #2), Season 18 `workspace_wizard_completed` (#3), Season 19 jetzt `easter_egg_enabled` (#4).
+
+**Warum so:** Bei der initialen Test-Anlage (Sprint 5 / Season Flacsh) gab es keinen Grund, das Vollschema aus `buildDefaultSettings()` zu mergen — die Tests sollten unabhaengig von Produktiv-Defaults laufen. Der Refactor wurde in Season 17/18/19 jeweils als nicht-kritisch zurueckgestellt (zwei Zeilen Fix pro File, sofort sichtbar via Typecheck), aber der Schmerz akkumuliert: drei Seasons in Folge dieselben zwei Files anfassen ist ein klares Signal.
 
 **Risiko:** Bei jedem kuenftigen Settings-Schema-Add bleibt der zwei-Datei-Touch in den Tests. Typecheck faengt die Drift sofort, aber das Pattern verleitet zu „Test-Defaults driften vom Produktiv-Default", weil die Inline-Werte irgendwann nicht mehr dasselbe Bedeuten wie `buildDefaultSettings()` zurueckgibt (z.B. wenn ein Produktiv-Default geaendert wird, ohne dass die Test-Fixture mitgezogen wird).
 
-**Aufloesung:** Extraktion in `tests/_helpers/settings-fixture.ts` mit `buildTestSettings(overrides: Partial<AppSettings> = {})`, intern `return { ...buildDefaultSettings(), ...overrides }`. Beide Test-Files refaktorieren auf den Helper. ~10 LOC neuer Helper + zwei Re-Wires auf je ~3 Zeilen. **Trigger:** beim vierten Touch-Point (= naechster Settings-Schema-Add).
+**Aufloesung:** Extraktion in `tests/_helpers/settings-fixture.ts` mit `buildTestSettings(overrides: Partial<AppSettings> = {})`, intern `return { ...buildDefaultSettings(), ...overrides }`. Beide Test-Files refaktorieren auf den Helper. ~10 LOC neuer Helper + zwei Re-Wires auf je ~3 Zeilen. **Trigger:** beim Start der naechsten Season *bevor* eine andere Schuld angefasst wird (= als „Aufraeumen-vor-Feature"-Mini-Pass; das Trigger-Schema-Add ist erreicht, aber der Refactor lohnt sich, wenn er nicht mit einem Feature-Add konkurriert).
 
 ---
 

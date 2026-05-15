@@ -83,6 +83,9 @@ export interface AppSettings {
     max_age_days: number;
     max_total_mib: number;
   };
+  // Phase-2 Season-19: Easter-Egg-Token-Vergleiche in der Stats-Pane-
+  // Uebersicht. `false` blendet den Streifen unter der Heatmap aus.
+  easter_egg_enabled: boolean;
   terminal_font_family: string;
   terminal_font_size: number;
   theme: 'dark' | 'light';

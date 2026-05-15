@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 19 — Easter-Egg-Vergleiche
+
+**Ziel:** Roadmap-Feature aus dem „Stats und Heatmap"-Bereich umsetzen: spielerische Token-Vergleiche basierend auf bekannten Werken („Du hast ~31× LotR verwendet"). Roadmap-Wortlaut: konfigurierbare Vergleichs-Werke in Settings, Default-Werke LotR/Bibel/Harry-Potter-Reihe etc., Update bei jedem Stats-Refresh.
+
+**Ergebnis:** Variante U1 + K1 + D1 aus drei orthogonalen Achsen. **U1 Streifen unter der Heatmap** statt neunter Mini-Card (U2) oder Action-Bar-Pille (U3). **K1 Nur-Toggle mit hartcodierter Werk-Liste** statt voll editierbarer Liste (K2) oder Raw-JSON-Override (K3) — Roadmap-Wortlaut „konfigurierbar in Settings" bewusst auf Toggle-Ebene reduziert mit K2-Aufholpfad in TECH_SCHULDEN. **D1 Bestehender `tokens_total`** aus `stats:project-overview` statt eigener Lifetime-Query (D2) — Scope/Range-Toggles wirken automatisch mit. Pure Logik in neuem Modul `src/shared/easter-egg-works.ts` mit `computeEasterEggComparisons(tokensTotal, works?, limit?)` und `formatEasterEggFactor(factor)`. Renderer-Komponente `EasterEggStrip` in `StatsPane.tsx` rendert sich selbst `null`, wenn keine Werke die `factor >= 0.1`-Schwelle reissen. CSS-Block `.td-easter-egg-strip` mit dashed-Border-Top und `--td-text-dim`-Tonung. 16 neue Tests (13 Pure-Logic + 3 Schema), Gesamtsuite 788/788 gruen (+16), typecheck + lint sauber. package.json 0.1.4 → 0.1.5.
+
+**Gut gelaufen:**
+
+- **Drei-Achsen-Variants-Brief war fuer ein spielerisches Feature richtig dimensioniert.** Easter-Eggs koennten leicht in „Komplettpakete A/B/C"-Form gepackt werden (Variante A = Streifen+Toggle+Total, Variante B = Card+Editierbar+Total, …), aber die drei Stellraeder (Wo / Konfigurierbarkeit / Datenquelle) sind echt orthogonal. User-Entscheidung kam in der Empfehlungs-Reihenfolge („U1 + K1 + D1") — Pattern-Bestaetigung: Achsen sind besser, wenn die Tradeoffs *zwischen* den Achsen klein sind und der User Lust hat, jede Achse einzeln zu pruefen.
+- **K1 gegen Roadmap-Wortlaut zu empfehlen war die richtige Entscheidung.** Der Brief sagt „konfigurierbar in Settings", aber Configuration-Surface fuer Easter-Eggs ist ein Anti-Pattern (sobald der User die Werk-Liste pflegt, ist es kein Easter-Egg mehr). Der Variants-Brief hat das Argument explizit gemacht — User hat ohne Pushback K1 gewaehlt. Lehre: Roadmap-Wortlaut ist Vorschlag, nicht Vertrag — wenn ein Feature mit weniger Configuration besser funktioniert, das *im Variants-Brief* begruenden statt es stillschweigend zu reduzieren.
+- **Pure-Logik + Parameter-Konstanten haben den K2-Aufholpfad gratis offen gelassen.** `computeEasterEggComparisons` akzeptiert eine optionale `works`-Liste, obwohl Season 19 sie nie ueberschreibt. Wenn die K2-Migration kommt (= erster Custom-Werk-Wunsch), braucht es nur Settings-Schema + UI-Block — die Compute-Logik bleibt 1:1. Pattern-Notiz: bei „erstmal hartcodieren, spaeter konfigurierbar machen"-Features die Pure-Logik schon jetzt parametrisieren, der Aufwand ist null und die Aufholpfad-Kosten sinken signifikant.
+
+**Gebremst durch:**
+
+- **Vierter Touch-Point der Settings-Fixture-Duplikat-Schuld erreicht.** Season 18-SEASON_LOG-Hinweis hatte den Refactor als „beim 4. Touch-Point" terminiert; Season 19 ist genau dieser vierte Touch-Point. Refactor wurde aber nicht mitgezogen, weil die Season-Scope-Regel „nur das aktuelle Feature" gilt — TECH_SCHULDEN-Trigger ist auf „naechste Season *bevor* andere Schuld angefasst wird" verschaerft. Lehre: vorausgeplante Refactor-Trigger sollten in den SEASON_LOG-Hinweis der *vorigen* Season explizit als „naechste Season Mini-Pass" stehen, nicht nur in TECH_SCHULDEN — sonst geht der Trigger im naechsten Feature-Lauf unter.
+- **Initiale Sortier-Heuristik war unter-spezifiziert.** Erst-Skizze hatte „sort by closeness to factor=1" als „spannendste Vergleiche" — beim Coden wurde klar, dass das 0.5× und 2× gleichwertig macht und der User bei wachsendem Verbrauch nicht mehr die kleinsten Werke sieht, obwohl genau das die Storytelling-Eskalation traegt. Sort auf `factor desc` umgestellt, weil das die Liste organisch von „0.5× Hobbit" am Anfang zu „50× Hobbit, 10× LotR" spaeter wachsen laesst. Lehre: bei Sortier-Heuristiken im Pure-Logic-Layer immer einen End-of-Spectrum-Walk machen (= „was zeigt das Feature bei 0 / 1× / 100×?"), bevor die erste Version commited wird.
+
+**Fuer naechste Season:**
+
+- **Settings-Fixture-Refactor als Mini-Pass am Season-Anfang erledigen.** Vor dem naechsten Feature-Lauf: `tests/_helpers/settings-fixture.ts` mit `buildTestSettings(overrides)` anlegen, beide Test-Files refaktorieren. ~30 Minuten Arbeit, killt die Schuld dauerhaft. **Vor** dem Feature-Code, damit das nicht wieder durch Scope-Konflikt verdraengt wird.
+- **Stats-Tab „Modelle"-View bekommt aktuell keinen Easter-Egg-Streifen.** Bewusst — Modelle-View ist eine Aufschluesselung, kein Aggregat. Falls der Streifen aber auch dort gewuenscht wird, ist die Verdrahtung trivial: Modelle-View hat ihren eigenen `models`-State im Store, mit `tokens_total = sum(models.map(m => m.tokens))` als abgeleitetem Wert. Notiz fuer eine moegliche Mini-Erweiterung.
+- **Token-Counts der Default-Werke sind Schaetzungen — kein wissenschaftlicher Anspruch.** Die `~1.33 × englische Wortzahl`-Heuristik ist grob; deutsche Uebersetzungen liegen typischerweise ~10% drueber, sehr token-dichte Sprachen (chinesisch, japanisch) deutlich anders. Bei einer K2-Migration koennte man den User die Token-Counts editieren lassen, statt eine perfekte Default-Liste zu pflegen.
+
+---
+
 ## Phase 2 Season 18 — First-Start-Workspace-Wizard
 
 **Ziel:** Roadmap-Feature aus dem „Projekt-Verwaltung"-Bereich: Beim ersten App-Start keinen stillen Default-Scan von `<home>/Projekte`, sondern einen Welcome-Screen mit expliziter Workspace-Auswahl. Roadmap-Detection-Vorgabe: `settings.json` existiert noch nicht. Skip-Variante optional (leerer Workspace mit spaeterer Settings-Aenderung).

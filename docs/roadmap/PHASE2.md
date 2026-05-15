@@ -213,7 +213,7 @@ Getrennte Cache-Token-Spalten + Statistik über die Cache-Hit-Rate.
 
 **Trigger:** Sobald die Frage „wie viel meiner Tokens kommen aus dem Cache" relevant wird — typischerweise wenn die Plan-Bars im 5h-Window früher voll laufen als erwartet und der User wissen will, ob mehr Cache-Reuse das Problem entschärfen würde.
 
-### Feature: Easter-Egg-Vergleiche
+### Feature: Easter-Egg-Vergleiche ✅
 
 Spielerische Token-Vergleiche basierend auf bekannten Werken.
 

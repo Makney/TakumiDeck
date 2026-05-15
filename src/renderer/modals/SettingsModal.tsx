@@ -321,6 +321,25 @@ function GeneralTab({ settings, setField }: TabBaseProps) {
         settings={settings}
         onChange={setRetention}
       />
+
+      {/* Phase-2 Season-19: Easter-Egg-Token-Vergleiche („du hast ~31×
+          LotR geschrieben") als dezenter Streifen unter der Heatmap.
+          Werk-Liste ist hartcodiert (DEFAULT_EASTER_EGG_WORKS); der
+          Toggle hier ist die einzige Konfigurations-Achse. */}
+      <Field
+        label="Easter-Egg-Vergleiche"
+        hint="Spielerischer Streifen unter der Aktivitaets-Heatmap, der den eigenen Token-Verbrauch mit bekannten Werken vergleicht (LotR, Bibel, Harry-Potter-Reihe usw.)."
+      >
+        <label className="td-settings-grid-row">
+          <span className="td-settings-grid-label">Aktiv</span>
+          <input
+            type="checkbox"
+            className="td-settings-input td-settings-input--narrow"
+            checked={settings.easter_egg_enabled}
+            onChange={(e) => setField('easter_egg_enabled', e.target.checked)}
+          />
+        </label>
+      </Field>
     </div>
   );
 }
