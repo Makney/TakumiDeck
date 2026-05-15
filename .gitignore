@@ -13,6 +13,10 @@ forge.env.d.ts
 .fallow-reports/
 .fallow/
 
+# Claude-Code-Runtime-Locks (ScheduleWakeup / Loop) — Projekt-Regeln in
+# .claude/rules/ bleiben weiter versioniert.
+.claude/*.lock
+
 # Env (lokale Secrets niemals committen)
 .env
 .env.*
