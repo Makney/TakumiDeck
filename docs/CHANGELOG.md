@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-15 — Phase 2 Season 17: Screenshot-Retention
+
+### Was jetzt geht
+
+- **`<userData>/screenshots/` wird beim App-Start automatisch aufgeraeumt.** Boot-One-Shot-Pass (analog zum Season-15-JSONL-Backfill) walkt das Verzeichnis genau einmal, loescht alle Files aelter als `screenshot_retention.max_age_days` Tage (Default 30) und cappt anschliessend die Gesamtgroesse auf `screenshot_retention.max_total_mib` MiB (Default 500), wobei die aeltesten Files zuerst weichen. Hartfehler im Pass blockt den App-Start nicht; `EACCES`/`EBUSY` pro File loggen und ueberspringen, sodass der Rest der Liste durchlaeuft. Beide Schwellen auf `0` deaktiviert die Auto-Retention komplett — der Manual-Clear-Button bleibt davon unabhaengig nutzbar.
+- **Zwei neue Schwellwert-Inputs im Settings-Modal-„Allgemein"-Tab.** Number-Felder fuer Tage (`0..3650`) und MiB (`0..1_000_000`) mit Auto-Save analog zu den anderen Number-Inputs (Debounce 500 ms). Defaults sind 30 / 500.
+- **Manual-Clear-Button mit Doppel-Confirm.** Anzeige „Aktuell: X Datei(en) · Y.Y MiB" via neuem `fs:screenshots-summary`-IPC neben einem Button „⌧ Alle loeschen", der beim ersten Klick auf „⚠ Wirklich alle loeschen?" wechselt und beim zweiten Klick den `fs:clear-screenshots`-IPC ausloest. Nach dem Clear erscheint kurz „✓ N Dateien geloescht (Y.Y MiB freigegeben)" und die Summary-Anzeige aktualisiert sich. Button ist disabled, wenn der Ordner leer ist.
+
+### Architektur-Notiz
+
+Variante A1 + B2 + C2 aus drei orthogonalen Achsen. **A1 Boot-One-Shot** statt periodischem Tick (A2) oder Lazy-nach-Save (A3) — Disk-Probleme akkumulieren ueber Tage/Wochen, nicht innerhalb einer Session, und die App wird im Daily-Use ohnehin haeufig neugestartet. **B2 Settings-Slot von Anfang an** statt hartcodiert (B1, Roadmap-Wortlaut) — User-Begruendung: weil das Modal-UI fuer den Manual-Clear-Button (C2) ohnehin aufgemacht wird, koennen die zwei Schwellwert-Felder direkt mitgezogen werden. **C2 Manual-Clear-Button** als Inline-Aufrufer des Doppel-Confirm-Patterns. Pure Logik in `src/main/screenshots/retention.ts`: `computeRetentionPlan(entries, now, config)` macht den Plan zweistufig (Age-Cutoff strict via `mtimeMs < cutoff`, dann Cap-Cut auf den Survivors mit `mtimeMs` ASC + `filePath` ASC als Tie-Break), `runScreenshotRetention` verdrahtet das mit einem `ScreenshotRetentionFsDriver` (`listEntries`+`unlinkFile`-Pair) fuer Test-Injection. `summarizeScreenshots` und `clearAllScreenshots` als eigene Helpers fuer die IPCs. Neue Schemas `FsScreenshotsSummaryInputSchema`+`FsClearScreenshotsInputSchema` (beide `z.object({}).strict()`), neue Channels `FsScreenshotsSummary`+`FsClearScreenshots`, neue Result-Types `FsScreenshotsSummaryResult`+`FsClearScreenshotsResult`. Boot-Wiring in `main.ts:283` nach dem JSONL-Path-Backfill mit try/catch — Settings werden bei jedem Boot frisch via `settings.read()` gelesen. Doppel-Confirm-Pattern bewusst inline geschrieben (3. Aufrufer nach `HistoryActionModal` + `RemoveProjectModal`); TECH_SCHULDEN-Eintrag #2 dokumentiert die ausstehende Extraktion. 20 neue Tests (17 Retention-Pure-Logic + Boot-Pass-Bilanz + Failure-Counting + Summary/Clear; 3 Schema-Defaults + Off-Switches + negative Werte). Gesamtsuite 764/764 gruen (+20 gegenueber Zwischen-Review-Endstand 744), typecheck + lint sauber. package.json gebumpt 0.1.2 → 0.1.3.
+
+---
+
 ## 2026-05-15 — Zwischen-Review v0.1.2: Circular-Dep-Fix + Marker-Sichtbarkeit + Selector-Hygiene
 
 ### Was jetzt geht

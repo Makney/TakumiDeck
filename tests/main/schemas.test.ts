@@ -57,6 +57,36 @@ describe('AppSettings-Schema', () => {
     };
     expect(() => AppSettingsSchema.parse(negative)).toThrow();
   });
+
+  // Phase-2 Season-17: Screenshot-Retention.
+  it('Defaults enthalten 30 Tage / 500 MiB', () => {
+    const defaults = buildDefaultSettings();
+    expect(defaults.screenshot_retention.max_age_days).toBe(30);
+    expect(defaults.screenshot_retention.max_total_mib).toBe(500);
+  });
+
+  it('akzeptiert max_age_days=0 und max_total_mib=0 (Auto-Retention aus)', () => {
+    const defaults = buildDefaultSettings();
+    const off = {
+      ...defaults,
+      screenshot_retention: { max_age_days: 0, max_total_mib: 0 },
+    };
+    expect(() => AppSettingsSchema.parse(off)).not.toThrow();
+  });
+
+  it('lehnt negative Screenshot-Retention-Werte ab', () => {
+    const defaults = buildDefaultSettings();
+    const negDays = {
+      ...defaults,
+      screenshot_retention: { max_age_days: -1, max_total_mib: 500 },
+    };
+    expect(() => AppSettingsSchema.parse(negDays)).toThrow();
+    const negMib = {
+      ...defaults,
+      screenshot_retention: { max_age_days: 30, max_total_mib: -10 },
+    };
+    expect(() => AppSettingsSchema.parse(negMib)).toThrow();
+  });
 });
 
 describe('AppSettingsPatch-Schema', () => {

@@ -6,10 +6,12 @@ import type {
   SessionStatusPushEvent,
   FsListTemplatesInput,
   FsListTreeInput,
+  FsClearScreenshotsResult,
   FsReadInput,
   FsReadResult,
   FsSaveScreenshotInput,
   FsSaveScreenshotResult,
+  FsScreenshotsSummaryResult,
   FsTreeNode,
   FsWriteInput,
   FsWriteResult,
@@ -148,6 +150,15 @@ const api: RendererApi = {
     saveScreenshot: (input: FsSaveScreenshotInput) =>
       ipcRenderer.invoke(Channels.FsSaveScreenshot, input) as Promise<
         IpcResult<FsSaveScreenshotResult>
+      >,
+    // Phase-2 Season-17: Settings-Manual-Clear-Block fuer <userData>/screenshots/.
+    screenshotsSummary: () =>
+      ipcRenderer.invoke(Channels.FsScreenshotsSummary, {}) as Promise<
+        IpcResult<FsScreenshotsSummaryResult>
+      >,
+    clearScreenshots: () =>
+      ipcRenderer.invoke(Channels.FsClearScreenshots, {}) as Promise<
+        IpcResult<FsClearScreenshotsResult>
       >,
     // Phase-2 Season-2: File.path wurde in Electron 32 entfernt. webUtils.getPathForFile
     // ist die offizielle Bridge — synchron, läuft im Preload-Process (hat Disk-Zugriff

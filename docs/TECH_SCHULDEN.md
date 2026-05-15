@@ -44,17 +44,17 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## DoubleConfirmButton-Pattern dupliziert in zwei Modalen (Zwischen-Review v0.1.2)
+## DoubleConfirmButton-Pattern dupliziert in drei Stellen (Zwischen-Review v0.1.2, Update Season 17)
 
-**Bereich:** `src/renderer/modals/HistoryActionModal.tsx:201-220`, `src/renderer/modals/RemoveProjectModal.tsx:104-131`
+**Bereich:** `src/renderer/modals/HistoryActionModal.tsx:201-220`, `src/renderer/modals/RemoveProjectModal.tsx:104-131`, `src/renderer/modals/SettingsModal.tsx` (ScreenshotRetentionBlock, Season 17)
 
-**Was:** Fallow-Befund „Clone group 11" — 53 Zeilen Code-Duplikat. Beide Modale rendern einen Doppel-Confirm-Footer-Button mit identischem Pattern: lokaler `confirmStage`-State, Inline-`style={confirmStage ? { borderColor: 'var(--td-red)', color: 'var(--td-red)' } : undefined}`, Title-Tooltip-Wechsel, Label-Switch (`„⌧ Entfernen"` ↔ `„⚠ Wirklich entfernen?"`). HistoryActionModal nutzt das Pattern fuer Archivieren, RemoveProjectModal fuer Projekt-Entfernen.
+**Was:** Fallow-Befund „Clone group 11" — urspruenglich 53 Zeilen Code-Duplikat zwischen `HistoryActionModal` und `RemoveProjectModal`. **Season 17** hat den dritten Aufrufer hinzugefuegt: der Manual-Clear-Button im `ScreenshotRetentionBlock` (Settings-Modal, „Allgemein"-Tab) nutzt dasselbe Pattern (`confirmStage`-State `idle`/`confirm`/`busy`, Inline-`style={confirmStage === 'confirm' ? { borderColor: 'var(--td-red)', color: 'var(--td-red)' } : undefined}`, Title-Tooltip-Wechsel, Label-Switch „⌧ Alle loeschen" ↔ „⚠ Wirklich alle loeschen?"). Der dritte Block hat zusaetzlich eine `busy`-Zwischenstufe waehrend des async IPC-Calls, die die zwei Modale aktuell nicht haben (dort kommt das `busy`-Flag als Prop von aussen).
 
-**Warum so:** Zwei separate Implementierungen, weil die jeweiligen Modale unabhaengig in Season 8 (RemoveProject) und Sprint 7 (HistoryAction) entstanden sind. Beim Schreiben des zweiten war die Aehnlichkeit nicht offensichtlich genug fuer eine sofortige Extraktion — Modal-Spezifika (Label-Variante, Tooltip-Wortlaut) lagen jeweils im Code-Body.
+**Warum so:** Beim dritten Aufrufer (Season 17) wurde die Extraktion bewusst NICHT mitgezogen, um die Season-Scope-Grenze einzuhalten (Retention-Modul + Schema + zwei IPCs + UI-Block + Tests waren bereits ein voller Pass). Drei inline-Aufrufer mit identischem Pattern-Body sind noch handhabbar; der Pflege-Schmerz wird erst akut, wenn ein vierter Aufrufer dazukommt oder der Inline-Style-Switch um zusaetzliche States erweitert wird.
 
-**Risiko:** Bei UI-Polish-Changes (z.B. neue Farb-Konvention fuer destruktive Aktionen, andere Icon-Konvention, Keyboard-Shortcut-Hinweis) muss das Pattern an zwei Stellen synchron gepflegt werden. Beim dritten Aufrufer (z.B. „Session loeschen") wuerde der Pflege-Aufwand quadratisch wachsen.
+**Risiko:** Bei UI-Polish-Changes (z.B. neue Farb-Konvention fuer destruktive Aktionen, andere Icon-Konvention, Keyboard-Shortcut-Hinweis) muss das Pattern an *drei* Stellen synchron gepflegt werden. Zusaetzliches Drift-Risiko aus der Season-17-Variante mit eigener `busy`-Stufe — wenn die zwei aelteren Modale ihre `busy`-State-Quelle anders modellieren (Prop von aussen vs. lokaler State), divergiert die Doppel-Confirm-Logik weiter, statt zu konvergieren.
 
-**Aufloesung:** Neue `<DoubleConfirmButton>`-Komponente in `src/renderer/components/`. Props: `onConfirm`, `initialLabel`, `confirmLabel`, `initialTitle`, `confirmTitle`, `busy`. Lokaler `confirmStage`-State + Style-Switch wandern in die Komponente. ~30 LOC neue Komponente + zwei Aufrufer-Refactors auf je ~5 Zeilen. Lohnt sich beim **dritten** Aufrufer — zwei Stellen sind die Refactor-Schwelle gerade noch nicht ueberschritten, weil die Pattern-Erkennung im Daily-Use nicht stoert.
+**Aufloesung:** Neue `<DoubleConfirmButton>`-Komponente in `src/renderer/components/`. Props: `onConfirm`, `initialLabel`, `confirmLabel`, `initialTitle`, `confirmTitle`, optional `busy` (von aussen) ODER intern verwaltete `busy`-Stufe. Lokaler `confirmStage`-State + Style-Switch wandern in die Komponente. ~40 LOC neue Komponente + drei Aufrufer-Refactors auf je ~5 Zeilen. **Trigger:** beim vierten Aufrufer, oder wenn die `busy`-Achse aus Season 17 in eines der aelteren Modale rueckwirkend gezogen werden muss.
 
 ---
 

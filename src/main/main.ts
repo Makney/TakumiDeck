@@ -43,6 +43,7 @@ import { JsonlWatcher, defaultClaudeProjectsPath } from './jsonl/watcher';
 import { JsonlPollingRing } from './jsonl/polling-ring';
 import { realJsonlReadDriver } from './jsonl/parser';
 import { runJsonlPathBackfill } from './jsonl/backfill';
+import { runScreenshotRetention } from './screenshots/retention';
 import { Channels } from '@shared/ipc-channels';
 import { scanWorkspace, realFsDriver } from './workspace/scanner';
 
@@ -289,6 +290,25 @@ void app.whenReady().then(async () => {
       });
     } catch (e) {
       logger.warn('[startup] JSONL-Path-Backfill fehlgeschlagen', e);
+    }
+
+    // Phase-2 Season-17: Boot-One-Shot-Retention fuer <userData>/screenshots/.
+    // Age-Cutoff + Size-Cap aus settings.screenshot_retention. Hartfehler
+    // (z.B. EACCES auf den Folder) blockt den App-Start NICHT — der Manual-
+    // Clear-Button im Settings-Modal ist der Fallback-Pfad.
+    try {
+      const currentSettings = settings.read();
+      await runScreenshotRetention({
+        screenshotsDir: screenshotsDirFromUserData(getDataDir()),
+        config: {
+          maxAgeDays: currentSettings.screenshot_retention.max_age_days,
+          maxTotalBytes:
+            currentSettings.screenshot_retention.max_total_mib * 1024 * 1024,
+        },
+        log: logger,
+      });
+    } catch (e) {
+      logger.warn('[startup] Screenshot-Retention fehlgeschlagen', e);
     }
 
     // Phase-2 Season-15: bereits laufende / idle / waiting / permission-prompt

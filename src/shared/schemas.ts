@@ -53,6 +53,14 @@ export const AppSettingsSchema = z.object({
     enabled: z.boolean(),
     threshold_percent: z.number().min(0).max(100),
   }),
+  // Phase-2 Season-17: Boot-One-Shot-Retention fuer <userData>/screenshots/.
+  // `max_age_days = 0` schaltet die Age-Regel ab, `max_total_mib = 0` das Cap.
+  // Beide auf 0 deaktiviert die Auto-Retention komplett — der Manual-Clear-
+  // Button im Settings-Modal funktioniert davon unabhaengig.
+  screenshot_retention: z.object({
+    max_age_days: z.number().min(0).max(3650),
+    max_total_mib: z.number().min(0).max(1_000_000),
+  }),
   terminal_font_family: z.string(),
   terminal_font_size: z.number().positive(),
   theme: z.enum(['dark', 'light']),
@@ -269,6 +277,13 @@ export const FsSaveScreenshotInputSchema = z.object({
   // MIME-Whitelist + Größen-Cap, nicht die Bytes-Korrektheit).
   base64: z.string().min(1).max(33 * 1024 * 1024),
 });
+
+// Phase-2 Season-17: Summary + Clear haben keinen Input ausser dem Channel-
+// Kontext — der Screenshots-Ordner liegt in <userData>/screenshots/ und ist
+// nicht vom Renderer beeinflussbar. Wir validieren trotzdem ein leeres Objekt
+// fuer Konsistenz mit den anderen IPCs (zod-Boundary, kein Trust).
+export const FsScreenshotsSummaryInputSchema = z.object({}).strict();
+export const FsClearScreenshotsInputSchema = z.object({}).strict();
 
 // --- Git (Sprint 7) --------------------------------------------------
 

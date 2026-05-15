@@ -87,6 +87,11 @@ export const Channels = {
   // Image-Bytes über diesen Channel in <userData>/screenshots/, bekommt
   // den absoluten Pfad zurück und pastet ihn ins xterm.
   FsSaveScreenshot: 'fs:save-screenshot',
+  // Phase-2 Season-17: Settings-Manual-Clear-Block. Summary liefert
+  // {fileCount, totalBytes} ohne FS-Mutation; Clear loescht alle Files
+  // im <userData>/screenshots/ und liefert die Bilanz zurueck.
+  FsScreenshotsSummary: 'fs:screenshots-summary',
+  FsClearScreenshots: 'fs:clear-screenshots',
 
   // Settings (Sprint 1)
   SettingsGet: 'settings:get',

@@ -69,6 +69,13 @@ export interface AppSettings {
     enabled: boolean;
     threshold_percent: number;
   };
+  // Phase-2 Season-17: Boot-One-Shot-Retention fuer <userData>/screenshots/.
+  // `max_age_days = 0` schaltet die Age-Regel ab, `max_total_mib = 0` das Cap.
+  // Beide auf 0 deaktiviert die Auto-Retention komplett.
+  screenshot_retention: {
+    max_age_days: number;
+    max_total_mib: number;
+  };
   terminal_font_family: string;
   terminal_font_size: number;
   theme: 'dark' | 'light';
@@ -377,6 +384,22 @@ export interface FsSaveScreenshotResult {
   absolutePath: string;
   fileName: string;
   bytesWritten: number;
+}
+
+// Phase-2 Season-17: Summary fuer den Settings-Manual-Clear-Block (vor und
+// nach dem Klick).
+export interface FsScreenshotsSummaryResult {
+  fileCount: number;
+  totalBytes: number;
+}
+
+// Phase-2 Season-17: Bilanz nach Manual-Clear. `failures` zaehlt Einzel-Files,
+// die der unlink-Pass nicht losgeworden ist (z.B. EBUSY), damit das UI eine
+// dezente Warnung zeigen kann.
+export interface FsClearScreenshotsResult {
+  filesDeleted: number;
+  bytesFreed: number;
+  failures: number;
 }
 
 // --- Git (Sprint 7) --------------------------------------------------
@@ -833,6 +856,13 @@ export interface RendererApi {
     saveScreenshot: (
       input: FsSaveScreenshotInput,
     ) => Promise<IpcResult<FsSaveScreenshotResult>>;
+    // Phase-2 Season-17: liefert die aktuelle Anzeige fuer den Settings-
+    // Manual-Clear-Block ohne FS-Mutation.
+    screenshotsSummary: () => Promise<IpcResult<FsScreenshotsSummaryResult>>;
+    // Phase-2 Season-17: loescht alle Files im <userData>/screenshots/.
+    // Im UI hinter einem Doppel-Confirm; der IPC selbst hat keinen Confirm-
+    // Schritt, der Caller traegt die Verantwortung.
+    clearScreenshots: () => Promise<IpcResult<FsClearScreenshotsResult>>;
     // Phase-2 Season-2: Bridge zu Electron's webUtils.getPathForFile —
     // File.path wurde in Electron 32 entfernt. Liefert leeren String,
     // wenn das File keine Disk-Repräsentation hat (z.B. Clipboard-

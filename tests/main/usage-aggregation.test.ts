@@ -39,6 +39,7 @@ function buildSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     accent_color: '#4ade80',
     shortcuts: {},
     sensitive_file_patterns: [],
+    screenshot_retention: { max_age_days: 30, max_total_mib: 500 },
     ...overrides,
   };
 }

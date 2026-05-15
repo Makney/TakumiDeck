@@ -161,6 +161,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
 | `Screenshot-Drag-and-Drop`           | ✅      | 2026-05-12 (Phase-2-Season-2) — Drag-Drop von Image-Files ins Terminal-Pane pastet den absoluten Pfad (Quoting bei Whitespace); Direkt-Bilder ohne Disk-Pfad und Clipboard-Images (Ctrl+Shift+V nach Win+Shift+S) werden nach `<userData>/screenshots/` gespeichert. MIME-Whitelist PNG/JPEG/GIF/WebP, neuer IPC `fs:save-screenshot`, Preload-Bridge `webUtils.getPathForFile`. Nicht aus PHASE2.md — User-Trigger. |
+| `Screenshot-Retention`               | ✅      | 2026-05-15 (Phase-2-Season-17) — Boot-One-Shot-Pass walkt `<userData>/screenshots/` einmal beim App-Start, loescht Files aelter als `max_age_days` (Default 30) und cappt die Gesamtgroesse auf `max_total_mib` (Default 500, aelteste Files zuerst). Pure Helper `computeRetentionPlan` zweistufig (Age-Cutoff strict `mtimeMs < cutoff`, dann Cap-Cut auf Survivors). Hartfehler blockt App-Start nicht, Per-File-Failures (EACCES/EBUSY) loggen und ueberspringen. Beide Schwellen auf `0` deaktiviert die Auto-Retention. Schwellen im Settings-Modal-„Allgemein"-Tab via Number-Inputs (Auto-Save 500 ms), plus Manual-Clear-Button mit Doppel-Confirm und Anzeige „X Datei(en) · Y.Y MiB" via neuen IPCs `fs:screenshots-summary`+`fs:clear-screenshots`. |
 
 ### Projekt-Verwaltung (Phase 2)
 

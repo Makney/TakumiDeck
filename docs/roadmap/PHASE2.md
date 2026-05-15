@@ -80,7 +80,7 @@ Bilder per Drag-and-Drop oder Clipboard-Paste ins Terminal-Pane einfügen.
 
 **Trigger:** Daily-Driver-Komfort — entfällt das manuelle Pfad-Tippen für Bild-Inputs. Feature wurde in Phase 2 Season 2 außerhalb der Roadmap implementiert und ist hier rückwirkend erfasst.
 
-### Feature: Screenshot-Retention
+### Feature: Screenshot-Retention ✅
 
 Aufräum-Mechanismus für `<userData>/screenshots/`.
 

@@ -24,6 +24,28 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Screenshot-Retention: Boot-One-Shot + Settings-Slot von Anfang an + Manual-Clear
+
+**Entscheidung:** Auto-Retention laeuft genau einmal beim App-Start hinter try/catch (Variante A1). Schwellen leben in `AppSettings.screenshot_retention` als zwei Number-Felder (`max_age_days`/`max_total_mib`, Defaults 30/500, Variante B2) statt hartcodierter Konstanten. Plus Manual-Clear-Button im Settings-Modal mit Doppel-Confirm und Live-Anzeige der aktuellen Belegung (Variante C2).
+
+**Varianten:**
+
+- **A1** Boot-One-Shot (gewaehlt) — einmal pro App-Start, analog zum Season-15-JSONL-Backfill.
+- **A2** Boot + periodischer Tick — zusaetzlich alle paar Stunden waehrend die App laeuft.
+- **A3** Lazy nach jedem `fs:save-screenshot` — Cap-Check bei Speicher-Vorgang.
+- **B1** Hartcodierte Konstanten im Retention-Modul — Roadmap-Wortlaut, Settings-Slot „sobald empirisch noetig".
+- **B2** Settings-Slot von Anfang an (gewaehlt) — zwei Number-Felder im AppSettingsSchema, UI im „Allgemein"-Tab.
+- **B3** Hartcodiert plus Hidden-Override via settings.json ohne UI.
+- **C1** Kein Manual-Clear-Button — Auto-Retention reicht erstmal.
+- **C2** Manual-Clear-Button im „Allgemein"-Tab (gewaehlt) — Anzeige + Doppel-Confirm, neben Open-Data-Folder.
+- **C3** Sammel-„Cache leeren"-Button fuer mehrere `<userData>`-Ordner.
+
+**Grund:** **A1** weil Disk-Verbrauch ueber Tage/Wochen akkumuliert, nicht innerhalb einer Session — periodischer Tick lohnt nicht, solange das nicht empirisch wehtut. Die App wird im Daily-Use ohnehin haeufig neugestartet (Dev-Mode-HMR + Production-Beenden). A3 misst nur bei Aktivitaet und reagiert auf das Symptom, nicht auf das Disk-Wachstum als solches. **B2** statt B1 (Roadmap-Empfehlung) auf User-Trigger: weil das Settings-Modal-UI fuer den Manual-Clear-Button (C2) ohnehin aufgemacht wird, koennen die zwei Schwellwert-Felder direkt mitgezogen werden. „Wenn du eh in Settings arbeitest, kann man das direkt mitziehen." Vermeidet die spaetere Settings-Schema-Versionierungs-Falle, weil das Feld jetzt schon im Vollschema steht. **C2** statt C1 (Roadmap-Default) gibt dem User sofort den „jetzt aufraeumen"-Hebel, der die Auto-Retention im Daily-Use ergaenzt — Auto-Retention laeuft nur beim Boot, Live-Cleanup-Wunsch entsteht aber spontan. C3 (Sammel-Button fuer logs/cache/screenshots) wurde abgelehnt, weil der Scope-Bereich („was wird mit-geloescht") nicht im aktuellen Use-Case zwingend ist und das Risiko bringt, versehentlich Log-Dateien zu loeschen.
+
+**Konsequenz:** Pure Logik `computeRetentionPlan` in `src/main/screenshots/retention.ts` ist zweistufig: zuerst Age-Cutoff (strict `mtimeMs < cutoff`, damit Files genau am Schwellwert noch ueberleben), dann Cap-Cut auf den Survivors mit `mtimeMs` ASC + `filePath` ASC als Tie-Break (deterministisch fuer Tests). `runScreenshotRetention` mit `ScreenshotRetentionFsDriver`-Injection fuer Tests. `summarizeScreenshots` und `clearAllScreenshots` als eigene Helpers fuer die zwei IPCs. Boot-Wiring liest `settings.read()` bei jedem App-Start frisch, damit eine geaenderte Schwelle ohne App-Restart fuer den naechsten Boot wirksam ist (Wirksamkeit erst beim *nachfolgenden* Boot ist akzeptabel — sonst muesste der Watcher die Retention triggern, was die Boot-One-Shot-Semantik verlaesst). Beide Schwellen auf `0` ist explizit als „Auto-Retention aus" dokumentiert; der Manual-Clear-Button bleibt unabhaengig nutzbar.
+
+**Implementierungsdetail:** Doppel-Confirm-Pattern bewusst INLINE im Settings-Modal geschrieben (3. Inline-Aufrufer nach `HistoryActionModal` + `RemoveProjectModal`). Der TECH_SCHULDEN-Eintrag #2 hatte „beim dritten Aufrufer" als Refactor-Trigger benannt — die Extraktion wurde trotzdem deferred, weil sie die Season-Scope-Grenze (Retention-Modul + Schema + zwei IPCs + UI-Block + Tests) reisst und der Pflege-Schmerz erst beim *vierten* Aufrufer akut wird (drei Aufrufer mit identischem Pattern-Body sind noch handhabbar). TECH_SCHULDEN-Eintrag wird auf „Trigger erreicht, Extraktion deferred bis 4. Aufrufer" aktualisiert.
+
 ## 5h-Bar: Session-Block-Aggregat statt Rolling-Countdown
 
 **Entscheidung:** Das 5h-Limit laeuft als echter Anthropic-Session-Block. Das Window startet beim ersten Token nach dem letzten Block-Ende, summiert genau `window_hours` Stunden lang und faellt am Block-Ende schlagartig auf 0 — keine rolling-Aggregation mehr ueber „letzte 5h ab jetzt". Neues optionales Schema-Feld `LimitBar.aggregation_mode` (`rolling` | `session_block`); Default-by-Convention im Resolver: `window_hours <= 6` → `session_block`, sonst `rolling`.

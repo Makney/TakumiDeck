@@ -72,6 +72,13 @@ export function buildDefaultSettings(): AppSettings {
       threshold_percent: 20,
     },
 
+    // Phase-2 Season-17: Screenshot-Retention. 30 Tage / 500 MiB — Roadmap-
+    // Default-Werte. Wer komplett deaktivieren will, setzt beide Werte auf 0.
+    screenshot_retention: {
+      max_age_days: 30,
+      max_total_mib: 500,
+    },
+
     terminal_font_family: 'JetBrains Mono, Cascadia Code, MesloLGS NF',
     terminal_font_size: 13,
 

@@ -263,6 +263,18 @@ function GeneralTab({ settings, setField }: TabBaseProps) {
     }
   }, []);
 
+  // Phase-2 Season-17: nested object analog zu token_warning_thresholds — eigener
+  // Setter, der den Patch aufs Sub-Feld zusammenbaut und ueber setField('screenshot_retention')
+  // schiebt. NaN/negative Eingaben werden verworfen, damit der Auto-Save-Patch nicht
+  // vom Schema abgewiesen wird.
+  const setRetention = useCallback(
+    (patch: Partial<{ max_age_days: number; max_total_mib: number }>) => {
+      const next = { ...settings.screenshot_retention, ...patch };
+      setField('screenshot_retention', next);
+    },
+    [settings.screenshot_retention, setField],
+  );
+
   return (
     <div className="td-settings-section">
       <Field label="Theme" hint="Aktuell nur Dark verfügbar — Light kommt in Phase 2.">
@@ -304,7 +316,157 @@ function GeneralTab({ settings, setField }: TabBaseProps) {
           spellCheck={false}
         />
       </Field>
+
+      <ScreenshotRetentionBlock
+        settings={settings}
+        onChange={setRetention}
+      />
     </div>
+  );
+}
+
+// Phase-2 Season-17: Aufraeum-Block fuer <userData>/screenshots/. Auto-Retention
+// laeuft beim App-Start (Boot-Pass), dieser Block liefert die Anzeige + zwei
+// Schwellwert-Inputs + Manual-Clear-Button mit Doppel-Confirm.
+//
+// Doppel-Confirm-Pattern als dritter Inline-Aufrufer nach HistoryActionModal +
+// RemoveProjectModal. Der TECH_SCHULDEN-Eintrag #2 dokumentiert die ausstehende
+// Extraktion in eine eigene Komponente — bewusst hier nicht mitgezogen, damit
+// die Season schmal bleibt.
+function ScreenshotRetentionBlock({
+  settings,
+  onChange,
+}: {
+  settings: AppSettings;
+  onChange: (patch: Partial<{ max_age_days: number; max_total_mib: number }>) => void;
+}) {
+  const [summary, setSummary] = useState<{ fileCount: number; totalBytes: number } | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [clearStage, setClearStage] = useState<'idle' | 'confirm' | 'busy'>('idle');
+  const [clearError, setClearError] = useState<string | null>(null);
+  const [clearedHint, setClearedHint] = useState<string | null>(null);
+
+  const refreshSummary = useCallback(async () => {
+    setSummaryError(null);
+    const res = await window.api.fs.screenshotsSummary();
+    if (res.ok) {
+      setSummary(res.data);
+    } else {
+      setSummary(null);
+      setSummaryError(res.error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSummary();
+  }, [refreshSummary]);
+
+  const handleClear = useCallback(async () => {
+    if (clearStage === 'idle') {
+      setClearStage('confirm');
+      return;
+    }
+    if (clearStage === 'busy') return;
+    setClearStage('busy');
+    setClearError(null);
+    setClearedHint(null);
+    try {
+      const res = await window.api.fs.clearScreenshots();
+      if (res.ok) {
+        const mib = (res.data.bytesFreed / (1024 * 1024)).toFixed(1);
+        setClearedHint(
+          `✓ ${res.data.filesDeleted} Datei${res.data.filesDeleted === 1 ? '' : 'en'}` +
+            ` geloescht (${mib} MiB freigegeben)` +
+            (res.data.failures > 0 ? ` · ${res.data.failures} Fehler` : ''),
+        );
+        await refreshSummary();
+      } else {
+        setClearError(res.error);
+      }
+    } finally {
+      setClearStage('idle');
+    }
+  }, [clearStage, refreshSummary]);
+
+  const summaryLabel = summary
+    ? `${summary.fileCount} Datei${summary.fileCount === 1 ? '' : 'en'} · ` +
+      `${(summary.totalBytes / (1024 * 1024)).toFixed(1)} MiB`
+    : summaryError
+      ? '— (Lese-Fehler)'
+      : '— (lade...)';
+
+  return (
+    <Field
+      label="Screenshot-Retention"
+      hint="Beim App-Start wird <userData>/screenshots/ aufgeraeumt: alles aelter als X Tage fliegt raus, plus Cap auf Gesamtgroesse (aelteste zuerst). Beide Schwellen auf 0 deaktiviert die Auto-Retention; der Manual-Clear-Button bleibt unabhaengig nutzbar."
+    >
+      <div className="td-settings-grid">
+        <div className="td-settings-grid-row">
+          <label className="td-settings-grid-label">Maximum Alter (Tage)</label>
+          <input
+            type="number"
+            min={0}
+            max={3650}
+            step={1}
+            className="td-settings-input td-settings-input--narrow"
+            value={settings.screenshot_retention.max_age_days}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n) && n >= 0 && n <= 3650) {
+                onChange({ max_age_days: Math.floor(n) });
+              }
+            }}
+          />
+        </div>
+        <div className="td-settings-grid-row">
+          <label className="td-settings-grid-label">Maximum Gesamtgroesse (MiB)</label>
+          <input
+            type="number"
+            min={0}
+            max={1_000_000}
+            step={10}
+            className="td-settings-input td-settings-input--narrow"
+            value={settings.screenshot_retention.max_total_mib}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n) && n >= 0 && n <= 1_000_000) {
+                onChange({ max_total_mib: Math.floor(n) });
+              }
+            }}
+          />
+        </div>
+        <div className="td-settings-grid-row">
+          <label className="td-settings-grid-label">Aktuell</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="td-settings-hint">{summaryLabel}</span>
+            <button
+              type="button"
+              className="td-action-btn"
+              onClick={() => void handleClear()}
+              disabled={clearStage === 'busy' || (summary !== null && summary.fileCount === 0)}
+              style={
+                clearStage === 'confirm'
+                  ? { borderColor: 'var(--td-red)', color: 'var(--td-red)' }
+                  : undefined
+              }
+              title={
+                clearStage === 'confirm'
+                  ? 'Klick erneut zum Bestaetigen'
+                  : 'Alle Screenshots in <userData>/screenshots/ loeschen'
+              }
+            >
+              {clearStage === 'confirm'
+                ? '⚠ Wirklich alle loeschen?'
+                : clearStage === 'busy'
+                  ? '…'
+                  : '⌧ Alle loeschen'}
+            </button>
+          </div>
+        </div>
+      </div>
+      {clearedHint && <div className="td-settings-hint-success">{clearedHint}</div>}
+      {clearError && <div className="td-md-error">{clearError}</div>}
+    </Field>
   );
 }
 

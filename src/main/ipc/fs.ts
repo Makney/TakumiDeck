@@ -4,16 +4,20 @@ import { promises as fs } from 'node:fs';
 import { Channels } from '@shared/ipc-channels';
 import { ok, err, errFromUnknown } from '@shared/result';
 import {
+  FsClearScreenshotsInputSchema,
   FsListTemplatesInputSchema,
   FsListTreeInputSchema,
   FsReadInputSchema,
   FsSaveScreenshotInputSchema,
+  FsScreenshotsSummaryInputSchema,
   FsWriteInputSchema,
 } from '@shared/schemas';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
 import type {
+  FsClearScreenshotsResult,
   FsReadResult,
   FsSaveScreenshotResult,
+  FsScreenshotsSummaryResult,
   FsTreeNode,
   FsWriteResult,
   IpcResult,
@@ -22,6 +26,7 @@ import type {
 import { listTemplates, realTemplateFsDriver } from '../templates/reader';
 import { scanProjectTree, realFsTreeDriver } from '../fs/treeScanner';
 import { buildScreenshotFilename } from '../fs/screenshotSave';
+import { clearAllScreenshots, summarizeScreenshots } from '../screenshots/retention';
 import type { ProjectRepository } from '../db/repos/projects';
 import type { Logger } from '../logger';
 import { assertFromMainWindow } from './sender-guard';
@@ -186,6 +191,38 @@ export function registerFsIpc(deps: {
       return ok(result);
     } catch (e) {
       return errFromUnknown(e, 'FS_SAVE_SCREENSHOT');
+    }
+  });
+
+  ipcMain.handle(Channels.FsScreenshotsSummary, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      FsScreenshotsSummaryInputSchema.parse(payload);
+      const summary = await summarizeScreenshots({ screenshotsDir });
+      const result: FsScreenshotsSummaryResult = summary;
+      return ok(result);
+    } catch (e) {
+      log.warn('[fs:screenshots-summary] fehlgeschlagen', e);
+      return errFromUnknown(e, 'FS_SCREENSHOTS_SUMMARY');
+    }
+  });
+
+  ipcMain.handle(Channels.FsClearScreenshots, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      FsClearScreenshotsInputSchema.parse(payload);
+      const cleared = await clearAllScreenshots({ screenshotsDir, log });
+      const result: FsClearScreenshotsResult = cleared;
+      log.info(
+        `[fs:clear-screenshots] filesDeleted=${result.filesDeleted}` +
+          ` bytesFreed=${result.bytesFreed} failures=${result.failures}`,
+      );
+      return ok(result);
+    } catch (e) {
+      log.warn('[fs:clear-screenshots] fehlgeschlagen', e);
+      return errFromUnknown(e, 'FS_CLEAR_SCREENSHOTS');
     }
   });
 
