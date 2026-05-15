@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import {
   scanWorkspace,
+  shouldRunInitialWorkspaceScan,
   type FsLikeDriver,
 } from '../../src/main/workspace/scanner';
 
@@ -209,5 +210,45 @@ describe('scanWorkspace', () => {
     };
     const result = await scanWorkspace(root, driver);
     expect(result).toEqual([{ name: 'ok', path: ok, has_git: false }]);
+  });
+});
+
+// Phase-2 Season-18: Boot-Skip-Predicate fuer den initialen Workspace-Scan.
+// Pure-Logik, daher knapper Test-Block ohne Fake-FS-Setup.
+describe('shouldRunInitialWorkspaceScan', () => {
+  it('liefert true bei abgeschlossenem Wizard und nicht-leerem Pfad', () => {
+    expect(
+      shouldRunInitialWorkspaceScan({
+        workspace_wizard_completed: true,
+        workspace_path: '/home/user/Projekte',
+      }),
+    ).toBe(true);
+  });
+
+  it('liefert false, solange der Wizard nicht abgeschlossen ist', () => {
+    expect(
+      shouldRunInitialWorkspaceScan({
+        workspace_wizard_completed: false,
+        workspace_path: '/home/user/Projekte',
+      }),
+    ).toBe(false);
+  });
+
+  it('liefert false bei leerem workspace_path (Skip-Pfad)', () => {
+    expect(
+      shouldRunInitialWorkspaceScan({
+        workspace_wizard_completed: true,
+        workspace_path: '',
+      }),
+    ).toBe(false);
+  });
+
+  it('liefert false bei reinem Whitespace im workspace_path', () => {
+    expect(
+      shouldRunInitialWorkspaceScan({
+        workspace_wizard_completed: true,
+        workspace_path: '   ',
+      }),
+    ).toBe(false);
   });
 });

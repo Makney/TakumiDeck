@@ -108,7 +108,7 @@ Sidebar-Action zum Entfernen eines Projekts aus der Liste.
 
 **Trigger:** Empirisch — sobald die Sidebar durch alte Scans, Backup-Ordner oder umbenannte Projekte zumüllt.
 
-### Feature: First-Start-Workspace-Wizard
+### Feature: First-Start-Workspace-Wizard ✅
 
 Beim ersten App-Start keinen automatischen Default-Workspace-Scan, sondern explizite Auswahl.
 

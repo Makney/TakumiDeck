@@ -3,6 +3,7 @@ import type { AppSettings, IpcResult } from '@shared/types';
 import { TabContainer } from './panels/TabContainer';
 import { HistoryPane } from './panels/HistoryPane';
 import { LeftSidebar } from './panels/LeftSidebar';
+import { WorkspaceWizard } from './panels/WorkspaceWizard';
 import { EditorPane } from './panels/EditorPane';
 import { RightStack } from './panels/RightStack';
 import { PlanPane } from './panels/PlanPane';
@@ -117,6 +118,20 @@ export function App() {
       <div className="td-bootstrap">
         <h1>TakumiDeck</h1>
         <div className="td-meta">lädt…</div>
+      </div>
+    );
+  }
+
+  // Phase-2 Season-18: First-Start-Workspace-Wizard. Solange das Flag in den
+  // Settings auf `false` steht (frische settings.json), zeigt die App den
+  // Welcome-Screen statt des Hauptlayouts. Der Wizard ruft `setSettings` mit
+  // den per `settings:set` zurueckgegebenen, validierten Settings — danach
+  // greift dieser Branch nicht mehr und das normale Layout rendert.
+  if (!settings.workspace_wizard_completed) {
+    return (
+      <div className="td-app td-app-wizard">
+        <TitleBar version={version} />
+        <WorkspaceWizard onComplete={(next) => setSettings(next)} />
       </div>
     );
   }

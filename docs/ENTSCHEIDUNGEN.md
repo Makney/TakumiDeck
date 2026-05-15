@@ -24,6 +24,26 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## First-Start-Workspace-Wizard: Erledigt-Flag in den Settings (Variante A)
+
+**Entscheidung:** Der Wizard wird ueber ein neues Boolean-Feld `workspace_wizard_completed` in den Settings detektiert, nicht ueber das Fehlen der `settings.json`-Datei. `buildDefaultSettings()` setzt den Default auf `true` (Bestandsuser-sicher), und `SettingsStore.initialize()` ueberschreibt das nur bei einer wirklich frisch angelegten Datei explizit mit `false`.
+
+**Varianten:**
+
+- **A** Erledigt-Flag in den Settings (gewaehlt) — Default-`true` im Build, Initialize-Branch schreibt `false` bei frischer Datei.
+- **B** Sentinel-`null` im `workspace_path` — Schema-Change auf nullable, `pickDefaultWorkspacePath` raus, Boot skippt bei `null`.
+- **C** Settings erst nach Wizard-Submit schreiben — Roadmap-Wortlaut buchstabengetreu („settings.json existiert noch nicht"), Initialize-Flow muss alle Read-Konsumenten lazy machen.
+
+**Grund:** B zieht einen Schema-Refactor durch alle `workspace_path`-Konsumenten nach sich (Scanner, Settings-Tab, IPC-Defaults), plus eine zweite Sentinel-Konvention fuer den Skip-Pfad (leerer String vs. `null`) — sonst kommt der Wizard nach Skip beim naechsten Start zurueck. C ist semantisch am reinsten, aber der Boot-Flow (Default-Project-Ensure, Watcher, Retention-Pass) liest unmittelbar nach `SettingsStore.initialize` aus `settings.read()` — alle diese Pfade brauchten einen „noch nicht persistiert"-Modus oder muessten hinter den Wizard verzoegert werden. Hoechstes Regressions-Risiko bei nur marginalem semantischen Mehrwert. A bekommt das UX-Ziel (kein stiller Scan, expliziter User-Entscheid) bei minimaler Code-Beruehrung und ohne Migrations-Schmerz fuer Bestandsuser.
+
+**Konsequenz:** Der Roadmap-Wortlaut „Erkennung: `settings.json` existiert noch nicht" wird nicht buchstabengetreu umgesetzt — funktional gleichwertig, weil das Flag genau diesen Moment in den Settings festhaelt. Bei kuenftigen „nur beim ersten Start"-Features (z.B. Tour, Tutorial-Overlay) ist das Flag-Pattern jetzt etabliert und wiederverwendbar; eine zweite Variante des Detection-Mechanismus sollte gut begruendet sein.
+
+**Implementierungsdetail:** Asymmetrischer Default (`true` in `buildDefaultSettings`, `false` nur beim Initialize-Frisch-Pfad) statt eines symmetrischen Migrations-Steps. Symmetrisch waere gewesen: Default `false` plus ein expliziter Migrations-Pass in `SettingsStore.initialize`, der bei existierender Datei ohne Feld `true` reinpatcht und die Datei neu schreibt. Asymmetrie ist billiger (kein zweiter Disk-Write bei jedem Start mit alter Datei), unauffaelliger (Bestandsuser sehen ihre `settings.json` nicht angepasst) und faengt einen Edge-Case ab: User loescht das Feld manuell, um den Wizard nochmal zu sehen — bei symmetrischem Migrations-Pass haetten wir das beim Start sofort wieder ueberschrieben, bei der asymmetrischen Loesung greift der Default-Merge in `read()` und der Wizard bleibt zu (= konsistentes Verhalten, weil Edit-Datei-zur-Wizard-Reaktivierung kein erwartetes UX-Flow ist).
+
+Neuer IPC `app:pick-folder` wurde bewusst generisch gehalten (`AppPickFolderInput { title? }` / `AppPickFolderResult { canceled, path }`) statt als wizard-spezifischer Channel — der Settings-Workspace-Tab kann denselben Picker spaeter mitnutzen, ohne einen zweiten Channel zu brauchen.
+
+---
+
 ## Screenshot-Retention: Boot-One-Shot + Settings-Slot von Anfang an + Manual-Clear
 
 **Entscheidung:** Auto-Retention laeuft genau einmal beim App-Start hinter try/catch (Variante A1). Schwellen leben in `AppSettings.screenshot_retention` als zwei Number-Felder (`max_age_days`/`max_total_mib`, Defaults 30/500, Variante B2) statt hartcodierter Konstanten. Plus Manual-Clear-Button im Settings-Modal mit Doppel-Confirm und Live-Anzeige der aktuellen Belegung (Variante C2).

@@ -45,7 +45,7 @@ import { realJsonlReadDriver } from './jsonl/parser';
 import { runJsonlPathBackfill } from './jsonl/backfill';
 import { runScreenshotRetention } from './screenshots/retention';
 import { Channels } from '@shared/ipc-channels';
-import { scanWorkspace, realFsDriver } from './workspace/scanner';
+import { scanWorkspace, realFsDriver, shouldRunInitialWorkspaceScan } from './workspace/scanner';
 
 // Squirrel-Installer: bei Setup/Update-Events sofort beenden, bevor BrowserWindow erstellt wird.
 if (started) {
@@ -171,17 +171,29 @@ void app.whenReady().then(async () => {
     // Sprint-4-Initial-Pass: workspace_path scannen, neue Projekte einfügen,
     // dann die Sprint-2/3-Default-Sessions per cwd-Prefix umhängen. Ein Hard-Crash
     // im Scanner darf den App-Start nicht blocken — daher try/catch um den ganzen Pass.
+    //
+    // Phase-2 Season-18: Skip, solange der First-Start-Wizard nicht abgeschlossen
+    // ist oder der User per Skip einen leeren Pfad gesetzt hat — sonst wuerde der
+    // Default-`<home>/Projekte` doch wieder still gescannt. Der Renderer entscheidet
+    // anhand des Flags, ob er den Welcome-Screen rendert.
     try {
-      const workspacePath = settings.read().workspace_path;
-      const scanned = await scanWorkspace(workspacePath, realFsDriver);
-      const insertedCount = syncScannedToDb(projectRepo, scanned, logger);
-      const moved = projectRepo.remapSessionsByCwdPrefix(
-        DEFAULT_PROJECT_ID,
-        projectRepo.listAll(),
-      );
-      logger.info(
-        `[startup] workspace gescannt path=${workspacePath} gefunden=${scanned.length} neu=${insertedCount} sessions_umgehängt=${moved}`,
-      );
+      const settingsSnapshot = settings.read();
+      if (shouldRunInitialWorkspaceScan(settingsSnapshot)) {
+        const workspacePath = settingsSnapshot.workspace_path;
+        const scanned = await scanWorkspace(workspacePath, realFsDriver);
+        const insertedCount = syncScannedToDb(projectRepo, scanned, logger);
+        const moved = projectRepo.remapSessionsByCwdPrefix(
+          DEFAULT_PROJECT_ID,
+          projectRepo.listAll(),
+        );
+        logger.info(
+          `[startup] workspace gescannt path=${workspacePath} gefunden=${scanned.length} neu=${insertedCount} sessions_umgehängt=${moved}`,
+        );
+      } else {
+        logger.info(
+          `[startup] Initial-Workspace-Scan uebersprungen wizard_completed=${settingsSnapshot.workspace_wizard_completed} workspace_path_len=${settingsSnapshot.workspace_path.length}`,
+        );
+      }
     } catch (e) {
       logger.warn('[startup] Initial-Workspace-Scan fehlgeschlagen', e);
     }

@@ -87,6 +87,30 @@ describe('AppSettings-Schema', () => {
     };
     expect(() => AppSettingsSchema.parse(negMib)).toThrow();
   });
+
+  // Phase-2 Season-18: First-Start-Workspace-Wizard. Default ist `true`, weil
+  // der Default-Merge in `SettingsStore.read()` Bestandsuser ohne das Feld
+  // abdecken muss — sonst wuerde der Wizard nach jedem App-Update aufpoppen.
+  // `SettingsStore.initialize()` schreibt bei frischer Datei explizit `false`.
+  it('workspace_wizard_completed Default ist true', () => {
+    const defaults = buildDefaultSettings();
+    expect(defaults.workspace_wizard_completed).toBe(true);
+  });
+
+  it('akzeptiert workspace_wizard_completed=false', () => {
+    const defaults = buildDefaultSettings();
+    const fresh = { ...defaults, workspace_wizard_completed: false };
+    expect(() => AppSettingsSchema.parse(fresh)).not.toThrow();
+  });
+
+  it('lehnt non-boolean workspace_wizard_completed ab', () => {
+    const defaults = buildDefaultSettings();
+    const broken = {
+      ...defaults,
+      workspace_wizard_completed: 'maybe' as unknown as boolean,
+    };
+    expect(() => AppSettingsSchema.parse(broken)).toThrow();
+  });
 });
 
 describe('AppSettingsPatch-Schema', () => {

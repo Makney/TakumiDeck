@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-15 — Phase 2 Season 18: First-Start-Workspace-Wizard
+
+### Was jetzt geht
+
+- **Frische Installationen starten mit einem Welcome-Screen statt eines stillen Default-Scans.** Solange noch keine `settings.json` existiert, schreibt der Boot eine frische Datei mit `workspace_wizard_completed=false` und ueberspringt den Initial-Workspace-Scan. Der Renderer rendert dann statt dem 4-Spalten-Hauptlayout eine zentrierte Welcome-Karte mit zwei Buttons: „📁 Workspace-Ordner auswaehlen" oeffnet `dialog.showOpenDialog({ properties: ['openDirectory'] })` ueber den neuen IPC `app:pick-folder`, schreibt den gewaehlten Pfad zusammen mit `workspace_wizard_completed=true` in die Settings und triggert den bestehenden `project:scan-workspace`-IPC, sodass die Sidebar sofort befuellt ist.
+- **„Erstmal ueberspringen" geht auch.** Zweiter Button schreibt `workspace_path=""` plus `workspace_wizard_completed=true`. Der Boot-Skip-Predicate `shouldRunInitialWorkspaceScan` lehnt den Scan auch beim naechsten Start ab, solange der Pfad leer ist — der User landet im leeren Workspace und kann den Pfad spaeter im Settings-Modal-„Workspace"-Tab nachziehen (Phase-1-Mechanik unveraendert).
+- **Bestandsuser bleiben unberuehrt.** `buildDefaultSettings()` setzt das neue Flag per Default auf `true`. Der Read-Merge in `SettingsStore.read()` greift bei alten `settings.json`-Dateien ohne das Feld automatisch — der Wizard popt nie bei einem Update auf, sondern ausschliesslich bei einer wirklich frisch angelegten Datei (siehe `SettingsStore.initialize`-Branch).
+
+### Architektur-Notiz
+
+Variante A aus dem Erst-Brief — „Erledigt-Flag in den Settings" — statt B (Nullable-Workspace-Pfad) oder C (Lazy-Settings-Write). Begruendung: A erfuellt das UX-Ziel (kein stiller Default-Scan, expliziter User-Entscheid) bei minimaler Code-Beruehrung, kein Schema-Refactor durch alle `workspace_path`-Konsumenten, und der Bestandsuser-Migrations-Schmerz von B/C entfaellt durch den asymmetrischen Default (`true` in `buildDefaultSettings`, `false` nur beim Initialize-Frisch-Pfad). Pure Helper `shouldRunInitialWorkspaceScan(settings)` in `src/main/workspace/scanner.ts` macht den Boot-Skip testbar (vier Faelle: Wizard offen, leerer Pfad, Whitespace-only, Happy-Path). Neuer IPC `app:pick-folder` ist bewusst generisch gehalten (`AppPickFolderInput { title? }` / `AppPickFolderResult { canceled, path }`), damit der Settings-Workspace-Tab den Picker spaeter mitnutzen kann, ohne einen zweiten Channel zu brauchen. Wizard-Komponente in `src/renderer/panels/WorkspaceWizard.tsx` ohne `useEffect`-Server-Calls — die zwei Button-Pfade laufen ueber `onClick`-Handler, daher kein StrictMode-Side-Effect-Guard-Pattern noetig (Memory-Negativ-Regel: Guard nur bei Server-Mutation im Effect-Body). Neue CSS-Klassen `.td-wizard*` in `app.css`, in App-Tokens gehalten (`--td-accent`/`--td-bg`/`--td-text-mute`). 8 neue Tests (3 Schema: Default-true + akzeptiert-false + lehnt-non-boolean-ab; 1 SettingsStore: Bestandsuser-Merge-Default-true; 4 Predicate-Faelle). Gesamtsuite 772/772 gruen (+8 gegenueber Season-17-Endstand 764), typecheck + lint sauber. package.json gebumpt 0.1.3 → 0.1.4.
+
+---
+
 ## 2026-05-15 — Phase 2 Season 17: Screenshot-Retention
 
 ### Was jetzt geht

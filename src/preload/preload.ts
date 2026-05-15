@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import type {
+  AppPickFolderInput,
+  AppPickFolderResult,
   AppSettings,
   ClaudeMdParseResult,
   SessionStatusPushEvent,
@@ -81,6 +83,12 @@ const api: RendererApi = {
           | { resolved: string; healthy: true }
           | { resolved: null; healthy: false; hint: string }
         >
+      >,
+    // Phase-2 Season-18: Ordner-Picker fuer den First-Start-Wizard. Argument
+    // ist optional; ohne Payload nimmt der Handler einen Default-Titel.
+    pickFolder: (input?: AppPickFolderInput) =>
+      ipcRenderer.invoke(Channels.AppPickFolder, input) as Promise<
+        IpcResult<AppPickFolderResult>
       >,
   },
   pty: {

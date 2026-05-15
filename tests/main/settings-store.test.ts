@@ -22,7 +22,22 @@ describe('SettingsStore', () => {
     const store = SettingsStore.initialize(filePath);
     expect(fs.existsSync(filePath)).toBe(true);
     const read = store.read();
-    expect(read).toEqual(buildDefaultSettings());
+    // Phase-2 Season-18: bei wirklich frischer Anlage wird das Wizard-Flag
+    // explizit auf `false` ueberschrieben — sonst wuerde der Default aus
+    // `buildDefaultSettings()` (`true`) den Welcome-Screen nie triggern.
+    expect(read).toEqual({ ...buildDefaultSettings(), workspace_wizard_completed: false });
+  });
+
+  // Phase-2 Season-18: Bestandsuser-Migration. Eine existierende settings.json
+  // ohne das Feld wird durch den Default-Merge in `read()` automatisch auf
+  // `true` gehoben — der Wizard popt bei Updates nicht erneut auf.
+  it('read() merged workspace_wizard_completed=true fuer Bestandsuser ohne Feld', () => {
+    SettingsStore.initialize(filePath);
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    delete raw.workspace_wizard_completed;
+    fs.writeFileSync(filePath, JSON.stringify(raw), 'utf-8');
+    const store = new SettingsStore(filePath);
+    expect(store.read().workspace_wizard_completed).toBe(true);
   });
 
   it('initialize() lässt vorhandene Datei unangetastet', () => {

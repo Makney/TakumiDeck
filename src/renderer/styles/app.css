@@ -4363,3 +4363,83 @@ body,
   color: var(--td-text-dim);
   line-height: 1.5;
 }
+
+/* Phase-2 Season-18 — First-Start-Workspace-Wizard.
+   Wird statt des 4-Spalten-Hauptlayouts gerendert, solange
+   `settings.workspace_wizard_completed === false` ist. Layout: zentrierte
+   Karte unter der td-titlebar, in App-Tokens gehalten (kein Custom-Farb-Drift). */
+.td-app-wizard {
+  /* td-app deklariert flex column + 100vh; wir wollen, dass der Wizard-
+     Bereich darunter den restlichen Platz fuellt, damit die Karte vertikal
+     mittig sitzt. */
+  background: var(--td-bg);
+}
+
+.td-wizard {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+}
+
+.td-wizard-card {
+  width: min(560px, 92vw);
+  background: var(--td-panel, #0b0d0c);
+  border: 1px solid var(--td-line, rgba(255, 255, 255, 0.08));
+  border-radius: 4px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.td-wizard-title {
+  margin: 0;
+  font-family: var(--td-display);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--td-accent);
+  letter-spacing: 0.01em;
+}
+
+.td-wizard-lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--td-text);
+}
+
+.td-wizard-lead code {
+  font-family: var(--td-mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  color: var(--td-text);
+}
+
+.td-wizard-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--td-text-mute);
+  line-height: 1.5;
+}
+
+.td-wizard-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.td-wizard-actions .td-action-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.td-wizard-error {
+  margin-top: 4px;
+}

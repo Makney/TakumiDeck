@@ -47,6 +47,13 @@ export interface LimitBar {
 // Wird als settings.json im AppData-Ordner persistiert.
 export interface AppSettings {
   workspace_path: string;
+  // Phase-2 Season-18: First-Start-Workspace-Wizard. `false` signalisiert, dass
+  // der Welcome-Screen noch nicht durchlaufen wurde — der Boot-Scan wird dann
+  // uebersprungen und der Renderer zeigt den Wizard statt des Haupt-Layouts.
+  // Bestandsuser sehen den Wizard NICHT: `buildDefaultSettings()` setzt den
+  // Default auf `true`, und nur `SettingsStore.initialize()` schreibt bei
+  // einer wirklich frisch angelegten Datei `false`.
+  workspace_wizard_completed: boolean;
   default_model: string;
   // Pfad zur claude-Binary. Default 'claude' nutzt PATH; user kann absoluten Pfad setzen.
   claude_binary_path: string;
@@ -400,6 +407,22 @@ export interface FsClearScreenshotsResult {
   filesDeleted: number;
   bytesFreed: number;
   failures: number;
+}
+
+// Phase-2 Season-18: Ordner-Picker fuer den First-Start-Workspace-Wizard.
+// `title` ist optional; wenn weg, nimmt der Handler einen Default. Es gibt
+// bewusst kein `defaultPath` — der Wizard waehlt typischerweise sowieso
+// einen frischen Pfad, und im Renderer wuerden Path-Pre-Fills die Sandbox-
+// Grenze unnoetig aufweichen.
+export interface AppPickFolderInput {
+  title?: string;
+}
+
+// `canceled=true` heisst der User hat den Dialog geschlossen; `path` ist dann
+// `null`. Im Erfolgsfall liefert `path` einen absoluten Pfad zurueck.
+export interface AppPickFolderResult {
+  canceled: boolean;
+  path: string | null;
 }
 
 // --- Git (Sprint 7) --------------------------------------------------
@@ -805,6 +828,11 @@ export interface RendererApi {
     claudeHealth: () => Promise<
       IpcResult<{ resolved: string; healthy: true } | { resolved: null; healthy: false; hint: string }>
     >;
+    // Phase-2 Season-18: generischer Ordner-Picker. Der First-Start-Wizard
+    // ruft ihn als ersten Schritt; `canceled=true` heisst der User hat den
+    // Dialog geschlossen, ohne einen Pfad zu waehlen — der Wizard bleibt
+    // dann offen.
+    pickFolder: (input?: AppPickFolderInput) => Promise<IpcResult<AppPickFolderResult>>;
   };
   pty: {
     create: (input: PtyCreateInput) => Promise<IpcResult<SessionRow>>;

@@ -168,7 +168,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
 | `Projekt entfernen`                  | ✅      | 2026-05-14 (Phase-2-Season-8) — Hover-Trash-Icon im Sidebar-Eintrag (Variante A) öffnet eigenes Bestätigungs-Modal mit Doppel-Confirm; Default-/Legacy-Bucket bekommt kein Icon, Server lehnt `DEFAULT_PROJECT_ID` mit `PROJECT_DEFAULT_IMMUTABLE` ab. Neuer IPC `project:remove`: Bulk-UPDATE auf Default-Bucket (sessions + messages) und `DELETE FROM projects` in einer better-sqlite3-Transaction (`removeProjectTxn`). Offene Tabs werden vor dem Remove via `session:close` geschlossen, aktives Projekt fällt automatisch zurück. |
-| `First-Start-Workspace-Wizard`       | ⛔      | Welcome-Screen bei fehlender `settings.json`; expliziter Workspace-Pick statt stillem Default-Scan von `<home>/Projekte` |
+| `First-Start-Workspace-Wizard`       | ✅      | 2026-05-15 (Phase-2-Season-18) — Welcome-Screen vor dem 4-Spalten-Hauptlayout, solange `workspace_wizard_completed=false` (frisch geschrieben in `SettingsStore.initialize()` bei fehlender Datei). Buttons „📁 Workspace-Ordner auswaehlen" (neuer IPC `app:pick-folder` → `settings.patch` → `project:scan-workspace`) und „Erstmal ueberspringen" (leerer `workspace_path` + Flag auf `true`). Boot-Skip via Pure-Helper `shouldRunInitialWorkspaceScan`. Bestandsuser-safe: `buildDefaultSettings()` setzt das Feld auf `true`, Read-Merge greift bei alten settings.json — kein Wizard-Pop bei Updates. |
 
 ### Token-Dashboard (Phase 2)
 

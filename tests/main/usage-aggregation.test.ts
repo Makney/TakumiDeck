@@ -21,6 +21,7 @@ const NOW_BUCKET = hourBucket(FIXED_NOW);
 function buildSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     workspace_path: '/tmp/projects',
+    workspace_wizard_completed: true,
     default_model: 'claude-sonnet-4-6',
     claude_binary_path: 'claude',
     model_limits: {

@@ -35,6 +35,12 @@ export const LimitBarSchema = z.object({
 
 export const AppSettingsSchema = z.object({
   workspace_path: z.string(),
+  // Phase-2 Season-18: First-Start-Workspace-Wizard. Default-Merge in
+  // `SettingsStore.read()` greift `buildDefaultSettings().workspace_wizard_completed=true`,
+  // sodass Bestandsuser ohne das Feld als „Wizard erledigt" gelten und der
+  // Welcome-Screen nicht aufpoppt. Frische Anlagen (`SettingsStore.initialize()`)
+  // ueberschreiben das in der Datei explizit mit `false`.
+  workspace_wizard_completed: z.boolean(),
   default_model: z.string(),
   claude_binary_path: z.string().min(1),
   model_limits: z.record(z.string(), z.number().positive()),
@@ -77,6 +83,16 @@ export const AppSettingsSchema = z.object({
 // .strict() würde unbekannte Keys ablehnen — verwenden wir bewusst nicht, damit das
 // Frontend Settings-Felder schicken kann, bevor sie hier explizit modelliert sind.
 export const AppSettingsPatchSchema = AppSettingsSchema.partial();
+
+// Phase-2 Season-18: Ordner-Picker fuer den First-Start-Workspace-Wizard.
+// Input ist optional — der Handler nimmt einen sinnvollen Default-Titel,
+// wenn nichts kommt. Das Schema laesst auch `undefined`-Payload zu, damit
+// die Preload-Bridge ohne Args aufgerufen werden kann.
+export const AppPickFolderInputSchema = z
+  .object({
+    title: z.string().min(1).optional(),
+  })
+  .optional();
 
 // --- Session / PTY ----------------------------------------------------
 

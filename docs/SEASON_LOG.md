@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 18 — First-Start-Workspace-Wizard
+
+**Ziel:** Roadmap-Feature aus dem „Projekt-Verwaltung"-Bereich: Beim ersten App-Start keinen stillen Default-Scan von `<home>/Projekte`, sondern einen Welcome-Screen mit expliziter Workspace-Auswahl. Roadmap-Detection-Vorgabe: `settings.json` existiert noch nicht. Skip-Variante optional (leerer Workspace mit spaeterer Settings-Aenderung).
+
+**Ergebnis:** Variante A („Erledigt-Flag in den Settings") aus drei skizzierten Varianten. Neues Schema-Feld `workspace_wizard_completed: boolean` mit asymmetrischem Default — `true` in `buildDefaultSettings()` (Bestandsuser-sicher), `false` nur beim Initialize-Frisch-Pfad in `SettingsStore.initialize()`. Pure Helper `shouldRunInitialWorkspaceScan(settings)` in `src/main/workspace/scanner.ts` macht den Boot-Skip testbar (Wizard-offen / leerer Pfad / Whitespace-only / Happy-Path). Neuer generischer IPC `app:pick-folder` mit `AppPickFolderInput { title? }` / `AppPickFolderResult { canceled, path }`. WorkspaceWizard-Komponente unter `src/renderer/panels/` rendert statt des 4-Spalten-Hauptlayouts, solange das Flag auf `false` steht; Pick-Pfad ruft `app.pickFolder` → `settings.set({ workspace_path, workspace_wizard_completed: true })` → `projects.scanWorkspace`; Skip-Pfad schreibt nur `workspace_path=""` + Flag. CSS-Block `.td-wizard*` in App-Tokens. 8 neue Tests (3 Schema: Default-true + akzeptiert-false + lehnt-non-boolean-ab; 1 SettingsStore: Bestandsuser-Merge-Default-true; 4 Predicate-Faelle). Gesamtsuite 772/772 gruen (+8 gegenueber Season-17-Endstand 764), typecheck + lint sauber. package.json gebumpt 0.1.3 → 0.1.4.
+
+**Gut gelaufen:**
+
+- **Drei klar abgegrenzte Varianten statt drei Achsen.** Im Variants-Brief habe ich diesmal *Komplettpakete* A/B/C beschrieben statt der gewohnten orthogonalen Achsen-Form. Begruendung: bei diesem Feature ist die Detection-Strategie das alles entscheidende Stellrad — Welcome-Komponente, Pick-Pfad und Skip-Pfad sind in allen drei Varianten gleich. Achsen waeren kuenstlich gewesen. User-Entscheidung kam in einem Wort („Variante A"). Lehre: Achsen-Pattern ist nicht Pflicht — bei Features mit einem dominanten Stellrad sind Komplettpakete klarer.
+- **Asymmetrischer Default hat den Migrations-Pass komplett gespart.** Erst-Skizze hatte einen klassischen symmetrischen Migrations-Step in `SettingsStore.initialize()` vorgesehen (Default `false` + Migrations-Patch fuer Bestandsuser auf `true`). Beim Schreiben kam die Asymmetrie-Idee: Default direkt auf `true`, nur beim Frisch-Pfad explizit `false`. Spart einen Disk-Write pro Bestand-Start und vermeidet den Edge-Case „User loescht das Feld manuell, App schreibt es beim naechsten Start automatisch zurueck". Pattern-Notiz: bei Boolean-Migrations-Bedarf zuerst pruefen, ob ein asymmetrischer Default reicht.
+- **Memory-Negativ-Regel zum StrictMode-Guard hat einen unnoetigen Ref verhindert.** Reflex beim Schreiben der WorkspaceWizard-Komponente: `useRef(false)`-Guard, weil die Pick-Aktion einen Server-Mutation-IPC anstoesst (`settings.set` + `projects.scanWorkspace`). Memory-Eintrag „StrictMode-Side-Effect-Guard im Renderer" hat klargemacht: Guard nur im `useEffect`-Body, nicht in `onClick`-Handlern — Buttons sind per Definition User-getriggert und feuern nicht doppelt durch StrictMode-Cleanup. Lehre-Bestaetigung: die Negativ-Regel ist genauso wertvoll wie die Positiv-Regel.
+
+**Gebremst durch:**
+
+- **Settings-Fixture-Duplikat wieder.** Die in Season 17 als Tech-Schuld notierte Inline-Fixture in `reset-schedule.test.ts` + `usage-aggregation.test.ts` hat erneut zwei manuelle Anpassungen gebraucht, weil das Vollschema dort inline gebaut wird. Typecheck hat es sofort gemeldet, der Fix war zwei Zeilen pro Datei — aber jetzt ist der dritte Touch-Point erreicht, ohne dass die Extraktion in `tests/_helpers/settings-fixture.ts` passiert ist. Naechster Settings-Schema-Add ist der vierte Touch-Point; spaetestens dann lohnt der Refactor.
+- **Eslint-Regel `react/no-unescaped-entities` hat den Lint-Pass gestoppt.** Erste Version der Hint-Zeile im Wizard hatte deutsche Anfuehrungszeichen `„…"` direkt im JSX-Text. Lint hat das anfangs uebersehen, aber eines der Innen-Zeichen war ein ASCII-`"` (Tippfehler) — Regel hat gegriffen. Fix: `&bdquo;` + `&ldquo;`-Entities oder konsistent deutsche Unicode-Anfuehrungen. Lehre: deutsche Texte in JSX immer mit Unicode-Anfuehrungen oder Entities — ASCII-`"` ist dort nie das gewollte Zeichen, und der Lint-Fehler kommt zuverlaessig.
+
+**Fuer naechste Season:**
+
+- **Settings-Workspace-Tab koennte den neuen Picker mitnutzen.** Der `app:pick-folder`-IPC ist generisch genug; aktuell muss der User im Workspace-Tab den Pfad manuell tippen. Ein „📁 Durchsuchen…"-Button neben dem Text-Input wuerde den Skip-Pfad-Folgeworkflow vereinfachen (User skippt im Wizard → nutzt Settings-Tab spaeter zum Setzen). Nicht im aktuellen Scope, weil Roadmap explizit „Phase-1-Mechanik unveraendert" sagt, aber als Quick-Win-Erweiterung notiert.
+- **Settings-Fixture-Helper jetzt extrahieren oder beim 4. Touch-Point.** Aktuell drei Touch-Points (Season 17 + 18). Beim naechsten Settings-Schema-Add die Inline-Builder in `tests/_helpers/settings-fixture.ts` zusammenlegen — Funktion ruft `buildDefaultSettings()` und merged Test-Overrides. Spart bei jedem kuenftigen Settings-Feld einen halben Test-File-Touch.
+- **WorkspaceWizard-Komponente als Pattern-Vorlage fuer kuenftige First-Run-Overlays.** Wenn Phase 3 z.B. eine Initial-Tour oder einen Subscription-Wizard braucht, ist die WorkspaceWizard-Komponente ein direkt uebertragbares Layout (`td-wizard` + `td-wizard-card` + Action-Buttons + Error-Slot) plus das Detection-Pattern via Boolean-Flag in den Settings. Wiederverwendung kostet nichts, aber die Komponente sollte beim naechsten First-Run-Feature *vor* dem Neubau einmal angeschaut werden.
+
+---
+
 ## Phase 2 Season 17 — Screenshot-Retention
 
 **Ziel:** Roadmap-Feature aus dem „Screenshots"-Bereich umsetzen: Aufraeum-Mechanismus fuer `<userData>/screenshots/`, damit der Ordner nicht unbegrenzt waechst. Roadmap-Wortlaut: Boot-One-Shot-Walk mit Age-Cutoff + Size-Cap, hartcodierte Defaults, optional Settings-Slot „sobald empirisch noetig", optional Manual-Clear-Button.

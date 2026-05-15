@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## AppSettings-Test-Fixture in drei Test-Dateien dupliziert (Season 18-Update)
+
+**Bereich:** `tests/main/reset-schedule.test.ts`, `tests/main/usage-aggregation.test.ts` (beide mit eigenem `buildSettings(overrides)`-Helper, der das `AppSettings`-Vollschema inline aufbaut). Drittes-Touch-Point-Update aus Season 18: dieselben zwei Files wurden erneut manuell um `workspace_wizard_completed: true` ergaenzt, weil das Vollschema dort inline gebaut wird statt aus `buildDefaultSettings()` zu mergen.
+
+**Was:** Beide Test-Files definieren oben eine `buildSettings(overrides)`-Funktion, die das komplette `AppSettings`-Objekt mit Test-Default-Werten zusammenstellt. Bei jedem Schema-Add muss in beiden Files das neue Feld manuell nachgezogen werden. Season 17 hat `screenshot_retention` ergaenzt, Season 18 jetzt `workspace_wizard_completed` — drei Touch-Points in zwei Seasons in Folge.
+
+**Warum so:** Bei der initialen Test-Anlage (Sprint 5 / Season Flacsh) gab es keinen Grund, das Vollschema aus `buildDefaultSettings()` zu mergen — die Tests sollten unabhaengig von Produktiv-Defaults laufen. Die Migration auf einen gemeinsamen Helper wurde in den letzten zwei Seasons jeweils als nicht-kritisch zurueckgestellt (zwei Zeilen Fix pro File, sofort sichtbar via Typecheck).
+
+**Risiko:** Bei jedem kuenftigen Settings-Schema-Add bleibt der zwei-Datei-Touch in den Tests. Typecheck faengt die Drift sofort, aber das Pattern verleitet zu „Test-Defaults driften vom Produktiv-Default", weil die Inline-Werte irgendwann nicht mehr dasselbe Bedeuten wie `buildDefaultSettings()` zurueckgibt (z.B. wenn ein Produktiv-Default geaendert wird, ohne dass die Test-Fixture mitgezogen wird).
+
+**Aufloesung:** Extraktion in `tests/_helpers/settings-fixture.ts` mit `buildTestSettings(overrides: Partial<AppSettings> = {})`, intern `return { ...buildDefaultSettings(), ...overrides }`. Beide Test-Files refaktorieren auf den Helper. ~10 LOC neuer Helper + zwei Re-Wires auf je ~3 Zeilen. **Trigger:** beim vierten Touch-Point (= naechster Settings-Schema-Add).
+
+---
+
 ## Statement-Cache-Pattern in vier Repos dupliziert (Zwischen-Review v0.1.2)
 
 **Bereich:** `src/main/db/repos/stats.ts`, `src/main/db/repos/model-stats.ts`, `src/main/db/repos/heatmap.ts`, `src/main/db/repos/meta-kv.ts`

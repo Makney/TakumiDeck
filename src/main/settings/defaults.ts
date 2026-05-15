@@ -16,6 +16,11 @@ function pickDefaultWorkspacePath(): string {
 export function buildDefaultSettings(): AppSettings {
   return {
     workspace_path: pickDefaultWorkspacePath(),
+    // Phase-2 Season-18: Default ist `true`, damit der Read-Merge fuer
+    // Bestandsuser ohne das Feld den Wizard NICHT triggert. Nur
+    // `SettingsStore.initialize()` ueberschreibt das beim Anlegen einer
+    // wirklich frischen settings.json explizit auf `false`.
+    workspace_wizard_completed: true,
     default_model: 'claude-sonnet-4-6',
     // Default 'claude' nutzt PATH. User kann auf einen absoluten Pfad wechseln,
     // wenn die Binary nicht im PATH liegt oder mehrere Installationen koexistieren.

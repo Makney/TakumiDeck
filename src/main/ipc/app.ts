@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import { ok, err, errFromUnknown } from '@shared/result';
-import { WindowActionSchema } from '@shared/schemas';
+import { AppPickFolderInputSchema, WindowActionSchema } from '@shared/schemas';
+import type { AppPickFolderResult } from '@shared/types';
 import { resolveExecutable } from '../pty/binary';
 import type { SettingsStore } from '../settings/store';
 import { assertFromMainWindow } from './sender-guard';
@@ -61,6 +62,36 @@ export function registerAppIpc(deps?: { settings?: SettingsStore }): void {
       });
     } catch (e) {
       return errFromUnknown(e, 'CLAUDE_HEALTH');
+    }
+  });
+
+  ipcMain.handle(Channels.AppPickFolder, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = AppPickFolderInputSchema.parse(payload);
+      const win = BrowserWindow.fromWebContents(event.sender);
+      // Phase-2 Season-18: dialog.showOpenDialog modal an das Sender-Fenster
+      // haengen, wenn es noch lebt — sonst ungebunden. Bewusst nur
+      // 'openDirectory', kein Multi-Select, damit der Wizard genau einen
+      // Workspace-Wurzel-Ordner zurueckbekommt.
+      const dialogResult = win
+        ? await dialog.showOpenDialog(win, {
+            title: input?.title ?? 'Workspace-Ordner waehlen',
+            properties: ['openDirectory'],
+          })
+        : await dialog.showOpenDialog({
+            title: input?.title ?? 'Workspace-Ordner waehlen',
+            properties: ['openDirectory'],
+          });
+      const chosen = dialogResult.filePaths[0] ?? null;
+      const result: AppPickFolderResult = {
+        canceled: dialogResult.canceled || chosen === null,
+        path: chosen,
+      };
+      return ok(result);
+    } catch (e) {
+      return errFromUnknown(e, 'APP_PICK_FOLDER');
     }
   });
 

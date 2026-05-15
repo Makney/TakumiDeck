@@ -24,6 +24,26 @@ import type { ScannedProject } from '@shared/types';
 export const DEFAULT_MAX_DEPTH = 5;
 export const DEFAULT_CONCURRENCY = 4;
 
+// Phase-2 Season-18: Boot-Skip-Predicate fuer den initialen Workspace-Scan.
+// Pure Funktion — kein FS-Zugriff, nur das Settings-Snapshot.
+//
+//   1. Wizard noch nicht durchlaufen → kein Scan, der Renderer zeigt erst den
+//      Welcome-Screen. Andernfalls wuerde der Default-`<home>/Projekte` doch
+//      wieder still gescannt.
+//   2. `workspace_path` leer (Skip-Pfad im Wizard) → kein Scan. Der User hat
+//      sich aktiv gegen einen Workspace-Pfad entschieden.
+//
+// `trim()` faengt User-Edits in den Settings ab, die nur Whitespace
+// hinterlassen — funktional kein Pfad.
+export function shouldRunInitialWorkspaceScan(settings: {
+  workspace_wizard_completed: boolean;
+  workspace_path: string;
+}): boolean {
+  if (!settings.workspace_wizard_completed) return false;
+  if (settings.workspace_path.trim().length === 0) return false;
+  return true;
+}
+
 export interface FsLikeDriver {
   // Liefert die Dirent-ähnlichen Einträge eines Verzeichnisses. `name` ohne Pfad,
   // `isDirectory()` als Methode (kompatibel zu `fs.Dirent`).

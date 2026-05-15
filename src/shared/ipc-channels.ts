@@ -100,6 +100,11 @@ export const Channels = {
   // App-Misc (Sprint 1 teilweise)
   AppOpenDataFolder: 'app:open-data-folder',
   AppGetVersion: 'app:get-version',
+  // Phase-2 Season-18: Ordner-Picker fuer den First-Start-Workspace-Wizard.
+  // dialog.showOpenDialog({ properties: ['openDirectory'] }) im Main, gibt
+  // {canceled, path} an den Renderer zurueck. Generisch genug, damit der
+  // Settings-Workspace-Tab den Picker spaeter mitnutzen kann.
+  AppPickFolder: 'app:pick-folder',
   // Sprint 8 — Header-Bar Window-Controls (frameless wäre Phase 5+; aktuell
   // bedienen wir die Standard-Electron-Frame-Controls über IPC).
   AppWindowAction: 'app:window-action',

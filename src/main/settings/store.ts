@@ -16,7 +16,12 @@ export class SettingsStore {
     if (!fs.existsSync(filePath)) {
       const dir = path.dirname(filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      store.writeRaw(buildDefaultSettings());
+      // Phase-2 Season-18: First-Start-Workspace-Wizard. Bei wirklich frischer
+      // Anlage wird `workspace_wizard_completed` explizit auf `false` gesetzt,
+      // damit der Renderer den Welcome-Screen zeigt und der Boot-Scan ausbleibt.
+      // Bestandsuser haben die Datei bereits und kommen ueber den Default-Merge
+      // in `read()` auf `true` (siehe `buildDefaultSettings()`).
+      store.writeRaw({ ...buildDefaultSettings(), workspace_wizard_completed: false });
     }
     return store;
   }
