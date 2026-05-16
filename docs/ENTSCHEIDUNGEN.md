@@ -24,6 +24,30 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Top-N für Template-Auto-Variablen: Sub-Objekt im neuen Templates-Tab, IPC liest Settings frisch (F2+T2+I2)
+
+**Entscheidung:** Die zwei Top-N-Werte fuer `{{TECH_SCHULDEN_RELEVANT}}` und `{{LETZTE_ENTSCHEIDUNGEN}}` leben als Sub-Objekt `template_top_n: { schulden, entscheidungen }` im `AppSettings`-Schema (F2), die UI bekommt einen eigenen „Templates"-Tab im Settings-Modal (T2), und der `templates:resolve-auto-vars`-IPC liest die Werte pro Call frisch via `settings.read()` (I2) statt sie als Payload-Argument oder DI-Cache zu beziehen.
+
+**Varianten:**
+
+- **F1** Zwei flache Felder `template_schulden_top_n` + `template_entscheidungen_top_n` — Roadmap-Wortlaut, klarste Benennung, groesste Schreibarbeit.
+- **F2** Sub-Objekt `template_top_n: { schulden, entscheidungen }` (gewaehlt) — folgt etabliertem Muster aus Season 17 (`screenshot_retention`) und Season 8 (`context_soft_warning`), erweiterbar fuer kuenftige Top-N-Variablen.
+- **F3** Ein gemeinsamer Wert fuer beide — minimal, verliert die Trennbarkeit.
+- **T1** Workspace-Tab (Roadmap-Vorschlag) — kein neuer Tab, aber thematisch unsauber (Workspace ≠ Template-Verhalten).
+- **T2** Neuer „Templates"-Tab (gewaehlt) — saubere Heimat, Platz fuer kuenftige Template-Settings.
+- **T3** Allgemein-Tab — niedrigster Aufwand, verstaerkt aber den „Allgemein wird zum Sammelbecken"-Drift.
+- **I1** Renderer schickt die zwei Werte im IPC-Payload mit — Schema-Touch am Payload, IPC stateless.
+- **I2** Main liest `settings.read()` pro Call frisch (gewaehlt) — kein Payload-Schema-Touch, eine zusaetzliche JSON-Read pro Call (wenige ms, kein Hot-Path).
+- **I3** Settings-Cache an `registerTemplatesIpc(deps)` injecten — explizite DI, am wenigsten flexibel bei Live-Updates.
+
+**Grund:** F1 wuerde zwei Top-Level-Felder mit demselben Praefix produzieren (`template_*`), die ohnehin nach einem Sub-Objekt schreien — und die Roadmap-Wortlaut-Treue ist hier Vorschlag, nicht Vertrag (analog zur Season-19-K1-Entscheidung gegen den Roadmap-Wortlaut „konfigurierbare Werk-Liste"). F3 macht den Punkt kaputt, dass User typischerweise *unterschiedlich viel* Schulden- vs. Entscheidungs-Kontext im Prompt haben wollen (Schulden sind oft punktuell relevant, Entscheidungen baseline-Kontext). T1 packt Template-Verhalten in einen Workspace-Tab, der eigentlich Workspace-Pfad und Sensitive-Patterns abdeckt — thematische Vermischung. T3 wuerde den Allgemein-Tab zum vierten Sammelbecken-Eintrag machen (Theme/Akzent/Easter-Egg/Screenshot-Retention sind dort schon, plus jetzt Templates waere zu viel). T2 ist der „konvenient vor traditionell"-Default — eigener Tab, der mit den zwei Feldern startet und kuenftige Template-Settings ohne Refactor aufnimmt. I1 wuerde den `TemplatesResolveAutoVarsInput`-Schema unnoetig erweitern und der Renderer muesste die zwei Werte aus seinem `settings`-Prop bei jedem Send-Klick mitgeben — Code-Duplikation. I2 nutzt das etablierte „Boot/IPC liest Settings frisch"-Pattern aus Season 17 (Boot-Pass fuer Screenshot-Retention) — sauber und sofort live.
+
+**Konsequenz:** Bei kuenftigen Template-Settings (z.B. „Auto-Submit nach Paste ein/aus", „Default-Modell pro Template-Kategorie") landet alles im selben Tab ohne Tab-Refactor. Bei kuenftigen Doku-Top-N-Variablen (z.B. `{{LETZTE_CHANGELOG_EINTRAEGE}}`) waechst das `template_top_n`-Sub-Objekt um ein weiteres Feld — Schema- und UI-Aenderung an drei Stellen (Schema, Default, UI), aber kein Tab-Split. Der I2-Pattern „IPC liest Settings frisch" sollte beibehalten werden, solange der Settings-Read keine spuerbare Latenz erzeugt — falls Templates-Send mal zum Hot-Path wird (was aktuell nicht der Fall ist, weil User-getriggert), waere ein In-Memory-Settings-Cache ueberlegenswert.
+
+**Implementierungsdetail:** Der IPC short-circuited bei `topN.schulden === 0` (bzw. `topN.entscheidungen === 0`) auf `''` *vor* dem Datei-Read. Begruendung: wer die Variable abschaltet, will keinen Disk-I/O fuer das Doku-File auslosen — bei einer 50-KB-`TECH_SCHULDEN.md` ist das kein Performance-Problem, aber semantisch klarer als „lies die Datei, slice auf 0 Eintraege, formatiere zu leerem String". Pure Helper `formatTechSchuldenRelevant`/`formatLetzteEntscheidungen` haben das `limit <= 0`-Guard ohnehin schon — der Short-Circuit ist redundante Defense-in-Depth, aber kostet nichts und macht den IPC-Code lesbarer.
+
+---
+
 ## Easter-Egg-Vergleiche: Minimal-Slot statt Custom-Werk-Liste (U1+K1+D1)
 
 **Entscheidung:** Easter-Egg-Vergleiche leben als dezenter Streifen unter der Aktivitaets-Heatmap (U1), die Werk-Liste ist hartcodiert mit Toggle-only-Konfiguration (K1), und der Token-Counter zieht den bestehenden `tokens_total` aus `stats:project-overview` (D1) — keine eigene Backend-Query.

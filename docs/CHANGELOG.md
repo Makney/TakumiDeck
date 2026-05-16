@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-16 — Phase 2 Season 20: Top-N für Template-Auto-Variablen konfigurierbar
+
+### Was jetzt geht
+
+- **Anzahl der Eintraege fuer `{{TECH_SCHULDEN_RELEVANT}}` und `{{LETZTE_ENTSCHEIDUNGEN}}` im Settings-Modal einstellbar.** Frueher hartcodiert auf 3 in `src/main/ipc/templates.ts` — wer mehr Doku-Kontext im Prompt haben wollte (z.B. komplette Top-10-Schuldenliste vor einem groesseren Refactor), musste den Wert im Code editieren und neu builden. Neuer „Templates"-Tab im Settings-Modal mit zwei Number-Inputs (0..20, Default 3 fuer beide). Auto-Save 500 ms wie alle anderen Settings-Inputs; `templates:resolve-auto-vars`-IPC liest die Werte pro Call frisch, sodass Aenderungen beim naechsten Templates-Send-Klick wirken — kein App-Restart noetig.
+- **Wer eine Variable ganz raushaben will, setzt den Wert auf 0.** `formatTechSchuldenRelevant`/`formatLetzteEntscheidungen` liefern bei `limit <= 0` einen leeren String; im IPC short-circuiten wir bereits vor dem Datei-Read auf `''`, sodass auch ein Doku-File mit hunderten Eintraegen keine I/O-Last mehr bringt, wenn der User die Variable aktiv abgeschaltet hat.
+- **Pre-Season-Mini-Pass: Settings-Test-Fixture entkoppelt.** `tests/_helpers/settings-fixture.ts` mit `buildTestSettings(overrides)` extrahiert; `reset-schedule.test.ts` und `usage-aggregation.test.ts` nutzen jetzt den Helper statt jeweils das `AppSettings`-Vollschema inline aufzubauen. Bei kuenftigen Schema-Adds muss das neue Feld nur noch an einer Stelle gepflegt werden — der „vierter Touch-Point in drei Seasons in Folge"-Schmerz aus Season 17/18/19 ist damit weg.
+
+### Architektur-Notiz
+
+Variante **F2 + T2 + I2 + R1** aus drei orthogonalen Achsen plus Pre-Season-Refactor. **F2 Sub-Objekt** `template_top_n: { schulden, entscheidungen }` statt zwei flacher Top-Level-Felder (F1, Roadmap-Wortlaut) oder einem gemeinsamen Wert (F3) — folgt dem etablierten „Sub-Objekt fuer thematisch zusammengehoerige Felder"-Muster aus Season 17 (`screenshot_retention`) und Season 8 (`context_soft_warning`), und macht die naechste Top-N-Variable (z.B. „letzte N CHANGELOG-Eintraege") ohne Schema-Refactor verfuegbar. **T2 Neuer „Templates"-Tab** statt Workspace-Tab (T1, Roadmap-Vorschlag) oder Allgemein-Tab (T3) — die zwei Felder sind der Aufhaenger; der Tab bekommt sofort einen Nutzen, und der naechste Template-Settings-Wunsch landet ohne Refactor dort. **I2 Main liest `settings.read()` pro IPC-Call frisch** statt Renderer-Payload-Erweiterung (I1) oder DI-Cache-Injection (I3) — minimaler Surface-Touch, IPC bleibt sauber, Live-Update kommt gratis. **R1 Pre-Season-Refactor zuerst** statt Aufschub (R2) — der Trigger aus dem Season-19-SEASON_LOG-Hinweis stand explizit fuer diesen Moment. `SCHULDEN_TOP_N`/`ENTSCHEIDUNGEN_TOP_N`-Konstanten in `src/main/ipc/templates.ts` ersatzlos raus; `registerTemplatesIpc(deps)` bekommt zusaetzlich `settings: SettingsStore`. UI-Block im neuen `TemplatesTab` mit dem etablierten `td-settings-grid`-Layout (analog `ScreenshotRetentionBlock`); Setter-Helper `setTopN(patch)` haelt das Sub-Objekt-Update aus dem Number-Input-Handler raus. 4 neue Schema-Tests in `tests/main/schemas.test.ts` (Defaults 3/3, akzeptiert Grenzen 0+20, lehnt out-of-range ab, lehnt non-integer ab); die Top-N-Slicing-Pure-Logik ist bereits durch `tests/main/docs-parser.test.ts:119/:227` (limit=0 → leerer String) abgedeckt, sodass der IPC als Glue-Code vom Typecheck verifiziert wird statt einen Electron-IPC-Mock-Test zu rechtfertigen. Gesamtsuite 792/792 gruen (+4 gegenueber Season-19-Endstand 788), typecheck + lint sauber. package.json gebumpt 0.1.5 → 0.1.6.
+
+---
+
 ## 2026-05-15 — Phase 2 Season 19: Easter-Egg-Vergleiche
 
 ### Was jetzt geht

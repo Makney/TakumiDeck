@@ -236,7 +236,7 @@ Zusätzliche Auto-Variablen.
 
 **Trigger:** Wenn die Phase-1-Variablen nicht ausreichen.
 
-### Feature: Top-N für Template-Auto-Variablen konfigurierbar
+### Feature: Top-N für Template-Auto-Variablen konfigurierbar ✅
 
 Settings-Slot für die Anzahl der ins Template eingefügten Einträge.
 

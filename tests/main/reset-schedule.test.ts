@@ -6,41 +6,14 @@ import {
   hourBucket,
 } from '../../src/main/db/repos/usage';
 import { resolveWindow } from '../../src/main/usage/resolver';
-import type { AppSettings, LimitBar } from '@shared/types';
+import type { LimitBar } from '@shared/types';
+import { buildTestSettings as buildSettings } from '../_helpers/settings-fixture';
 
 // Phase 2 Season Flacsh — Reset-Schedule-Aggregation.
 //
 // Tests fuer den Pure-Helper plus den Integrations-Pfad: resolveWindow muss
 // bei gesetztem reset_schedule den Verbrauchs-Counter ab dem letzten
 // Reset-Zeitpunkt aggregieren, statt rolling ueber window_hours zu laufen.
-
-function buildSettings(overrides: Partial<AppSettings> = {}): AppSettings {
-  return {
-    workspace_path: '/tmp/projects',
-    workspace_wizard_completed: true,
-    default_model: 'claude-sonnet-4-6',
-    claude_binary_path: 'claude',
-    model_limits: {
-      'claude-sonnet-4-6': 1_000_000,
-      'claude-opus-4-7': 1_000_000,
-      'claude-haiku-4-5': 200_000,
-    },
-    default_limit: 200_000,
-    limit_bars: [],
-    p90_window_hours: 192,
-    token_warning_thresholds: { yellow: 70, orange: 85, red: 95 },
-    context_soft_warning: { enabled: true, threshold_percent: 20 },
-    terminal_font_family: 'JetBrains Mono',
-    terminal_font_size: 13,
-    theme: 'dark',
-    accent_color: '#4ade80',
-    shortcuts: {},
-    sensitive_file_patterns: [],
-    screenshot_retention: { max_age_days: 30, max_total_mib: 500 },
-    easter_egg_enabled: true,
-    ...overrides,
-  };
-}
 
 describe('computeResetWindowStart (pure)', () => {
   it('Wochentag vor heute → letzter dieses-Tags-Reset', () => {

@@ -86,6 +86,12 @@ export interface AppSettings {
   // Phase-2 Season-19: Easter-Egg-Token-Vergleiche in der Stats-Pane-
   // Uebersicht. `false` blendet den Streifen unter der Heatmap aus.
   easter_egg_enabled: boolean;
+  // Phase-2 Season-20: Top-N fuer {{TECH_SCHULDEN_RELEVANT}} und
+  // {{LETZTE_ENTSCHEIDUNGEN}}. 0 unterdrueckt die jeweilige Variable.
+  template_top_n: {
+    schulden: number;
+    entscheidungen: number;
+  };
   terminal_font_family: string;
   terminal_font_size: number;
   theme: 'dark' | 'light';

@@ -11,40 +11,13 @@ import {
 } from '../../src/main/db/repos/messages';
 import { resolveWindow, resolveContext } from '../../src/main/usage/resolver';
 import { resolveBarFilter } from '../../src/main/usage/filters';
-import type { AppSettings, LimitBar } from '@shared/types';
+import type { LimitBar } from '@shared/types';
+import { buildTestSettings as buildSettings } from '../_helpers/settings-fixture';
 
 // Token-Aggregation-Tests (Sprint 5): InMemory-Repos + Fixed-Clock.
 
 const FIXED_NOW = Date.parse('2026-05-10T12:00:00.000Z');
 const NOW_BUCKET = hourBucket(FIXED_NOW);
-
-function buildSettings(overrides: Partial<AppSettings> = {}): AppSettings {
-  return {
-    workspace_path: '/tmp/projects',
-    workspace_wizard_completed: true,
-    default_model: 'claude-sonnet-4-6',
-    claude_binary_path: 'claude',
-    model_limits: {
-      'claude-sonnet-4-6': 1_000_000,
-      'claude-opus-4-7': 1_000_000,
-      'claude-haiku-4-5': 200_000,
-    },
-    default_limit: 200_000,
-    limit_bars: [],
-    p90_window_hours: 192,
-    token_warning_thresholds: { yellow: 70, orange: 85, red: 95 },
-    context_soft_warning: { enabled: true, threshold_percent: 20 },
-    terminal_font_family: 'JetBrains Mono',
-    terminal_font_size: 13,
-    theme: 'dark',
-    accent_color: '#4ade80',
-    shortcuts: {},
-    sensitive_file_patterns: [],
-    screenshot_retention: { max_age_days: 30, max_total_mib: 500 },
-    easter_egg_enabled: true,
-    ...overrides,
-  };
-}
 
 const make5hBar = (): LimitBar => ({
   id: '5h',

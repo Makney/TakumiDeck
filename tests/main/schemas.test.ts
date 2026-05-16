@@ -134,6 +134,38 @@ describe('AppSettings-Schema', () => {
     };
     expect(() => AppSettingsSchema.parse(broken)).toThrow();
   });
+
+  // Phase-2 Season-20: Top-N fuer die Doku-Auto-Variablen.
+  it('template_top_n Defaults sind 3 fuer beide Felder', () => {
+    const defaults = buildDefaultSettings();
+    expect(defaults.template_top_n.schulden).toBe(3);
+    expect(defaults.template_top_n.entscheidungen).toBe(3);
+  });
+
+  it('akzeptiert template_top_n an den Grenzen 0 und 20', () => {
+    const defaults = buildDefaultSettings();
+    const min = { ...defaults, template_top_n: { schulden: 0, entscheidungen: 0 } };
+    const max = { ...defaults, template_top_n: { schulden: 20, entscheidungen: 20 } };
+    expect(() => AppSettingsSchema.parse(min)).not.toThrow();
+    expect(() => AppSettingsSchema.parse(max)).not.toThrow();
+  });
+
+  it('lehnt template_top_n ausserhalb von 0..20 ab', () => {
+    const defaults = buildDefaultSettings();
+    const negative = { ...defaults, template_top_n: { schulden: -1, entscheidungen: 3 } };
+    const tooHigh = { ...defaults, template_top_n: { schulden: 3, entscheidungen: 21 } };
+    expect(() => AppSettingsSchema.parse(negative)).toThrow();
+    expect(() => AppSettingsSchema.parse(tooHigh)).toThrow();
+  });
+
+  it('lehnt non-integer template_top_n ab', () => {
+    const defaults = buildDefaultSettings();
+    const fractional = {
+      ...defaults,
+      template_top_n: { schulden: 3.5, entscheidungen: 3 },
+    };
+    expect(() => AppSettingsSchema.parse(fractional)).toThrow();
+  });
 });
 
 describe('AppSettingsPatch-Schema', () => {

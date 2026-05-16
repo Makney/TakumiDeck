@@ -73,6 +73,15 @@ export const AppSettingsSchema = z.object({
   // in src/shared/easter-egg-works.ts; eine konfigurierbare Liste
   // kommt erst, wenn der erste User-Wunsch nach eigenem Werk auftaucht.
   easter_egg_enabled: z.boolean(),
+  // Phase-2 Season-20: Top-N fuer die zwei Doku-Auto-Variablen
+  // {{TECH_SCHULDEN_RELEVANT}} und {{LETZTE_ENTSCHEIDUNGEN}} im Templates-
+  // Resolve-IPC. Frueher hartcodiert auf 3 in src/main/ipc/templates.ts.
+  // 0 unterdrueckt die Variable komplett (leerer String); 20 ist die obere
+  // Grenze, weil mehr Eintraege den Prompt unnoetig blaehen.
+  template_top_n: z.object({
+    schulden: z.number().int().min(0).max(20),
+    entscheidungen: z.number().int().min(0).max(20),
+  }),
   terminal_font_family: z.string(),
   terminal_font_size: z.number().positive(),
   theme: z.enum(['dark', 'light']),

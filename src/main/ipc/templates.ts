@@ -15,6 +15,7 @@ import type {
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
 import type { ProjectRepository } from '../db/repos/projects';
 import type { SessionRepository } from '../db/repos/sessions';
+import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
 import { assertFromMainWindow } from './sender-guard';
 import {
@@ -32,23 +33,26 @@ import { parseClaudeMd } from '../workspace/claudeMdParser';
 //
 // Drei neue Variablen sind aber serverseitig:
 //   - LETZTE_SEASON_NAME       → SessionRepository.findLastCompletedFeatureSession
-//   - TECH_SCHULDEN_RELEVANT   → docs/TECH_SCHULDEN.md parsen (Top-3 offen)
-//   - LETZTE_ENTSCHEIDUNGEN    → docs/ENTSCHEIDUNGEN.md parsen (Top-3)
+//   - TECH_SCHULDEN_RELEVANT   → docs/TECH_SCHULDEN.md parsen (Top-N offen)
+//   - LETZTE_ENTSCHEIDUNGEN    → docs/ENTSCHEIDUNGEN.md parsen (Top-N)
+//
+// Phase-2 Season-20: die Top-N-Werte kommen aus settings.template_top_n statt
+// hartkodiert. Settings werden pro IPC-Call frisch via settings.read() gelesen,
+// damit nachgezogene Schwellwerte beim naechsten Templates-Send-Klick wirken
+// (analog Boot-Pass-Pattern aus Season 17).
 //
 // Default-Behaviour bei fehlenden Quellen: leerer String — der Variable-Filler
 // im Renderer setzt einen leeren String ein, statt einen Fehler anzuzeigen.
 // Templates, die die Variable einbauen, dokumentieren den fehlenden Inhalt
 // dadurch implizit.
 
-const SCHULDEN_TOP_N = 3;
-const ENTSCHEIDUNGEN_TOP_N = 3;
-
 export function registerTemplatesIpc(deps: {
   projects: ProjectRepository;
   sessions: SessionRepository;
+  settings: SettingsStore;
   log: Logger;
 }): void {
-  const { projects, sessions, log } = deps;
+  const { projects, sessions, settings, log } = deps;
 
   // Phase-2 Season-11: vom Templates-Send-Flow gerufen, sobald der Prompt
   // {{NEXT_SEASON_NR}} verwendet. Der Renderer schickt die aktive Session-ID;
@@ -93,24 +97,25 @@ export function registerTemplatesIpc(deps: {
         return err(`Projekt ${input.projectId} nicht gefunden`, 'PROJECT_NOT_FOUND');
       }
 
+      const topN = settings.read().template_top_n;
       const lastSessionName = await resolveLastSeasonName({
         sessions,
         projectId: project.id,
         projectPath: project.id === DEFAULT_PROJECT_ID ? null : project.path,
       });
       const schulden =
-        project.id === DEFAULT_PROJECT_ID
+        project.id === DEFAULT_PROJECT_ID || topN.schulden === 0
           ? ''
           : await readAndFormat(
               path.join(project.path, 'docs', 'TECH_SCHULDEN.md'),
-              (md) => formatTechSchuldenRelevant(md, SCHULDEN_TOP_N),
+              (md) => formatTechSchuldenRelevant(md, topN.schulden),
             );
       const entscheidungen =
-        project.id === DEFAULT_PROJECT_ID
+        project.id === DEFAULT_PROJECT_ID || topN.entscheidungen === 0
           ? ''
           : await readAndFormat(
               path.join(project.path, 'docs', 'ENTSCHEIDUNGEN.md'),
-              (md) => formatLetzteEntscheidungen(md, ENTSCHEIDUNGEN_TOP_N),
+              (md) => formatLetzteEntscheidungen(md, topN.entscheidungen),
             );
 
       const result: TemplatesResolveAutoVarsResult = {

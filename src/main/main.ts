@@ -268,6 +268,7 @@ void app.whenReady().then(async () => {
     registerTemplatesIpc({
       projects: projectRepo,
       sessions,
+      settings,
       log: logger,
     });
 

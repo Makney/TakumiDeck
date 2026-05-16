@@ -89,6 +89,14 @@ export function buildDefaultSettings(): AppSettings {
     // ihn nicht mag, schaltet ihn im Allgemein-Tab ab.
     easter_egg_enabled: true,
 
+    // Phase-2 Season-20: Top-N fuer die Doku-Auto-Variablen. Beide auf 3,
+    // wie die fruehere Hartkodierung in src/main/ipc/templates.ts. Ueber
+    // den Templates-Tab im Settings-Modal anpassbar.
+    template_top_n: {
+      schulden: 3,
+      entscheidungen: 3,
+    },
+
     terminal_font_family: 'JetBrains Mono, Cascadia Code, MesloLGS NF',
     terminal_font_size: 13,
 

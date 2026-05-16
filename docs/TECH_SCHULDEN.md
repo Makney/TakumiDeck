@@ -44,7 +44,7 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## AppSettings-Test-Fixture in zwei Test-Dateien dupliziert (Season 19: vierter Touch-Point erreicht)
+## AppSettings-Test-Fixture in zwei Test-Dateien dupliziert ✅ 2026-05-16 (Season 20 Pre-Pass)
 
 **Bereich:** `tests/main/reset-schedule.test.ts`, `tests/main/usage-aggregation.test.ts` (beide mit eigenem `buildSettings(overrides)`-Helper, der das `AppSettings`-Vollschema inline aufbaut). **Vierter Touch-Point in drei Seasons in Folge:** Season 19 hat dieselben zwei Files erneut manuell um `easter_egg_enabled: true` ergaenzt, weil das Vollschema dort inline gebaut wird statt aus `buildDefaultSettings()` zu mergen. Der in Season 18 als Trigger gesetzte „vierter Touch-Point"-Schwellwert ist damit erreicht — der Refactor ist jetzt explizit ueberfaellig.
 
@@ -54,7 +54,7 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 **Risiko:** Bei jedem kuenftigen Settings-Schema-Add bleibt der zwei-Datei-Touch in den Tests. Typecheck faengt die Drift sofort, aber das Pattern verleitet zu „Test-Defaults driften vom Produktiv-Default", weil die Inline-Werte irgendwann nicht mehr dasselbe Bedeuten wie `buildDefaultSettings()` zurueckgibt (z.B. wenn ein Produktiv-Default geaendert wird, ohne dass die Test-Fixture mitgezogen wird).
 
-**Aufloesung:** Extraktion in `tests/_helpers/settings-fixture.ts` mit `buildTestSettings(overrides: Partial<AppSettings> = {})`, intern `return { ...buildDefaultSettings(), ...overrides }`. Beide Test-Files refaktorieren auf den Helper. ~10 LOC neuer Helper + zwei Re-Wires auf je ~3 Zeilen. **Trigger:** beim Start der naechsten Season *bevor* eine andere Schuld angefasst wird (= als „Aufraeumen-vor-Feature"-Mini-Pass; das Trigger-Schema-Add ist erreicht, aber der Refactor lohnt sich, wenn er nicht mit einem Feature-Add konkurriert).
+**Aufloesung:** ✅ Erledigt im Season-20-Pre-Pass. `tests/_helpers/settings-fixture.ts` mit `buildTestSettings(overrides: Partial<AppSettings> = {})` extrahiert. Bewusst NICHT auf `buildDefaultSettings()` aufgesetzt — `buildDefaultSettings()` ruft `pickDefaultWorkspacePath()` mit `fs.existsSync`, was die Tests an die Maschine binden wuerde; die Fixture haelt feste, deterministische Werte. Beide Test-Files (`reset-schedule.test.ts`, `usage-aggregation.test.ts`) auf den Helper umgestellt — Inline-Helper raus, Import als `buildTestSettings as buildSettings` (nicht-disruptiver Re-Wire). Kuenftige Schema-Adds (Season-20-`template_top_n` direkt mitgenommen) brauchen nur noch *eine* Stelle, nicht mehr drei. Schema-Tests in `tests/main/schemas.test.ts` nutzen weiterhin `buildDefaultSettings()` direkt — das ist korrekt, weil dort genau das Produktiv-Default-Verhalten gepruft wird.
 
 ---
 
