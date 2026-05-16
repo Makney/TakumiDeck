@@ -73,8 +73,12 @@ const ALLOWED: Record<SessionStatus, ReadonlySet<SessionStatus>> = {
     'archived',
   ]),
   completed: new Set<SessionStatus>(['running', 'archived']),
-  interrupted: new Set<SessionStatus>(['running', 'archived']),
-  error: new Set<SessionStatus>(['running', 'archived']),
+  // Phase-2 Season-21: interrupted/error → completed erlaubt, damit der User im
+  // Verlauf-Detail-Pane eine fehlgeschlagene oder unterbrochene Session manuell
+  // als „abgeschlossen" markieren kann (Reason 'manual'). Resume und Archive
+  // bleiben weiterhin moeglich — die neue Kante ergaenzt das bestehende Set.
+  interrupted: new Set<SessionStatus>(['running', 'completed', 'archived']),
+  error: new Set<SessionStatus>(['running', 'completed', 'archived']),
   archived: new Set<SessionStatus>(),
 };
 

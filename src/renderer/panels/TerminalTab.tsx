@@ -21,6 +21,7 @@ import {
   type ScreenshotMime,
 } from '../components/terminalDropHandler';
 import { quotePathIfNeeded } from '../components/pathQuoting';
+import { useProjectStore } from '../stores/projects';
 
 // Phase-2 Season-1: Tick-Intervall für TUI-Pattern-Match auf dem xterm-Buffer.
 // 1 s ist der Sweet-Spot zwischen Permission-Prompt-Reaktionszeit und CPU-Last
@@ -158,6 +159,21 @@ export function TerminalTab({
       safeFit(fit);
     });
 
+    // Phase-2 Season-21: TUI-Poll-Timer als forward-declared let, damit der
+    // pty:exit-Handler ihn stoppen kann. Ohne diesen Cut laeuft die Pattern-
+    // Erkennung gegen den eingefrorenen xterm-Buffer weiter, sieht den letzten
+    // Claude-Input-Prompt als `waiting` und ueberschreibt das gerade gesetzte
+    // `completed` lokal im Store — Action-Bar zeigt dann faelschlich „wartet".
+    // Main-DB ist davon nicht betroffen (pty:exit-Handler dort filtert
+    // terminalen Status), aber der Renderer driftet auseinander.
+    let tuiTimer: ReturnType<typeof setInterval> | null = null;
+    const stopTui = () => {
+      if (tuiTimer !== null) {
+        clearInterval(tuiTimer);
+        tuiTimer = null;
+      }
+    };
+
     // PTY-Events filtern hart auf sessionId, sodass bei N Tabs jeder nur seine eigenen
     // Daten schreibt. Der Renderer-Bus sendet sonst ein pty:data-Event an alle Tabs.
     const offData = window.api.pty.onData((event) => {
@@ -173,6 +189,10 @@ export function TerminalTab({
       // Die DB-Wahrheit kommt vom Lifecycle (pty:exit-Handler) — der Renderer setzt
       // hier nur die UI-Spiegelung, damit kein Round-Trip nötig ist.
       onStatusChange(sessionId, 'completed');
+      // TUI-Poll-Timer abraeumen — sonst sieht der naechste Tick den stehenden
+      // Buffer und pusht `waiting`/`running` ueber den gerade gesetzten
+      // `completed`-Status.
+      stopTui();
     });
 
     terminal.onData((data) => {
@@ -240,8 +260,19 @@ export function TerminalTab({
           // (typische Ursache: PATH-Wechsel ohne App-Restart). Header-Bar
           // re-checkt seinen Health-Status, damit der ⚠-Banner sofort erscheint.
           window.dispatchEvent(new CustomEvent('td-claude-recheck'));
-        } else if (isActive) {
-          terminal.focus();
+        } else {
+          // Phase-2 Season-21: bei type='feature' hat der Main eine neue
+          // season_number alloziert und auf die frische Session-Row geschrieben.
+          // Renderer-Projekt-Store haelt next_season_number als korrelierte
+          // Subquery-Spalte vom letzten projects:list-Call — also stale. Reload
+          // damit NewSessionModal/TemplatesModal beim naechsten Open die neue
+          // Nummer zeigen.
+          if (type === 'feature') {
+            void useProjectStore.getState().reload();
+          }
+          if (isActive) {
+            terminal.focus();
+          }
         }
       };
       // Bereich-7-Review: RAF-Handle in Variable, damit die Cleanup-Funktion
@@ -270,7 +301,7 @@ export function TerminalTab({
     // damit der erste Tick keine redundante running→running-Transition schickt.
     let lastPushedState: TuiDetectedState = 'running';
     let lastBufferSignature: string | null = null;
-    const tuiTimer = setInterval(() => {
+    tuiTimer = setInterval(() => {
       const term = terminalRef.current;
       if (!term) return;
       const lines = snapshotBufferLines(term, TUI_POLL_WINDOW_LINES);
@@ -322,7 +353,7 @@ export function TerminalTab({
         // dazwischenkommt.
         spawnDispatchedRef.current = false;
       }
-      clearInterval(tuiTimer);
+      stopTui();
       offData();
       offExit();
       ro.disconnect();

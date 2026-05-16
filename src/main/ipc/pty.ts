@@ -72,6 +72,16 @@ export function registerPtyIpc(deps: {
         log.warn(
           `[pty:exit] Lifecycle-Transition abgelehnt sessionId=${event.sessionId} → ${result.error}`,
         );
+      } else {
+        // Phase-2 Season-21: Status-Push auch fuer pty:exit. Bisher hat nur
+        // die state-detection-loop SessionStatusPush gefeuert, weshalb
+        // HistoryPane (volle Tabelle) eine im Hintergrund auf `completed`
+        // gewanderte Session nicht aktualisiert hat — das Detail-Pane zeigt
+        // dann z.B. „läuft" obwohl die DB-Wahrheit schon `completed` ist.
+        getWebContents()?.send(Channels.SessionStatusPush, {
+          sessionId: event.sessionId,
+          status: result.data.status,
+        });
       }
       // Phase-2 Season-15: nach Lifecycle-Transition vom Polling-Ring abkoppeln.
       // Idempotent — falls schon detached (z.B. Tab-Close kam vor pty:exit), no-op.

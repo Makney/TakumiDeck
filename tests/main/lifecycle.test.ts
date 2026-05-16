@@ -52,8 +52,12 @@ describe('isTransitionAllowed (Truth-Table)', () => {
     ['completed', 'archived'],
     ['interrupted', 'running'],
     ['interrupted', 'archived'],
+    // Phase-2 Season-21: manuelle „Auf abgeschlossen setzen"-Aktion im
+    // Verlauf-Detail-Pane braucht interrupted/error → completed.
+    ['interrupted', 'completed'],
     ['error', 'running'],
     ['error', 'archived'],
+    ['error', 'completed'],
   ];
   const disallowed: Array<[SessionStatus, SessionStatus]> = [
     ['archived', 'running'],
@@ -64,8 +68,6 @@ describe('isTransitionAllowed (Truth-Table)', () => {
     // tests/main/lifecycle-phase2.test.ts.
     ['completed', 'completed'],
     ['completed', 'interrupted'],
-    ['interrupted', 'completed'],
-    ['error', 'completed'],
   ];
 
   it.each(allowed)('erlaubt %s → %s', (from, to) => {
@@ -118,6 +120,30 @@ describe('SessionLifecycle.transition Side-Effects', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data).toEqual(before);
+  });
+
+  // Phase-2 Season-21: manuelle „Auf abgeschlossen setzen"-Aktion im Verlauf-
+  // Detail-Pane. interrupted/error sind die Eintrittspunkte; ended_at wurde
+  // beim ersten Endzustand-Wechsel gesetzt und bleibt erhalten (nicht
+  // ueberschreiben, wie schon bei archived).
+  it('erlaubt interrupted → completed (manuelle Aktion) ohne ended_at zu überschreiben', () => {
+    const { lifecycle, repo, fixedNow } = makeFixture('interrupted');
+    expect(repo.findById('sess-test')?.ended_at).toBe(fixedNow - 5_000);
+    const result = lifecycle.transition('sess-test', 'completed', 'manual');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.status).toBe('completed');
+    expect(result.data.ended_at).toBe(fixedNow - 5_000);
+  });
+
+  it('erlaubt error → completed (manuelle Aktion) ohne ended_at zu überschreiben', () => {
+    const { lifecycle, repo, fixedNow } = makeFixture('error');
+    expect(repo.findById('sess-test')?.ended_at).toBe(fixedNow - 5_000);
+    const result = lifecycle.transition('sess-test', 'completed', 'manual');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.status).toBe('completed');
+    expect(result.data.ended_at).toBe(fixedNow - 5_000);
   });
 });
 

@@ -186,6 +186,28 @@ export function HistoryPane({ project, settings }: Props) {
     [entries, selectedId],
   );
 
+  // Phase-2 Season-21: Status-Push-Listener. Main pusht jetzt auch beim
+  // pty:exit + bei manuellen Transitions, damit eine im Hintergrund auf
+  // `completed`/`interrupted`/`error` gewanderte Session sofort im Table-Status
+  // erscheint, ohne dass der User Filter wechseln muss. Nur lokales Patchen,
+  // kein voller Re-Fetch — der Server-Stand der Tokens/Notizen aendert sich
+  // beim Statuswechsel nicht. Ended_at wird bewusst NICHT mitgepatcht, weil
+  // der Push-Event diese Spalte nicht traegt; der naechste Re-Fetch beim
+  // Filter-Wechsel zieht den korrekten Zeitstempel nach.
+  useEffect(() => {
+    return window.api.sessions.onStatusPush((event) => {
+      setEntries((prev) => {
+        const idx = prev.findIndex((e) => e.id === event.sessionId);
+        if (idx < 0) return prev;
+        const existing = prev[idx];
+        if (!existing || existing.status === event.status) return prev;
+        const updated = [...prev];
+        updated[idx] = { ...existing, status: event.status };
+        return updated;
+      });
+    });
+  }, []);
+
   const toggleType = (t: SessionType) => {
     setSelectedTypes((prev) =>
       prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t],
@@ -272,6 +294,37 @@ export function HistoryPane({ project, settings }: Props) {
       setResumeError(null);
       setEntries((prev) =>
         prev.map((e) => (e.id === entry.id ? { ...e, status: 'archived' as const } : e)),
+      );
+    },
+    [],
+  );
+
+  // Phase-2 Season-21: manuelle „Auf abgeschlossen setzen"-Aktion fuer
+  // Sessions, die ungeplant terminiert sind (interrupted/error). Nutzt
+  // session:update mit Status-Patch; der Lifecycle laesst die neuen Kanten
+  // interrupted/error → completed seit Season-21 zu. UI patcht den Eintrag
+  // optimistisch — falls die Transition serverseitig scheitert (z.B. Schema-
+  // Validierung), wird die Optimistik via Fehlermeldung zurueckgenommen.
+  const handleMarkCompleted = useCallback(
+    async (entry: SessionHistoryEntry) => {
+      const result = await window.api.sessions.update({
+        sessionId: entry.id,
+        patch: { status: 'completed' as const },
+      });
+      if (!result.ok) {
+        setError(`Als abgeschlossen markieren fehlgeschlagen: ${result.error}`);
+        return;
+      }
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.id === entry.id
+            ? {
+                ...e,
+                status: 'completed' as const,
+                ended_at: result.data.ended_at,
+              }
+            : e,
+        ),
       );
     },
     [],
@@ -477,6 +530,7 @@ export function HistoryPane({ project, settings }: Props) {
               onResume={() => void handleResume(selectedEntry)}
               onArchive={() => void handleArchive(selectedEntry)}
               onArchiveDirect={() => void handleArchiveDirect(selectedEntry)}
+              onMarkCompleted={() => void handleMarkCompleted(selectedEntry)}
               onCancelArchive={() => setArchiveConfirmId(null)}
             />
           ) : (
@@ -499,6 +553,9 @@ interface HistoryDetailProps {
   onResume: () => void;
   onArchive: () => void;
   onArchiveDirect: () => void;
+  // Phase-2 Season-21: manuelle Markierung als abgeschlossen fuer
+  // interrupted/error-Sessions.
+  onMarkCompleted: () => void;
   onCancelArchive: () => void;
 }
 
@@ -509,6 +566,7 @@ function HistoryDetail({
   onResume,
   onArchive,
   onArchiveDirect,
+  onMarkCompleted,
   onCancelArchive,
 }: HistoryDetailProps) {
   // Resume ist in der State-Machine (Sprint 3) für completed/interrupted/error/idle
@@ -527,6 +585,13 @@ function HistoryDetail({
     entry.status === 'interrupted' ||
     entry.status === 'error' ||
     entry.status === 'idle';
+  // Phase-2 Season-21: Manuell „Auf abgeschlossen setzen" nur fuer Sessions, die
+  // ungeplant terminiert sind. completed selbst ist redundant, archived ist
+  // terminal, und Live-Status (running/idle/waiting/permission-prompt) sollte
+  // ueber den × auf dem Tab + den natuerlichen pty:exit gehen, damit der PTY
+  // sauber abgeraeumt wird.
+  const canMarkCompleted =
+    entry.status === 'interrupted' || entry.status === 'error';
   return (
     <div className="td-history-detail-body">
       <div className="td-history-detail-header">
@@ -591,6 +656,16 @@ function HistoryDetail({
       )}
 
       <div className="td-history-detail-actions">
+        {canMarkCompleted && (
+          <button
+            type="button"
+            className="td-btn td-btn-ghost"
+            onClick={onMarkCompleted}
+            title="Session manuell als abgeschlossen markieren (z.B. nach Crash oder Interrupt)"
+          >
+            ✓ Als abgeschlossen markieren
+          </button>
+        )}
         {entry.status !== 'archived' && canArchive && (
           archiveConfirmActive ? (
             <div className="td-history-archive-confirm">

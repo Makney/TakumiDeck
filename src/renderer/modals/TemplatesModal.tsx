@@ -19,6 +19,7 @@ import { extractTemplateBody } from '../components/templateBody';
 import { displayProjectName } from '../components/displayProjectName';
 import { useFileTabsStore } from '../stores/fileTabs';
 import { useUiStore } from '../stores/ui';
+import { useProjectStore } from '../stores/projects';
 
 // TemplatesModal (Sprint 6, Architektur 6.5).
 //
@@ -325,6 +326,12 @@ export function TemplatesModal({
           ? `Session als Season #${allocated} markiert`
           : `Session war bereits Season #${allocated}`,
       );
+      // Phase-2 Season-21: nur ein frisch alloziertes Schreibevent erhoeht
+      // MAX(season_number) — wenn die Session schon eine Nummer hatte, bleibt
+      // der Renderer-Store-Stand korrekt.
+      if (result.data.freshlyAssigned) {
+        void useProjectStore.getState().reload();
+      }
     }
     window.dispatchEvent(
       new CustomEvent<{ text: string }>('td-template-send', { detail: { text: finalText } }),
