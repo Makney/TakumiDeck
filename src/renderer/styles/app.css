@@ -2427,6 +2427,17 @@ body,
   color: var(--td-text-dim);
 }
 
+/* Phase-2 Season-22: Name-Spalte mit Ellipsis-Truncation kappen. Ohne diese
+   Begrenzung zwingen lange Season-Titel wie „Top-N fuer Template-Auto-
+   Variablen konfigurierbar" die Tabelle breiter als ihren Wrap, und der
+   rechte Rand wandert in den Horizontal-Scroll. Voller Titel weiterhin im
+   Detail-Pane + nativem Tooltip (title-Attribut auf der Zelle). */
+.td-history-col-name {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .td-history-col-date {
   width: 130px;
   font-variant-numeric: tabular-nums;

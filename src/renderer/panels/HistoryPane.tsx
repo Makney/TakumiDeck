@@ -464,7 +464,7 @@ export function HistoryPane({ project, settings }: Props) {
               <tr>
                 <th className="td-history-col-season">#</th>
                 <th className="td-history-col-type">Typ</th>
-                <th>Name</th>
+                <th className="td-history-col-name">Name</th>
                 <th>Status</th>
                 <th>Modell</th>
                 <th className="td-history-col-date">Datum</th>
@@ -487,7 +487,7 @@ export function HistoryPane({ project, settings }: Props) {
                   <td className="td-history-col-type" title={entry.type === 'custom' ? 'Eigene Art' : undefined}>
                     {resolveTypeLabel(entry)}
                   </td>
-                  <td>{entry.title}</td>
+                  <td className="td-history-col-name" title={entry.title}>{entry.title}</td>
                   <td>
                     <span className={`td-status-dot ${entry.status}`} aria-hidden />
                     <span className="td-history-status-label">

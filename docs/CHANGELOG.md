@@ -17,6 +17,14 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-16 — Verlauf-Tabelle: Name-Spalte mit Ellipsis kappen
+
+### Was jetzt geht
+
+- **Lange Season-Titel im Verlauf-Panel schneiden die Tabelle nicht mehr ab.** Bisher zwang ein Titel wie *„Top-N für Template-Auto-Variablen konfigurierbar"* die Name-Spalte auf ihre volle Breite (alle `td`/`th` haben `white-space: nowrap`), wodurch die Gesamttabelle breiter wurde als ihr `td-history-table-wrap` und der rechte Rand inkl. Tokens-Spalte hinter den 320 px breiten Detail-Pane wanderte. Neue CSS-Klasse `.td-history-col-name` (`max-width: 280px` + `overflow: hidden` + `text-overflow: ellipsis`) kappt den Titel bei Überlänge mit `…`; die Tabelle bleibt flush am rechten Rand der Mittelspalte. Voller Titel weiterhin lesbar im Detail-Pane (Klick auf die Zeile) und als nativer Tooltip beim Hover über die Zelle (`title={entry.title}` auf dem `<td>`). Projekte mit kurzen Namen sehen optisch keinen Unterschied — die `max-width` greift nur ab Überlänge.
+
+---
+
 ## 2026-05-16 — Phase 2 Season 20: Top-N für Template-Auto-Variablen konfigurierbar
 
 ### Was jetzt geht
