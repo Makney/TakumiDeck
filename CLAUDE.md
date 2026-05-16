@@ -1,7 +1,7 @@
 ---
 workbench:
   project_name: TakumiDeck
-  default_model: claude-sonnet-4-6
+  default_model: claude-opus-4-7
   current_phase_file: docs/roadmap/PHASE2.md
   trigger_phrases:
     docs_update: "ist korrekt umgesetzt"
