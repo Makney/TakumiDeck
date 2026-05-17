@@ -260,7 +260,7 @@ Spezielle Session-Art für Doku-Komprimierung.
 - Unterstützte Files: `ENTSCHEIDUNGEN.md`, `CHANGELOG.md`, `TECH_SCHULDEN.md`, `FEATURES.md`
 - UI für Summary-Status pro Datei (gibt es eine? Wie alt? Original geändert?)
 
-### Feature: Kontext-Checkbox-Erweiterung
+### Feature: Kontext-Checkbox-Erweiterung ✅
 
 Aufbauend auf Phase-1-Pfad-Erinnerung.
 

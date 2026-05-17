@@ -7,6 +7,8 @@ import type {
   ClaudeMdParseResult,
   DocsSyncStatusInput,
   DocsSyncStatusResult,
+  DocsOnDemandStatusInput,
+  DocsOnDemandStatusResult,
   SessionStatusPushEvent,
   FsListTemplatesInput,
   FsListTreeInput,
@@ -153,6 +155,14 @@ const api: RendererApi = {
     syncStatus: (input: DocsSyncStatusInput) =>
       ipcRenderer.invoke(Channels.DocsSyncStatus, input) as Promise<
         IpcResult<DocsSyncStatusResult>
+      >,
+    // Phase-2 Season-22: On-Demand-Kontext-Praeambel — Status + Body der
+    // On-Demand-Files aus dem CLAUDE.md-Frontmatter. Renderer ruft beim
+    // Oeffnen des NewSessionModals fuer alle Session-Typen ausser
+    // docs-sync (dort uebernimmt syncStatus die Anzeige).
+    onDemandStatus: (input: DocsOnDemandStatusInput) =>
+      ipcRenderer.invoke(Channels.DocsOnDemandStatus, input) as Promise<
+        IpcResult<DocsOnDemandStatusResult>
       >,
   },
   fs: {

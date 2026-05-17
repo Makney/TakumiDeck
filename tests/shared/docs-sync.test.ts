@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   DOCS_SYNC_FILES,
+  buildContextPreamble,
   buildDocsSyncPrompt,
   computeFileSyncStatus,
+  deriveOnDemandDescriptor,
   parseSummaryFrontmatter,
+  stripFrontmatter,
   type DocsSyncFileDescriptor,
 } from '../../src/shared/docs-sync';
 
@@ -204,5 +207,106 @@ describe('DOCS_SYNC_FILES', () => {
     for (const f of DOCS_SYNC_FILES) {
       expect(f.summaryPath).toMatch(/^docs\/SUMMARIES\//);
     }
+  });
+});
+
+describe('deriveOnDemandDescriptor', () => {
+  it('mappt einen flachen Pfad auf basename + sourcePath + summary-Konvention', () => {
+    const d = deriveOnDemandDescriptor('docs/CODING_RULES.md');
+    expect(d).not.toBeNull();
+    expect(d!.name).toBe('CODING_RULES.md');
+    expect(d!.sourcePath).toBe('docs/CODING_RULES.md');
+    expect(d!.summaryPath).toBe('docs/SUMMARIES/CODING_RULES.md');
+  });
+
+  it('normalisiert Backslashes aus Windows-Frontmatter', () => {
+    const d = deriveOnDemandDescriptor('docs\\roadmap\\PHASE1.md');
+    expect(d!.sourcePath).toBe('docs/roadmap/PHASE1.md');
+    expect(d!.summaryPath).toBe('docs/SUMMARIES/PHASE1.md');
+  });
+
+  it('strippt fuehrendes ./ und Doppel-Slashes', () => {
+    const d = deriveOnDemandDescriptor('.//docs//GLOSSAR.md');
+    expect(d!.sourcePath).toBe('docs/GLOSSAR.md');
+  });
+
+  it('liefert null bei leerem Pfad oder Trailing-Slash', () => {
+    expect(deriveOnDemandDescriptor('')).toBeNull();
+    expect(deriveOnDemandDescriptor('docs/')).toBeNull();
+  });
+});
+
+describe('stripFrontmatter', () => {
+  it('entfernt einen Standard-Frontmatter-Block am Datei-Anfang', () => {
+    const md = [
+      '---',
+      'source: docs/CODING_RULES.md',
+      'source_hash: abc',
+      '---',
+      '',
+      '# Body',
+      'Inhalt.',
+    ].join('\n');
+    expect(stripFrontmatter(md)).toBe('# Body\nInhalt.');
+  });
+
+  it('laesst Content ohne Frontmatter unveraendert', () => {
+    expect(stripFrontmatter('# Body ohne FM\n')).toBe('# Body ohne FM\n');
+    expect(stripFrontmatter('')).toBe('');
+  });
+
+  it('toleriert BOM am Datei-Anfang', () => {
+    const md = '﻿---\nsource_hash: x\n---\n# Body';
+    expect(stripFrontmatter(md)).toBe('# Body');
+  });
+
+  it('laesst Content unveraendert, wenn Frontmatter nicht geschlossen ist', () => {
+    const md = '---\nsource_hash: x\nfehlt-das-ende';
+    expect(stripFrontmatter(md)).toBe(md);
+  });
+});
+
+describe('buildContextPreamble', () => {
+  it('liefert leeren String bei leerer Liste', () => {
+    expect(buildContextPreamble([])).toBe('');
+  });
+
+  it('rendert eine Section pro Datei mit Pfad als Heading', () => {
+    const result = buildContextPreamble([
+      { relPath: 'docs/CODING_RULES.md', summaryBody: 'Regel 1.\nRegel 2.' },
+    ]);
+    expect(result).toContain('## Kontext: docs/CODING_RULES.md');
+    expect(result).toContain('Regel 1.\nRegel 2.');
+  });
+
+  it('trennt mehrere Files durch einen Horizontal-Rule', () => {
+    const result = buildContextPreamble([
+      { relPath: 'a.md', summaryBody: 'A-Body' },
+      { relPath: 'b.md', summaryBody: 'B-Body' },
+    ]);
+    expect(result).toContain('## Kontext: a.md');
+    expect(result).toContain('## Kontext: b.md');
+    // Zwischen den beiden Bloecken muss ein `---` als Trenner stehen.
+    const aIdx = result.indexOf('A-Body');
+    const bIdx = result.indexOf('B-Body');
+    const sepIdx = result.indexOf('---', aIdx);
+    expect(sepIdx).toBeGreaterThan(aIdx);
+    expect(sepIdx).toBeLessThan(bIdx);
+  });
+
+  it('endet mit einem Hinweis auf docs/SUMMARIES/', () => {
+    const result = buildContextPreamble([
+      { relPath: 'x.md', summaryBody: 'Body' },
+    ]);
+    expect(result).toMatch(/docs\/SUMMARIES\//);
+  });
+
+  it('trimmt fuehrende und nachfolgende Whitespace im Body', () => {
+    const result = buildContextPreamble([
+      { relPath: 'x.md', summaryBody: '\n\nBody mit Padding\n\n' },
+    ]);
+    // Section sollte den Body ohne fuehrendes/trailing Whitespace haben.
+    expect(result).toContain('## Kontext: x.md\n\nBody mit Padding\n');
+    expect(result).not.toContain('## Kontext: x.md\n\n\nBody');
   });
 });

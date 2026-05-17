@@ -1,7 +1,7 @@
 {
   "name": "takumi-deck",
   "productName": "TakumiDeck",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Persönliches Multi-Session-Management-Tool für Claude Code",
   "main": ".vite/build/main.js",
   "private": true,

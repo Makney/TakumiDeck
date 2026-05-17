@@ -1,9 +1,15 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import type { SessionType, DocsSyncFileStatus } from '@shared/types';
+import type {
+  SessionType,
+  DocsSyncFileStatus,
+  DocsOnDemandFileStatus,
+} from '@shared/types';
 import {
   DOCS_SYNC_FILES,
   buildDocsSyncPrompt,
+  buildContextPreamble,
   type DocsSyncFileDescriptor,
+  type ContextPreambleItem,
 } from '@shared/docs-sync';
 
 // NewSessionModal: Sprint-3-Pflicht aus Architektur 6.0.1.
@@ -21,6 +27,13 @@ import {
 // Checkbox + Status-Marker; ausgewaehlte Files werden beim Submit in einen
 // vorbereiteten Prompt eingebaut, den der TabContainer nach erfolgreichem
 // Spawn an die frische Session sendet.
+//
+// Phase-2 Season-22: Fuer alle anderen Session-Arten (Feature/Bug/Review/
+// Custom) ein zweiter Block „On-Demand-Kontext laden". Listet die On-Demand-
+// Files aus dem CLAUDE.md-Frontmatter mit Status-Marker und Checkbox; vor-
+// ausgewaehlt sind Files mit frischer Summary. Beim Submit baut das Modal
+// aus den Body-Inhalten der Summaries eine Praeambel, die genauso wie der
+// Docs-Sync-Prompt nach Spawn via Bracketed-Paste an die Session geht.
 
 const SESSION_TYPES: SessionType[] = ['feature', 'bug', 'review', 'docs-sync', 'custom'];
 const TYPE_LABELS: Record<SessionType, string> = {
@@ -96,6 +109,16 @@ export function NewSessionModal({
     null,
   );
   const [docsSyncLoading, setDocsSyncLoading] = useState(false);
+  // Phase-2 Season-22: On-Demand-Kontext-Block. Status kommt aus dem zweiten
+  // IPC (`docs:on-demand-status`); Auswahl ist ein Set ueber relPath. Initial
+  // null, damit „lädt…" angezeigt wird, bis die Antwort da ist.
+  const [onDemandStatus, setOnDemandStatus] = useState<DocsOnDemandFileStatus[] | null>(
+    null,
+  );
+  const [onDemandLoading, setOnDemandLoading] = useState(false);
+  const [onDemandSelection, setOnDemandSelection] = useState<Set<string>>(
+    () => new Set(),
+  );
   const titleInputRef = useRef<HTMLInputElement>(null);
   const customLabelRef = useRef<HTMLInputElement>(null);
 
@@ -148,6 +171,36 @@ export function NewSessionModal({
     };
   }, [type, projectId]);
 
+  // Phase-2 Season-22: On-Demand-Status fuer alle anderen Session-Arten laden.
+  // Wird einmal beim ersten Wechsel auf einen non-docs-sync-Typ gefetcht und
+  // dann gecached — der User wechselt typischerweise mehrfach zwischen
+  // Feature/Bug/Review, ohne dass sich die On-Demand-Files-Liste aendert.
+  useEffect(() => {
+    if (type === 'docs-sync' || !projectId) return;
+    if (onDemandStatus !== null) return; // bereits geladen
+    let cancelled = false;
+    setOnDemandLoading(true);
+    void window.api.docs.onDemandStatus({ projectId }).then((result) => {
+      if (cancelled) return;
+      setOnDemandLoading(false);
+      if (result.ok) {
+        setOnDemandStatus(result.data.files);
+        // Default-Auswahl: alle Files mit frischer Summary. Veraltete
+        // werden bewusst NICHT vorausgewaehlt — der User soll explizit
+        // entscheiden, einen Stale-Body in den Kontext zu uebernehmen.
+        const fresh = result.data.files
+          .filter((f) => f.state === 'fresh')
+          .map((f) => f.sourcePath);
+        setOnDemandSelection(new Set(fresh));
+      } else {
+        setOnDemandStatus([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [type, projectId, onDemandStatus]);
+
   const trimmedCustomLabel = customLabel.trim();
 
   // Phase-2 Season-21: Submit-Validierung. Docs-Sync braucht mindestens eine
@@ -172,15 +225,49 @@ export function NewSessionModal({
     });
   };
 
+  // Phase-2 Season-22: Toggle fuer die On-Demand-Kontext-Liste. Wird nur fuer
+  // non-docs-sync-Typen gerendert.
+  const toggleOnDemandFile = (sourcePath: string) => {
+    setOnDemandSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(sourcePath)) next.delete(sourcePath);
+      else next.add(sourcePath);
+      return next;
+    });
+  };
+
+  // Phase-2 Season-22: ausgewaehlte Files mit ihrem Summary-Body fuer den
+  // Praeambel-Builder. Files ohne Body (state='missing-source'/'missing-
+  // summary') werden ausgefiltert — der User kann sie zwar anklicken, aber
+  // ohne Body koennen sie nicht zur Praeambel beitragen.
+  const onDemandPreambleItems = useMemo<ContextPreambleItem[]>(() => {
+    if (!onDemandStatus) return [];
+    const items: ContextPreambleItem[] = [];
+    for (const file of onDemandStatus) {
+      if (!onDemandSelection.has(file.sourcePath)) continue;
+      if (file.summaryBody === null) continue;
+      items.push({ relPath: file.sourcePath, summaryBody: file.summaryBody });
+    }
+    return items;
+  }, [onDemandStatus, onDemandSelection]);
+
   const submit = () => {
     if (!canSubmit) return;
+    // Phase-2 Season-22: zwei moegliche Praeambel-Quellen, die sich gegen-
+    // seitig ausschliessen. docs-sync ⇒ Docs-Sync-Prompt; alle anderen ⇒
+    // Kontext-Praeambel (oder null, wenn nichts ausgewaehlt/verfuegbar).
+    let preamble: string | null = null;
+    if (type === 'docs-sync') {
+      preamble = buildDocsSyncPrompt(selectedDocsSyncFiles);
+    } else if (onDemandPreambleItems.length > 0) {
+      preamble = buildContextPreamble(onDemandPreambleItems);
+    }
     onCreate({
       title: title.trim(),
       type,
       model,
       customTypeLabel: type === 'custom' ? trimmedCustomLabel : null,
-      initialPrompt:
-        type === 'docs-sync' ? buildDocsSyncPrompt(selectedDocsSyncFiles) : null,
+      initialPrompt: preamble,
     });
   };
 
@@ -285,6 +372,52 @@ export function NewSessionModal({
             </div>
           )}
 
+          {/* Phase-2 Season-22: On-Demand-Kontext-Block fuer alle anderen
+              Session-Arten. Nutzt dieselben CSS-Klassen wie der Docs-Sync-
+              Block (visuell identisch — Checkbox-Reihe mit Status-Marker). */}
+          {type !== 'docs-sync' &&
+            ((onDemandStatus !== null && onDemandStatus.length > 0) || onDemandLoading) && (
+              <div className="td-field">
+                <span>Kontext laden</span>
+                <div className="td-docs-sync-list">
+                  {onDemandLoading && (!onDemandStatus || onDemandStatus.length === 0) && (
+                    <div className="td-docs-sync-row">
+                      <span className="td-docs-sync-state td-docs-sync-state-loading">
+                        On-Demand-Files werden geladen…
+                      </span>
+                    </div>
+                  )}
+                  {onDemandStatus &&
+                    sortOnDemandByState(onDemandStatus).map((file) => {
+                      const checked = onDemandSelection.has(file.sourcePath);
+                      const canSelect =
+                        file.state === 'fresh' || file.state === 'stale';
+                      return (
+                        <label
+                          key={file.sourcePath}
+                          className={`td-docs-sync-row${checked ? ' selected' : ''}`}
+                          title={file.sourcePath}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!canSelect}
+                            onChange={() => toggleOnDemandFile(file.sourcePath)}
+                          />
+                          <span className="td-docs-sync-name">{file.name}</span>
+                          <OnDemandStatusBadge status={file} />
+                        </label>
+                      );
+                    })}
+                </div>
+                <span className="td-form-meta td-docs-sync-hint">
+                  Ausgewählte Summaries werden als Präambel in die Session
+                  geladen. Fehlende oder veraltete Summaries erzeugen eine
+                  neue Docs-Sync-Session.
+                </span>
+              </div>
+            )}
+
           {type === 'feature' && nextSeasonPreview !== null && (
             <div className="td-field td-form-hint">
               <span />
@@ -383,4 +516,67 @@ function formatSummaryTimestamp(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toISOString().slice(0, 10);
+}
+
+// Phase-2 Season-22: Sortier-Reihenfolge fuer den On-Demand-Block. Stable
+// sort entlang der Status-Prioritaet: fresh zuerst (laedt sofort), stale
+// danach (sichtbar als „kann veraltet sein"), missing-summary als Hinweis
+// „lohnt eine Docs-Sync", missing-source ganz nach hinten (Datei existiert
+// nicht mehr im Projekt). Innerhalb derselben Status-Gruppe bleibt die
+// CLAUDE.md-Reihenfolge erhalten — das ist die User-definierte Prioritaet.
+const STATE_ORDER: Record<DocsOnDemandFileStatus['state'], number> = {
+  fresh: 0,
+  stale: 1,
+  'missing-summary': 2,
+  'missing-source': 3,
+};
+
+function sortOnDemandByState(
+  files: DocsOnDemandFileStatus[],
+): DocsOnDemandFileStatus[] {
+  return [...files].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]);
+}
+
+// Phase-2 Season-22: Status-Marker fuer den On-Demand-Block. Vier Zustaende
+// analog zum Docs-Sync-Badge, aber mit eigener Wortwahl, weil die Bedeutung
+// hier „kann ich als Praeambel laden?" ist, nicht „muss ich neu syncen?".
+function OnDemandStatusBadge({ status }: { status: DocsOnDemandFileStatus }) {
+  switch (status.state) {
+    case 'fresh':
+      return (
+        <span
+          className="td-docs-sync-state td-docs-sync-state-fresh"
+          title={status.summarizedAt ? `Zuletzt: ${formatSummaryTimestamp(status.summarizedAt)}` : undefined}
+        >
+          ✅ Summary aktuell
+        </span>
+      );
+    case 'stale':
+      return (
+        <span
+          className="td-docs-sync-state td-docs-sync-state-stale"
+          title={status.summarizedAt ? `Zuletzt: ${formatSummaryTimestamp(status.summarizedAt)}` : undefined}
+        >
+          🟡 Summary veraltet
+        </span>
+      );
+    case 'missing-summary':
+      return (
+        <span
+          className="td-docs-sync-state td-docs-sync-state-missing"
+          title="Noch keine Summary — eine Docs-Sync-Session anlegen, um sie zu erzeugen."
+        >
+          ⛔ keine Summary
+        </span>
+      );
+    case 'missing-source':
+      return (
+        <span
+          className="td-docs-sync-state td-docs-sync-state-missing"
+          title="Die in CLAUDE.md referenzierte Datei existiert nicht im Projekt."
+        >
+          ⚠️ Datei fehlt
+        </span>
+      );
+  }
 }

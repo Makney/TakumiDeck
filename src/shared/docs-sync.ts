@@ -184,6 +184,93 @@ export interface DocsSyncStatusResult {
   generatedAt: number;
 }
 
+// Phase-2 Season-22 — Helper fuer den On-Demand-Kontext-Pfad. CLAUDE.md
+// listet On-Demand-Files mit `path: docs/...`-Eintraegen; die zugehoerige
+// Summary lebt unter `docs/SUMMARIES/<basename>` (gleiche Konvention wie die
+// vier festen Docs-Sync-Files). Diese Funktion baut den Descriptor, damit
+// `computeFileSyncStatus` ohne Sonderpfad funktioniert.
+//
+// Edge-Cases:
+//   - Backslashes im Pfad → werden zu Forward-Slash normalisiert (Frontmatter
+//     auf Windows kann beides liefern).
+//   - Doppelte Slashes oder `./`-Prefix → werden gestrippt.
+//   - Leerer Basename (z.B. relPath endet auf `/`) → `null` Rueckgabe;
+//     Caller filtert.
+export function deriveOnDemandDescriptor(
+  relPath: string,
+): DocsSyncFileDescriptor | null {
+  const normalized = relPath
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\.\//, '');
+  if (normalized.length === 0) return null;
+  const parts = normalized.split('/');
+  const name = parts[parts.length - 1] ?? '';
+  if (name.length === 0) return null;
+  return {
+    name,
+    sourcePath: normalized,
+    summaryPath: `docs/SUMMARIES/${name}`,
+  };
+}
+
+// Phase-2 Season-22 — Entfernt den fuehrenden YAML-Frontmatter-Block aus
+// einer Summary-Datei, damit der Inhalt als Praeambel an die frische Session
+// gepastet werden kann. Bestehende Helper (parseSummaryFrontmatter) liest die
+// Metadaten — fuer den Body brauchen wir die Bytes *nach* dem zweiten `---`.
+//
+// Falls kein Frontmatter-Block vorhanden ist, wird der Input unveraendert
+// zurueckgegeben (lockerer Vertrag — eine Summary ohne Frontmatter ist
+// technisch erlaubt, sie ist nur „stale" im Status).
+export function stripFrontmatter(content: string): string {
+  const trimmed = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+  if (!trimmed.startsWith('---')) return trimmed;
+  const newlineAfterOpen = trimmed.indexOf('\n', 3);
+  if (newlineAfterOpen === -1) return trimmed;
+  const rest = trimmed.slice(newlineAfterOpen + 1);
+  const closeMatch = rest.match(/^---\s*$/m);
+  if (!closeMatch || closeMatch.index === undefined) return trimmed;
+  const afterClose = rest.slice(closeMatch.index + closeMatch[0].length);
+  // Eine eventuelle Leerzeile direkt nach dem Frontmatter-Block strippen,
+  // damit der eingefuegte Body sauber am ersten echten Inhalt anfaengt.
+  return afterClose.replace(/^\r?\n/, '');
+}
+
+// Phase-2 Season-22 — Bundle aus Pfad + Body fuer den Praeambel-Builder.
+// Renderer haelt das Array sortiert (Reihenfolge aus CLAUDE.md frontmatter)
+// und filtert vor dem Aufruf auf die per Checkbox ausgewaehlten Files.
+export interface ContextPreambleItem {
+  relPath: string;
+  summaryBody: string;
+}
+
+// Phase-2 Season-22 — Baut den Praeambel-Text, den TakumiDeck nach erfolg-
+// reichem PTY-Spawn an die frische Session pastet. Format pro Datei:
+//
+//   ## Kontext: docs/CODING_RULES.md
+//
+//   <summary body ohne frontmatter>
+//
+//   ---
+//
+// Trennstrich zwischen den Bloecken; am Ende ein kurzer Hinweis, dass es
+// sich um Summaries handelt und der Volltext via Pfad nachgeladen werden
+// kann. Leere Eingabe → leerer String; Caller (Modal) muss das vor dem
+// Submit abfangen.
+export function buildContextPreamble(items: ContextPreambleItem[]): string {
+  if (items.length === 0) return '';
+  const blocks = items.map((item) => {
+    const body = item.summaryBody.trim();
+    return `## Kontext: ${item.relPath}\n\n${body}\n`;
+  });
+  return [
+    blocks.join('\n---\n\n'),
+    '---',
+    '',
+    'Diese Kontext-Bloecke sind komprimierte Zusammenfassungen aus `docs/SUMMARIES/`. Wenn du die volle Datei brauchst, lies sie ueber den Pfad oben nach.',
+  ].join('\n');
+}
+
 // Pure Prompt-Builder. Nimmt die Subset-Auswahl an, gibt den deutschen Prompt
 // zurueck, den die neue Claude-Code-Session als erstes Input bekommt.
 //

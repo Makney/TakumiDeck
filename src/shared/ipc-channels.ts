@@ -88,6 +88,10 @@ export const Channels = {
   // SHA-256-Hash der Originaldatei mit `source_hash` im Frontmatter der
   // Summary-Datei.
   DocsSyncStatus: 'docs:sync-status',
+  // Phase-2 Season-22: Status der On-Demand-Files aus dem CLAUDE.md-
+  // Frontmatter plus (wenn Summary geladen) den Body ohne Frontmatter,
+  // damit das NewSessionModal die Praeambel ohne zweiten IPC bauen kann.
+  DocsOnDemandStatus: 'docs:on-demand-status',
   FsListTree: 'fs:list-tree',
   // Phase-2 Season-2: Screenshot-Drop ins Terminal. Renderer speichert
   // Image-Bytes über diesen Channel in <userData>/screenshots/, bekommt

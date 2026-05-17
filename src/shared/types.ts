@@ -591,6 +591,25 @@ export interface DocsSyncStatusInput {
   projectId: string;
 }
 
+// Phase-2 Season-22 — On-Demand-Kontext-Praeambel. Pro Datei dasselbe
+// Status-Shape wie bei Docs-Sync, plus optional der Summary-Body ohne
+// Frontmatter. Body ist nur gesetzt, wenn die Summary geladen werden
+// konnte (state in {fresh, stale}); bei missing-summary/missing-source
+// ist er null. Renderer entscheidet anhand des Status, ob er die Datei
+// pre-checked anbietet und den Body in die Praeambel uebernimmt.
+export interface DocsOnDemandStatusInput {
+  projectId: string;
+}
+
+export interface DocsOnDemandFileStatus extends DocsSyncFileStatus {
+  summaryBody: string | null;
+}
+
+export interface DocsOnDemandStatusResult {
+  files: DocsOnDemandFileStatus[];
+  generatedAt: number;
+}
+
 // --- Token-Tracking (Sprint 5) ---------------------------------------
 
 // Geparste JSONL-Zeile, gefiltert auf das, was wir tatsächlich brauchen.
@@ -904,6 +923,10 @@ export interface RendererApi {
   // (CHANGELOG/FEATURES/TECH_SCHULDEN/ENTSCHEIDUNGEN) fuers Modal.
   docs: {
     syncStatus: (input: DocsSyncStatusInput) => Promise<IpcResult<DocsSyncStatusResult>>;
+    // Phase-2 Season-22: Status + Body der On-Demand-Files aus CLAUDE.md.
+    onDemandStatus: (
+      input: DocsOnDemandStatusInput,
+    ) => Promise<IpcResult<DocsOnDemandStatusResult>>;
   };
   fs: {
     listTemplates: (input: FsListTemplatesInput) => Promise<IpcResult<TemplateFile[]>>;

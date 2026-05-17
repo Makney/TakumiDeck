@@ -267,6 +267,17 @@ export const DocsSyncStatusInputSchema = z.object({
   projectId: z.string().min(1),
 });
 
+// Phase-2 Season-22: docs:on-demand-status. Selbe projectId-Form wie
+// DocsSyncStatusInput, aber der Handler nimmt die On-Demand-Files-Liste
+// dynamisch aus dem CLAUDE.md-Frontmatter statt aus der DOCS_SYNC_FILES-
+// Whitelist. Liefert pro Datei den gleichen Status plus den Summary-Body
+// (Frontmatter gestrippt) fuer Files, deren Summary geladen wurde —
+// damit der Renderer bei Submit den Praeambel-Text bauen kann, ohne
+// einen zweiten IPC fuer die Body-Reads zu machen.
+export const DocsOnDemandStatusInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
 // --- Filesystem read/write (Sprint 7) ---------------------------------
 
 // fs:read / fs:write laufen ausschließlich relativ zu einem registrierten Projekt.
