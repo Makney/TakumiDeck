@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import {
   listTemplates,
+  parseTemplateSchema,
   type TemplateFsLikeDriver,
 } from '../../src/main/templates/reader';
 
@@ -173,5 +174,82 @@ describe('listTemplates', () => {
       fs,
     );
     expect(result).toEqual([]);
+  });
+
+  it('Phase-2 Season-23: parst Schema aus Frontmatter und legt es in TemplateFile.schema', async () => {
+    const fs = new FakeFs();
+    fs.add(
+      'C:\\global\\foo.md',
+      `---\nvariables:\n  DATUM: { auto: today }\n  FEATURE: { input: text, required: true }\n---\n# foo\n{{DATUM}} {{FEATURE}}\n`,
+    );
+    const result = await listTemplates(
+      { globalDir: 'C:\\global', projectPath: null },
+      fs,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.schema).toEqual({
+      variables: {
+        DATUM: { auto: 'today' },
+        FEATURE: { input: 'text', required: true },
+      },
+    });
+  });
+
+  it('Templates ohne Frontmatter haben schema=null (Legacy-Fallback im Renderer)', async () => {
+    const fs = new FakeFs();
+    fs.add('C:\\global\\plain.md', '# Plain\nKein Frontmatter, nur Markdown.\n');
+    const result = await listTemplates(
+      { globalDir: 'C:\\global', projectPath: null },
+      fs,
+    );
+    expect(result[0]?.schema).toBeNull();
+  });
+});
+
+describe('parseTemplateSchema', () => {
+  it('liefert null bei Datei ohne Frontmatter', () => {
+    expect(parseTemplateSchema('# Plain\nKein YAML hier.\n')).toBeNull();
+  });
+
+  it('liefert null bei Frontmatter ohne variables-Section', () => {
+    expect(parseTemplateSchema('---\ntitle: foo\n---\n# Body\n')).toBeNull();
+  });
+
+  it('parst auto- und input-Specs nebeneinander', () => {
+    const md = [
+      '---',
+      'variables:',
+      '  DATUM:   { auto: today }',
+      '  AUFGABE: { input: textarea, label: "Aufgabe", required: true }',
+      '---',
+      '# Body',
+    ].join('\n');
+    expect(parseTemplateSchema(md)).toEqual({
+      variables: {
+        DATUM: { auto: 'today' },
+        AUFGABE: { input: 'textarea', label: 'Aufgabe', required: true },
+      },
+    });
+  });
+
+  it('liefert null wenn Variable-Spec ungueltig ist (auto + input vermischt)', () => {
+    // Defensive: ein kaputter Eintrag kippt das ganze Schema auf null, damit
+    // der Renderer auf Legacy-Fallback geht statt halbgares Schema zu zeigen.
+    const md = [
+      '---',
+      'variables:',
+      '  WEIRD: { auto: today, input: text }',
+      '---',
+    ].join('\n');
+    expect(parseTemplateSchema(md)).toBeNull();
+  });
+
+  it('liefert null bei kaputten YAML', () => {
+    expect(parseTemplateSchema('---\n: : :\nvariables\n---\n')).toBeNull();
+  });
+
+  it('akzeptiert leeres variables-Map (Kickoff-Template-Pattern)', () => {
+    const md = '---\nvariables: {}\n---\n# Body\n';
+    expect(parseTemplateSchema(md)).toEqual({ variables: {} });
   });
 });

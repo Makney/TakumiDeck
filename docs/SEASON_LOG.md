@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 23 — Schema-aware Templates
+
+**Ziel:** Bug-Report aus dem Templates-Modal abarbeiten: in vier Templates (BUG_REPORT, CODE_REVIEW_START, PROJEKT_KICKOFF, RELEASE_START) zeigte TakumiDeck Warnungen `Unbekannte Tokens im Template: …` und ließ die Tokens als Literal stehen, weil die Engine nur zehn hardcodierte Tokens kannte. Außerdem: für jedes neue Template müsste die Hardcoded-Liste angefasst werden. Lösung: einen tragfähigen Vertrag definieren, mit dem Templates ihre Token-Semantik selbst deklarieren, ohne Engine-Touches.
+
+**Ergebnis:** Variante **B** (YAML-Frontmatter pro Template als Schema) gegen die zwei Alternativen Hartcodierte-Liste-Erweiterung (A) und Auto-Discovery-als-generische-Inputs (C). Schema im Format `variables: { NAME: { auto: <pfad> } | { input: text|textarea, label, required } }`. Resolver versteht acht Auto-Pfade (`today`, `project.name`, `project.next_season_number`, `claude_md.workbench.<key>` mit beliebiger Tiefe inkl. `trigger_phrases.<key>`, `db.last_completed_feature_session`, `docs.tech_schulden_top_n`, `docs.entscheidungen_top_n`). Tokens ohne Schema-Eintrag bleiben als Literal stehen — bewusst keine Warnung mehr, weil Kickoff-Templates ihre Tokens (`{{KURZBESCHREIBUNG}}`, `{{STACK}}` etc.) als Agent-Anweisungen führen. Auto-Pfad ohne aufgelösten Wert (z.B. fehlendes Frontmatter-Feld) bleibt ebenfalls Literal statt einem stummen leeren String — sichtbares Signal für die fehlende Quelle. `templates:resolve-auto-vars`-IPC ist generisch über `paths: string[]`, Renderer fragt nur die Server-Pfade an, die im aktiven Template wirklich vorkommen. `ClaudeMdFrontmatterSchema` lernt `workbench.current_version` als optional mit. Sechs Templates migriert: alle fünf im zentralen `D:\Projekte\Vorlage\docs\templates\`-Repo (PROJEKT_KICKOFF kriegt bewusst `variables: {}`, weil dort *kein* Token TakumiDeck-aufgelöst werden soll) plus die TakumiDeck-eigene `docs/templates/SEASON_PROMPT.md`. `LEGACY_TEMPLATE_SCHEMA` im Renderer spiegelt die alten Hardcoded-Listen 1:1 als Fallback für Bestand ohne Frontmatter — und für Templates, deren Frontmatter zod-Validation kippt (dann landet der Reader auf `schema=null` statt Hard-Error, damit ein einzelnes kaputtes Template nicht das Modal blockiert). 27 neue Tests; targeted Test-Lauf 64/64 grün über die vier betroffenen Test-Files. TanaLib hat zusätzlich einen `workbench:`-Frontmatter in seine CLAUDE.md bekommen (zentral entschieden: Versions-Stand 0.1.0 für die abgeschlossene Phase 1, Trigger-Defaults aus PROJEKT_KICKOFF.md übernommen), damit Templates dort die Trigger-Tokens auflösen können.
+
+**Gut gelaufen:**
+
+- **Variants-Briefing vor Code** (CLAUDE.md Regel 2) hat sich ausgezahlt: die drei Alternativen waren in Plain-Language formuliert, der User konnte ohne Code-Detail entscheiden. Das vermied einen halben Tag spekulativer Implementation gegen die falsche Architektur.
+- **Klärungsfragen vor dem Code-Touch** (`AskUserQuestion` mit drei Fragen zur Quelle/Kickoff-Tokens/Fehlende-Auto-Werte) haben drei spätere Korrekturen erspart. Besonders die Kickoff-Token-Frage hätte zu Variante C verleitet, wenn ich allein entschieden hätte.
+- **Backward-Compat-Fallback** über `LEGACY_TEMPLATE_SCHEMA` statt Big-Bang-Migration: ich konnte die Engine umstellen, ohne dass Bestand-Templates kurzzeitig kaputt waren. Tests laufen, Modal funktioniert, dann konnte ich Templates in Ruhe migrieren.
+- **gray-matter war bereits im Repo** (für CLAUDE.md-Parser) — keine neue Dependency, dieselbe YAML-Engine für Templates und CLAUDE.md.
+
+**Gebremst durch:**
+
+- **Bug-Report-Screenshots zeigten TanaLib statt TakumiDeck** — anfänglich habe ich die Templates im TakumiDeck-Repo gesucht und nicht gefunden (`Glob` lieferte nur SEASON_PROMPT.md). Erst der zweite Blick auf das Projekt-Name-Feld im Kickoff-Preview enthüllte „TanaLib". Hätte direkt nach dem Projekt-Namen im Screenshot fragen können, statt nach den Templates zu suchen.
+- **`extractTemplateBody` und Frontmatter-Interaktion** war eine versteckte Stolperstelle: der Body-Extraktor sucht ab Zeile 0 nach `## Vorlage`-Heading; bei Templates mit Frontmatter funktioniert das nur, weil das Frontmatter selbst keine Tokens enthält und der Extraktor das `---` ignoriert. Wäre einer der Templates ohne `## Vorlage`-Heading konstruiert, würde das Frontmatter im Prompt landen. Robust genug für den Bestand, aber dokumentiert nicht — ein Refactor-Risiko für Future-Me.
+
+**Für nächste Season:**
+
+- Wenn weitere Templates entstehen (z.B. ein `HOTFIX.md` oder `MIGRATION.md`), folgen sie automatisch dem Schema-Vertrag — kein Engine-Touch. Stub-Generator (`createTemplateStub`) schreibt Frontmatter mit, der User passt nur die `variables:`-Liste an.
+- TanaLib-Templates wurden via Copy aus Vorlage gesynct — wenn weitere Projekte aus Vorlage abgeleitet wurden, brauchen die denselben Sync-Pass.
+
+---
+
 ## Phase 2 Season 22 — Kontext-Checkbox-Erweiterung
 
 **Ziel:** Zweites Roadmap-Feature aus dem „Docs-Sync"-Bereich umsetzen: aufbauend auf der Phase-1-Pfad-Erinnerung (der `on_demand_files`-Block in CLAUDE.md, den Claude beim Session-Start sieht), den Inhalt einer Summary als Praeambel in die frische Session injizieren — statt sich nur auf den Pfad-Hinweis zu verlassen. Roadmap-Vorgabe: „Wenn Summary für eine On-Demand-Datei existiert: Summary-Inhalt als Praeambel injizieren statt Pfad-Erinnerung" plus „Hinweis im UI, wenn Summary fehlt oder veraltet ist".

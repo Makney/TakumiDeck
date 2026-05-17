@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { TemplateFile } from '@shared/types';
+import matter from 'gray-matter';
+import type { TemplateFile, TemplateSchema } from '@shared/types';
+import { TemplateSchemaSchema } from '@shared/schemas';
 
 // Sprint 6 — Template-Reader (Architektur 6.5).
 //
@@ -96,6 +98,7 @@ export async function listTemplates(
         path: fullPath,
         relPath: toForwardSlash(path.relative(input.projectPath, fullPath)),
         content,
+        schema: parseTemplateSchema(content),
       });
     }
     // Doppel-Erkennung: derselbe Pfad könnte theoretisch durch zwei Pässe rein,
@@ -136,9 +139,42 @@ async function readMdFilesFlat(
     const relPath = projectRoot
       ? toForwardSlash(path.relative(projectRoot, fullPath))
       : null;
-    out.push({ source, name: e.name, path: fullPath, relPath, content });
+    out.push({
+      source,
+      name: e.name,
+      path: fullPath,
+      relPath,
+      content,
+      schema: parseTemplateSchema(content),
+    });
   }
   return out;
+}
+
+// Phase-2 Season-23: Frontmatter-Parser fuer Template-Dateien. Greift auf
+// dasselbe gray-matter zurueck wie der CLAUDE.md-Parser, validiert per zod.
+// Drei legitime Faelle, alle liefern `null`:
+//   1. Kein Frontmatter im Template (Bestand-Templates) → Fallback auf alte
+//      hartcodierte Variable-Liste im Renderer.
+//   2. Frontmatter da, aber keine `variables:`-Section → ebenfalls Fallback.
+//   3. Frontmatter da, aber zod-Validierung schlaegt fehl (z.B. ein Token-
+//      Spec mit sowohl `auto` als auch `input`) → Fallback statt Hard-Error,
+//      damit ein einzelnes kaputtes Template nicht das ganze Modal lahmlegt.
+//      Die Datei taucht in der Liste auf, der User sieht die Tokens als
+//      literal und kann das Frontmatter im Editor reparieren.
+export function parseTemplateSchema(content: string): TemplateSchema | null {
+  let parsed: ReturnType<typeof matter>;
+  try {
+    parsed = matter(content);
+  } catch {
+    return null;
+  }
+  const data = parsed.data;
+  if (!data || typeof data !== 'object') return null;
+  if (!('variables' in data)) return null;
+  const validated = TemplateSchemaSchema.safeParse(data);
+  if (!validated.success) return null;
+  return validated.data;
 }
 
 // Renderer-Konvention fuer relPath ist Forward-Slash (siehe FsReadInput-Doku

@@ -244,12 +244,43 @@ export const FsListTemplatesInputSchema = z.object({
   projectId: z.string().min(1),
 });
 
-// Phase-2 Season-4: templates:resolve-auto-vars — Renderer schickt die projectId,
-// der Main loest sie gegen DB + docs/-Dateien auf und liefert die drei
-// neuen Auto-Variablen als String-Bundle. Schema bleibt minimal: alles
-// Weitere ist Server-Logik.
+// Phase-2 Season-4 / Season-23: templates:resolve-auto-vars — Renderer schickt
+// die projectId plus die Liste der angefragten Server-Pfade. Der Main loest
+// nur die explizit angefragten auf (kein unnoetiger Datei-Read bei Templates,
+// die z.B. nur claude_md-Felder konsumieren). Bekannte Pfade siehe
+// TemplatesResolveAutoVarsInput in shared/types.ts.
 export const TemplatesResolveAutoVarsInputSchema = z.object({
   projectId: z.string().min(1),
+  paths: z.array(z.string().min(1)).optional(),
+});
+
+// Phase-2 Season-23: Template-Frontmatter-Schema. Diskriminiert ueber die
+// Schluessel-Praesenz (`auto` vs. `input`). Strict im Sinne von „kein
+// vermischtes Feld" — wenn der User beides setzt, lehnt zod ab und der
+// Reader laesst das Template ohne Schema laufen (Fallback). Labels duerfen
+// leer/weggelassen sein (Fallback: der Token-Name in Caps); required
+// default=false.
+const TemplateAutoVariableSchema = z
+  .object({
+    auto: z.string().min(1),
+  })
+  .strict();
+
+const TemplateInputVariableSchema = z
+  .object({
+    input: z.enum(['text', 'textarea']),
+    label: z.string().min(1).optional(),
+    required: z.boolean().optional(),
+  })
+  .strict();
+
+export const TemplateVariableSpecSchema = z.union([
+  TemplateAutoVariableSchema,
+  TemplateInputVariableSchema,
+]);
+
+export const TemplateSchemaSchema = z.object({
+  variables: z.record(z.string().min(1), TemplateVariableSpecSchema),
 });
 
 // Phase-2 Season-11: Eingabe-Schema fuer templates:allocate-season-for-session.
@@ -383,6 +414,12 @@ export const ClaudeMdFrontmatterSchema = z.object({
     project_name: z.string().min(1).optional(),
     default_model: z.string().optional(),
     current_phase_file: z.string().optional(),
+    // Phase-2 Season-23: optionales Versions-Feld, das Templates wie
+    // RELEASE_START.md / BUG_REPORT.md als {{CURRENT_VERSION}} ueber den
+    // Auto-Pfad `claude_md.workbench.current_version` lesen. Projekte ohne
+    // Versions-Pflege lassen das Feld weg — der Token bleibt dann literal
+    // im Prompt stehen (kein erzwungener leerer String).
+    current_version: z.string().min(1).optional(),
     // Phase-2 Season-3: `trigger_phrases` erlaubt zusätzlich zu den zwei Pflicht-
     // Keys (`docs_update` + `commit`) beliebige weitere `<key>: <phrase>`-Paare.
     // Die Action-Bar rendert pro Eintrag eine Schnellzugriffs-Pille; das Schema-

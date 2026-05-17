@@ -1,142 +1,300 @@
 import { describe, it, expect } from 'vitest';
+import type { ClaudeMdFrontmatter, ProjectRow, TemplateSchema } from '../../src/shared/types';
 import {
-  buildAutoVariables,
+  LEGACY_TEMPLATE_SCHEMA,
+  buildResolverContext,
+  collectServerAutoPaths,
   fillTemplateVariables,
   findVariablesInTemplate,
+  resolveAutoPath,
+  type ResolverContext,
 } from '../../src/renderer/components/templateVariables';
+
+// Phase-2 Season-23: Schema-aware Variable-Filling. Alte hartcodierte API
+// ist weg; die Tests decken die drei zentralen Pfade ab:
+//   - findVariablesInTemplate (Token-Discovery im Body, unveraendert)
+//   - resolveAutoPath (Pfad-Walk auf Project / claude_md / server-Bundle)
+//   - fillTemplateVariables (Auto + Input + literal-Fallback)
+// Plus die Helper buildResolverContext und collectServerAutoPaths.
+
+const PROJECT: ProjectRow = {
+  id: 'p1',
+  name: 'TanaLib',
+  path: 'C:\\Projekte\\TanaLib',
+  added_manually: 0,
+  has_git: 1,
+  next_season_number: 7,
+  created_at: 1700000000000,
+  session_count: 12,
+};
+
+const FRONTMATTER: ClaudeMdFrontmatter = {
+  workbench: {
+    project_name: 'TanaLib',
+    current_phase_file: 'docs/roadmap/PHASE2.md',
+    current_version: '0.1.4',
+    trigger_phrases: {
+      docs_update: 'wurde richtig implementiert',
+      commit: 'commit',
+      fix: 'fix it',
+      release_artifacts: 'release artefakte',
+      tag_push: 'tag und push',
+    },
+  },
+};
+
+function buildCtx(overrides: Partial<ResolverContext> = {}): ResolverContext {
+  return buildResolverContext({
+    project: PROJECT,
+    frontmatter: FRONTMATTER,
+    date: new Date(2026, 4, 17),
+    serverAutoVars: {},
+    userInputs: {},
+    ...overrides,
+  } as Parameters<typeof buildResolverContext>[0]);
+}
 
 describe('findVariablesInTemplate', () => {
   it('liefert alle eindeutigen Tokens in Vorkommens-Reihenfolge', () => {
-    const tpl = '{{FEATURE_NAME}} → {{AUFGABE}}\n\n{{FEATURE_NAME}}\n{{HINWEISE}}';
+    const tpl = '{{BUG_TITEL}} → {{SYMPTOM}}\n\n{{BUG_TITEL}}\n{{ERWARTET}}';
     expect(findVariablesInTemplate(tpl)).toEqual([
-      'FEATURE_NAME',
-      'AUFGABE',
-      'HINWEISE',
+      'BUG_TITEL',
+      'SYMPTOM',
+      'ERWARTET',
     ]);
   });
 
-  it('matcht NUR Großbuchstaben + Underscore (Architektur-Spec)', () => {
+  it('matcht NUR Großbuchstaben + Underscore', () => {
     const tpl = '{{lowercase}} {{Mixed_Case}} {{1234}} {{NORMAL_TOKEN}}';
     expect(findVariablesInTemplate(tpl)).toEqual(['NORMAL_TOKEN']);
   });
+});
 
-  it('liefert leeres Array, wenn keine Tokens vorhanden', () => {
-    expect(findVariablesInTemplate('Plain text without templates')).toEqual([]);
+describe('resolveAutoPath', () => {
+  const ctx = buildCtx();
+
+  it('today → YYYY-MM-DD aus ctx.date', () => {
+    expect(resolveAutoPath('today', ctx)).toBe('2026-05-17');
+  });
+
+  it('project.name nutzt frontmatter.workbench.project_name', () => {
+    expect(resolveAutoPath('project.name', ctx)).toBe('TanaLib');
+  });
+
+  it('project.next_season_number gibt Zahl als String', () => {
+    expect(resolveAutoPath('project.next_season_number', ctx)).toBe('7');
+  });
+
+  it('claude_md.workbench.current_version liest verschachteltes Feld', () => {
+    expect(resolveAutoPath('claude_md.workbench.current_version', ctx)).toBe('0.1.4');
+  });
+
+  it('claude_md.workbench.trigger_phrases.fix liest tiefere Pfade', () => {
+    expect(resolveAutoPath('claude_md.workbench.trigger_phrases.fix', ctx)).toBe('fix it');
+  });
+
+  it('fehlendes Frontmatter-Feld → undefined (Token bleibt literal)', () => {
+    const noVersionCtx = buildCtx({
+      frontmatter: {
+        workbench: {
+          project_name: 'X',
+          trigger_phrases: {
+            docs_update: 'a',
+            commit: 'b',
+          },
+        },
+      },
+    });
+    expect(resolveAutoPath('claude_md.workbench.current_version', noVersionCtx)).toBeUndefined();
+  });
+
+  it('frontmatter komplett null → undefined statt Crash', () => {
+    const nullCtx = buildCtx({ frontmatter: null });
+    expect(resolveAutoPath('claude_md.workbench.current_version', nullCtx)).toBeUndefined();
+  });
+
+  it('server-Pfade kommen aus serverAutoVars-Map', () => {
+    const ctxWithServer = buildCtx({
+      serverAutoVars: { 'db.last_completed_feature_session': 'Phase 2 Season 5: Foo' },
+    });
+    expect(
+      resolveAutoPath('db.last_completed_feature_session', ctxWithServer),
+    ).toBe('Phase 2 Season 5: Foo');
+  });
+
+  it('server-Pfad fehlt im Bundle → undefined', () => {
+    expect(resolveAutoPath('docs.tech_schulden_top_n', ctx)).toBeUndefined();
+  });
+
+  it('unbekannter Pfad → undefined', () => {
+    expect(resolveAutoPath('something.weird', ctx)).toBeUndefined();
   });
 });
 
 describe('fillTemplateVariables', () => {
-  it('ersetzt bekannte Variablen 1:1', () => {
-    const tpl = 'Season #{{NEXT_SEASON_NR}} – {{FEATURE_NAME}}';
-    const result = fillTemplateVariables(tpl, {
-      NEXT_SEASON_NR: '6',
-      FEATURE_NAME: 'Templates',
-    });
-    expect(result.filled).toBe('Season #6 – Templates');
+  it('Auto-Vars werden aus dem Schema aufgeloest', () => {
+    const schema: TemplateSchema = {
+      variables: { DATUM: { auto: 'today' }, PROJEKT_NAME: { auto: 'project.name' } },
+    };
+    const result = fillTemplateVariables(
+      'Projekt: {{PROJEKT_NAME}} · Datum: {{DATUM}}',
+      schema,
+      buildCtx(),
+    );
+    expect(result.filled).toBe('Projekt: TanaLib · Datum: 2026-05-17');
     expect(result.missingRequired).toEqual([]);
-    expect(result.unknownTokens).toEqual([]);
   });
 
-  it('Pflichtfeld ohne Wert → bleibt als Platzhalter UND landet in missingRequired', () => {
-    const tpl = '{{FEATURE_NAME}} - {{AUFGABE}}';
-    const result = fillTemplateVariables(tpl, { FEATURE_NAME: 'OK' });
-    expect(result.filled).toBe('OK - {{AUFGABE}}');
-    expect(result.missingRequired).toEqual(['AUFGABE']);
+  it('Input-Var (Pflicht) ohne Wert → literal + missingRequired', () => {
+    const schema: TemplateSchema = {
+      variables: { SYMPTOM: { input: 'textarea', required: true } },
+    };
+    const result = fillTemplateVariables('Symptom: {{SYMPTOM}}', schema, buildCtx());
+    expect(result.filled).toBe('Symptom: {{SYMPTOM}}');
+    expect(result.missingRequired).toEqual(['SYMPTOM']);
   });
 
-  it('Pflichtfeld mit Whitespace-only zählt als leer', () => {
-    const result = fillTemplateVariables('{{FEATURE_NAME}}', { FEATURE_NAME: '   ' });
-    expect(result.missingRequired).toEqual(['FEATURE_NAME']);
-    expect(result.filled).toBe('{{FEATURE_NAME}}');
+  it('Input-Var (Pflicht) whitespace-only zaehlt als leer', () => {
+    const schema: TemplateSchema = {
+      variables: { SYMPTOM: { input: 'text', required: true } },
+    };
+    const result = fillTemplateVariables(
+      '{{SYMPTOM}}',
+      schema,
+      buildCtx({ userInputs: { SYMPTOM: '   ' } }),
+    );
+    expect(result.missingRequired).toEqual(['SYMPTOM']);
+    expect(result.filled).toBe('{{SYMPTOM}}');
   });
 
-  it('Optional ohne Wert → leerer String eingesetzt, NICHT in missingRequired', () => {
-    const tpl = 'Header\n\n{{HINWEISE}}\n\nFooter';
-    const result = fillTemplateVariables(tpl, {});
+  it('Input-Var (Optional) ohne Wert → leerer String, NICHT in missingRequired', () => {
+    const schema: TemplateSchema = {
+      variables: { HINWEISE: { input: 'textarea' } },
+    };
+    const result = fillTemplateVariables(
+      'Header\n\n{{HINWEISE}}\n\nFooter',
+      schema,
+      buildCtx(),
+    );
     expect(result.filled).toBe('Header\n\n\n\nFooter');
     expect(result.missingRequired).toEqual([]);
   });
 
-  it('Auto-Variable mit leerem Wert wird als leerer String eingesetzt', () => {
-    const tpl = 'Phase: {{CURRENT_PHASE_FILE}}';
-    const result = fillTemplateVariables(tpl, { CURRENT_PHASE_FILE: '' });
-    expect(result.filled).toBe('Phase: ');
+  it('Input-Var mit Wert wird eingesetzt', () => {
+    const schema: TemplateSchema = {
+      variables: { BUG_TITEL: { input: 'text', required: true } },
+    };
+    const result = fillTemplateVariables(
+      'Bug: {{BUG_TITEL}}',
+      schema,
+      buildCtx({ userInputs: { BUG_TITEL: 'Scanner ignoriert renamed files' } }),
+    );
+    expect(result.filled).toBe('Bug: Scanner ignoriert renamed files');
   });
 
-  it('Unbekannte Tokens bleiben als Platzhalter und landen in unknownTokens', () => {
-    const tpl = '{{FEATURE_NAME}} {{UNBEKANNT}} {{TYPO}}';
-    const result = fillTemplateVariables(tpl, { FEATURE_NAME: 'X' });
-    expect(result.filled).toBe('X {{UNBEKANNT}} {{TYPO}}');
-    expect(result.unknownTokens).toEqual(['UNBEKANNT', 'TYPO']);
+  it('Auto-Var ohne aufloesbare Quelle → literal stehen lassen (kein leerer String)', () => {
+    const schema: TemplateSchema = {
+      variables: { CURRENT_VERSION: { auto: 'claude_md.workbench.current_version' } },
+    };
+    const noVersionCtx = buildCtx({
+      frontmatter: {
+        workbench: {
+          project_name: 'X',
+          trigger_phrases: { docs_update: 'a', commit: 'b' },
+        },
+      },
+    });
+    const result = fillTemplateVariables(
+      'v{{CURRENT_VERSION}}',
+      schema,
+      noVersionCtx,
+    );
+    // Bewusst literal, damit der User die fehlende Quelle sieht statt einer
+    // stummen Luecke wie "v".
+    expect(result.filled).toBe('v{{CURRENT_VERSION}}');
+  });
+
+  it('Token ohne Schema-Eintrag bleibt literal (Kickoff-Tokens als Agent-Anweisung)', () => {
+    const schema: TemplateSchema = { variables: {} };
+    const result = fillTemplateVariables(
+      '{{KURZBESCHREIBUNG}} → {{STACK}}',
+      schema,
+      buildCtx(),
+    );
+    expect(result.filled).toBe('{{KURZBESCHREIBUNG}} → {{STACK}}');
     expect(result.missingRequired).toEqual([]);
   });
 
-  it('Doppelt vorkommende Variablen werden alle ersetzt, aber nur einmal in missingRequired gelistet', () => {
-    const tpl = '{{AUFGABE}} ... {{AUFGABE}} ... {{AUFGABE}}';
-    const result = fillTemplateVariables(tpl, {});
+  it('Doppelt vorkommende Pflicht-Variablen werden alle ersetzt, aber nur einmal in missingRequired', () => {
+    const schema: TemplateSchema = {
+      variables: { AUFGABE: { input: 'textarea', required: true } },
+    };
+    const result = fillTemplateVariables(
+      '{{AUFGABE}} ... {{AUFGABE}} ... {{AUFGABE}}',
+      schema,
+      buildCtx(),
+    );
     expect(result.filled).toBe('{{AUFGABE}} ... {{AUFGABE}} ... {{AUFGABE}}');
     expect(result.missingRequired).toEqual(['AUFGABE']);
   });
 });
 
-describe('buildAutoVariables', () => {
-  it('formatiert Datum als YYYY-MM-DD', () => {
-    const result = buildAutoVariables({
-      projectName: 'X',
-      nextSeasonNumber: 1,
-      currentPhaseFile: null,
-      date: new Date(2026, 4, 10), // 10. Mai 2026 (Monat ist 0-basiert)
-    });
-    expect(result.DATUM).toBe('2026-05-10');
-  });
-
-  it('NEXT_SEASON_NR = "" wenn null (z.B. Bug-Session ohne Counter)', () => {
-    const result = buildAutoVariables({
-      projectName: 'X',
-      nextSeasonNumber: null,
-      currentPhaseFile: 'docs/PHASE1.md',
-      date: new Date(),
-    });
-    expect(result.NEXT_SEASON_NR).toBe('');
-    expect(result.CURRENT_PHASE_FILE).toBe('docs/PHASE1.md');
-  });
-
-  it('CURRENT_PHASE_FILE = "" wenn null', () => {
-    const result = buildAutoVariables({
-      projectName: 'X',
-      nextSeasonNumber: 5,
-      currentPhaseFile: null,
-      date: new Date(),
-    });
-    expect(result.CURRENT_PHASE_FILE).toBe('');
-  });
-
-  it('Phase-2-Season-4-Variablen sind "" ohne serverAutoVars', () => {
-    const result = buildAutoVariables({
-      projectName: 'X',
-      nextSeasonNumber: 1,
-      currentPhaseFile: null,
-      date: new Date(),
-    });
-    expect(result.LETZTE_SEASON_NAME).toBe('');
-    expect(result.TECH_SCHULDEN_RELEVANT).toBe('');
-    expect(result.LETZTE_ENTSCHEIDUNGEN).toBe('');
-  });
-
-  it('Phase-2-Season-4-Variablen werden aus serverAutoVars uebernommen', () => {
-    const result = buildAutoVariables({
-      projectName: 'X',
-      nextSeasonNumber: 1,
-      currentPhaseFile: null,
-      date: new Date(),
-      serverAutoVars: {
-        letzte_season_name: 'Phase 2 Season 3: Trigger-Phrasen',
-        tech_schulden_relevant: '- Schuld A\n  Bereich: x',
-        letzte_entscheidungen: '- Entscheidung A',
+describe('collectServerAutoPaths', () => {
+  it('liefert nur db.*/docs.*-Pfade aus dem Schema, die im Body verwendet werden', () => {
+    const schema: TemplateSchema = {
+      variables: {
+        DATUM: { auto: 'today' },
+        LETZTE_SEASON_NAME: { auto: 'db.last_completed_feature_session' },
+        TECH_SCHULDEN_RELEVANT: { auto: 'docs.tech_schulden_top_n' },
+        LETZTE_ENTSCHEIDUNGEN: { auto: 'docs.entscheidungen_top_n' },
       },
+    };
+    // Body verwendet nur LETZTE_SEASON_NAME — die anderen Server-Pfade
+    // duerfen NICHT im resolve-auto-vars-Request landen.
+    const paths = collectServerAutoPaths(schema, ['DATUM', 'LETZTE_SEASON_NAME']);
+    expect(paths).toEqual(['db.last_completed_feature_session']);
+  });
+
+  it('leeres Array wenn nur today/project/claude_md-Pfade im Schema', () => {
+    const schema: TemplateSchema = {
+      variables: {
+        DATUM: { auto: 'today' },
+        CURRENT_VERSION: { auto: 'claude_md.workbench.current_version' },
+      },
+    };
+    expect(collectServerAutoPaths(schema, ['DATUM', 'CURRENT_VERSION'])).toEqual([]);
+  });
+});
+
+describe('LEGACY_TEMPLATE_SCHEMA', () => {
+  it('bildet die alten Hardcoded-Listen ab (Bestands-Templates ohne Frontmatter)', () => {
+    expect(LEGACY_TEMPLATE_SCHEMA.variables.FEATURE_NAME).toEqual({
+      input: 'text',
+      label: 'Feature',
+      required: true,
     });
-    expect(result.LETZTE_SEASON_NAME).toBe('Phase 2 Season 3: Trigger-Phrasen');
-    expect(result.TECH_SCHULDEN_RELEVANT).toBe('- Schuld A\n  Bereich: x');
-    expect(result.LETZTE_ENTSCHEIDUNGEN).toBe('- Entscheidung A');
+    expect(LEGACY_TEMPLATE_SCHEMA.variables.AUFGABE).toEqual({
+      input: 'textarea',
+      label: 'Aufgabe',
+      required: true,
+    });
+    expect(LEGACY_TEMPLATE_SCHEMA.variables.PROJEKT_NAME).toEqual({
+      auto: 'project.name',
+    });
+    expect(LEGACY_TEMPLATE_SCHEMA.variables.DATUM).toEqual({ auto: 'today' });
+  });
+});
+
+describe('buildResolverContext', () => {
+  it('faellt auf displayProjectName zurueck, wenn frontmatter.project_name fehlt', () => {
+    const ctx = buildResolverContext({
+      project: { ...PROJECT, name: 'fallback-name' },
+      frontmatter: null,
+      date: new Date(),
+      serverAutoVars: {},
+      userInputs: {},
+    });
+    // displayProjectName liefert den Project-Namen direkt.
+    expect(ctx.projectDisplayName).toBe('fallback-name');
   });
 });

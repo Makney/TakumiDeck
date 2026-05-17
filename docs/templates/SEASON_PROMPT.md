@@ -1,3 +1,17 @@
+---
+variables:
+  PROJEKT_NAME:            { auto: project.name }
+  NEXT_SEASON_NR:          { auto: project.next_season_number }
+  CURRENT_PHASE_FILE:      { auto: claude_md.workbench.current_phase_file }
+  DATUM:                   { auto: today }
+  LETZTE_SEASON_NAME:      { auto: db.last_completed_feature_session }
+  TECH_SCHULDEN_RELEVANT:  { auto: docs.tech_schulden_top_n }
+  LETZTE_ENTSCHEIDUNGEN:   { auto: docs.entscheidungen_top_n }
+  FEATURE_NAME:            { input: text,     label: "Feature",            required: true }
+  AUFGABE:                 { input: textarea, label: "Aufgabe",            required: true }
+  HINWEISE:                { input: textarea, label: "Hinweise (optional)" }
+---
+
 # Season-Prompt-Template
 
 Dieses Template wird beim Erstellen einer neuen Season-Session verwendet. TakumiDeck (App) liest es, befüllt die `{{...}}`-Variablen automatisch + via Formular und sendet das Ergebnis ans aktive PTY via Bracketed Paste.

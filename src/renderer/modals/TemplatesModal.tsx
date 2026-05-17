@@ -3,20 +3,18 @@ import type {
   ClaudeMdFrontmatter,
   ProjectRow,
   TemplateFile,
-  TemplatesResolveAutoVarsResult,
+  TemplateSchema,
+  TemplateVariableSpec,
 } from '@shared/types';
 import {
-  AUTO_VARIABLES,
-  REQUIRED_USER_VARIABLES,
-  OPTIONAL_USER_VARIABLES,
-  buildAutoVariables,
+  LEGACY_TEMPLATE_SCHEMA,
+  buildResolverContext,
+  collectServerAutoPaths,
   fillTemplateVariables,
   findVariablesInTemplate,
-  type AutoVariable,
-  type KnownVariable,
+  resolveAutoPath,
 } from '../components/templateVariables';
 import { extractTemplateBody } from '../components/templateBody';
-import { displayProjectName } from '../components/displayProjectName';
 import { useFileTabsStore } from '../stores/fileTabs';
 import { useUiStore } from '../stores/ui';
 import { useProjectStore } from '../stores/projects';
@@ -43,22 +41,35 @@ import { useProjectStore } from '../stores/projects';
 // Editor verlangt aber projekt-relative Pfade) — der Edit-Stift ist dort
 // disabled mit Tooltip-Hinweis.
 
-const AUTO_VARIABLE_LABELS: Record<AutoVariable, string> = {
+// Phase-2 Season-23: Default-Labels fuer Tokens, deren Schema-Eintrag kein
+// eigenes `label` setzt. Greift fuer Bestand (LEGACY_TEMPLATE_SCHEMA) und als
+// Fallback bei neuen Templates ohne expliziten Label. Token-Namen sind UPPER_
+// SNAKE — wenn auch das Default-Label fehlt, faellt die UI auf den Token-Namen
+// selbst zurueck (siehe `formatVariableLabel`).
+const DEFAULT_VARIABLE_LABELS: Record<string, string> = {
   PROJEKT_NAME: 'Projekt',
   NEXT_SEASON_NR: 'Nächste Season',
   CURRENT_PHASE_FILE: 'Phase-Datei',
+  CURRENT_VERSION: 'Version',
   DATUM: 'Datum',
-  // Phase-2 Season-4 — Werte kommen aus templates:resolve-auto-vars.
   LETZTE_SEASON_NAME: 'Letzte Season',
   TECH_SCHULDEN_RELEVANT: 'Tech-Schulden (Top 3)',
   LETZTE_ENTSCHEIDUNGEN: 'Letzte Entscheidungen',
-};
-
-const USER_VARIABLE_LABELS: Record<string, string> = {
   FEATURE_NAME: 'Feature',
   AUFGABE: 'Aufgabe',
   HINWEISE: 'Hinweise (optional)',
+  FIX_TRIGGER: 'Fix-Trigger',
+  COMMIT_TRIGGER: 'Commit-Trigger',
+  DOCS_TRIGGER: 'Docs-Trigger',
+  RELEASE_TRIGGER: 'Release-Trigger',
+  RELEASE_ARTIFACTS_TRIGGER: 'Release-Artefakte-Trigger',
+  TAG_PUSH_TRIGGER: 'Tag/Push-Trigger',
 };
+
+function formatVariableLabel(name: string, spec: TemplateVariableSpec): string {
+  if ('input' in spec && spec.label) return spec.label;
+  return DEFAULT_VARIABLE_LABELS[name] ?? name;
+}
 
 interface Props {
   project: ProjectRow;
@@ -94,12 +105,12 @@ export function TemplatesModal({
   // ist null, ausser waehrend einer aktiven Drag-Geste.
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
-  // Phase-2 Season-4: serverseitige Auto-Variablen (LETZTE_SEASON_NAME etc.)
-  // werden einmal pro Project beim Modal-Open via IPC geholt. Solange das
-  // Ergebnis nicht da ist, bleiben die drei Variablen leer im Prompt — der
-  // Filler erlaubt das.
-  const [serverAutoVars, setServerAutoVars] =
-    useState<TemplatesResolveAutoVarsResult | null>(null);
+  // Phase-2 Season-23: serverseitige Auto-Variablen kommen jetzt als
+  // generische Pfad→Wert-Map. Renderer fragt pro aktivem Template nur die
+  // Pfade an, die im Schema vorkommen UND im Body verwendet werden (siehe
+  // collectServerAutoPaths). Leere Map = noch nicht geladen oder keine
+  // Server-Pfade noetig.
+  const [serverAutoVars, setServerAutoVars] = useState<Record<string, string>>({});
   // Memory: useRef-Guard nur für Server-Mutationen. fs:list-templates ist
   // read-only — KEIN Guard nötig (StrictMode-Doppelmount lädt zweimal,
   // beide Calls sind idempotent, das State-Setting verliert nichts).
@@ -204,25 +215,9 @@ export function TemplatesModal({
     };
   }, [project.id]);
 
-  // Phase-2 Season-4: Server-Auto-Vars laden. read-only IPC → kein StrictMode-
-  // Guard noetig (Doppelmount fetcht zweimal, beide Calls sind idempotent).
-  useEffect(() => {
-    let cancelled = false;
-    setServerAutoVars(null);
-    void window.api.templates
-      .resolveAutoVars({ projectId: project.id })
-      .then((result) => {
-        if (cancelled) return;
-        if (result.ok) {
-          setServerAutoVars(result.data);
-        }
-        // Fehler werden nicht als UI-Error gemeldet — die drei Variablen bleiben
-        // leer im Prompt, was eine legitime Anzeige ist.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [project.id]);
+  // Server-Auto-Vars-Fetch ist weiter unten — er braucht das aktive Schema +
+  // die im Body verwendeten Variablen, beides wird in den useMemo-Bloecken
+  // unten berechnet. Verschiebt sich nach `usedVariables`/`schema`.
 
   // Phase-2 Season-11: Frontmatter beim Modal-Open frisch laden. Sonst zeigt
   // {{CURRENT_PHASE_FILE}} im Preview den Stand vom letzten Project-Switch —
@@ -254,16 +249,14 @@ export function TemplatesModal({
     [selected],
   );
 
-  const autoVars = useMemo(
-    () =>
-      buildAutoVariables({
-        projectName: frontmatter?.workbench.project_name ?? displayProjectName(project),
-        nextSeasonNumber: project.next_season_number,
-        currentPhaseFile: frontmatter?.workbench.current_phase_file ?? null,
-        date: new Date(),
-        serverAutoVars: serverAutoVars ?? undefined,
-      }),
-    [project, frontmatter, serverAutoVars],
+  // Phase-2 Season-23: Schema kommt entweder aus dem Template-Frontmatter (im
+  // Main per gray-matter geparst) oder faellt auf das Legacy-Schema zurueck,
+  // das die alten Hardcoded-Listen abbildet. Templates ohne `## Vorlage`-
+  // Heading bekommen ihren ganzen Inhalt als Body — der Filler ignoriert
+  // Tokens ausserhalb des Schemas sowieso.
+  const schema: TemplateSchema = useMemo(
+    () => selected?.schema ?? LEGACY_TEMPLATE_SCHEMA,
+    [selected],
   );
 
   const usedVariables = useMemo(
@@ -271,17 +264,75 @@ export function TemplatesModal({
     [selected, selectedBody],
   );
 
+  // Anhand des aktiven Templates: welche Server-Pfade muss der Main aufloesen?
+  // Templates ohne db.*/docs.*-Pfade triggern KEINEN IPC-Call.
+  const serverAutoPaths = useMemo(
+    () => collectServerAutoPaths(schema, usedVariables),
+    [schema, usedVariables],
+  );
+
+  // Phase-2 Season-23: Server-Auto-Vars laden, wenn das aktive Template
+  // Server-Pfade braucht. Triggert pro Template-Wechsel; idempotent
+  // (read-only IPC, kein StrictMode-Guard noetig).
+  useEffect(() => {
+    if (serverAutoPaths.length === 0) {
+      setServerAutoVars({});
+      return;
+    }
+    let cancelled = false;
+    void window.api.templates
+      .resolveAutoVars({ projectId: project.id, paths: serverAutoPaths })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok) setServerAutoVars(result.data);
+        // Fehler werden nicht als UI-Error gemeldet — Tokens bleiben dann
+        // literal im Prompt stehen, was den User sichtbar auf die fehlende
+        // Quelle hinweist.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, serverAutoPaths]);
+
+  const ctx = useMemo(
+    () =>
+      buildResolverContext({
+        project,
+        frontmatter,
+        date: new Date(),
+        serverAutoVars,
+        userInputs: userVars,
+      }),
+    [project, frontmatter, serverAutoVars, userVars],
+  );
+
   const fill = useMemo(() => {
     if (!selected) return null;
-    return fillTemplateVariables(selectedBody, {
-      ...autoVars,
-      ...(userVars as Partial<Record<KnownVariable, string>>),
-    });
-  }, [selected, selectedBody, autoVars, userVars]);
+    return fillTemplateVariables(selectedBody, schema, ctx);
+  }, [selected, selectedBody, schema, ctx]);
 
-  const visibleAutoVars = AUTO_VARIABLES.filter((v) => usedVariables.includes(v));
-  const visibleRequired = REQUIRED_USER_VARIABLES.filter((v) => usedVariables.includes(v));
-  const visibleOptional = OPTIONAL_USER_VARIABLES.filter((v) => usedVariables.includes(v));
+  // Sichtbare Auto-Vars in der Sidebar: alle Tokens, die im Body vorkommen,
+  // im Schema einen `auto`-Eintrag haben — Reihenfolge folgt dem Body
+  // (findVariablesInTemplate). Pfade, die noch nicht aufloesbar sind (Server
+  // pending, Frontmatter-Feld fehlt), bleiben sichtbar mit em-dash, damit der
+  // User sieht, was gelten WIRD wenn er sendet.
+  const visibleAutoVars = useMemo(
+    () =>
+      usedVariables.filter((name) => {
+        const spec = schema.variables[name];
+        return spec !== undefined && 'auto' in spec;
+      }),
+    [usedVariables, schema],
+  );
+
+  const visibleInputs = useMemo(
+    () =>
+      usedVariables.filter((name) => {
+        const spec = schema.variables[name];
+        return spec !== undefined && 'input' in spec;
+      }),
+    [usedVariables, schema],
+  );
 
   const canSend =
     selected !== null &&
@@ -315,12 +366,18 @@ export function TemplatesModal({
         return;
       }
       const allocated = String(result.data.seasonNumber);
-      const refill = fillTemplateVariables(selectedBody, {
-        ...autoVars,
-        ...(userVars as Partial<Record<KnownVariable, string>>),
-        NEXT_SEASON_NR: allocated,
+      // Phase-2 Season-23: Re-Fill mit der frisch allozierten Nummer ueber
+      // einen Context-Override. Project-Row hat die alte Nummer; wir bauen
+      // einen synthetischen Project-Snapshot mit der finalen Zahl, damit der
+      // Auto-Pfad `project.next_season_number` den richtigen Wert sieht.
+      const overrideCtx = buildResolverContext({
+        project: { ...project, next_season_number: result.data.seasonNumber },
+        frontmatter,
+        date: new Date(),
+        serverAutoVars,
+        userInputs: userVars,
       });
-      finalText = refill.filled;
+      finalText = fillTemplateVariables(selectedBody, schema, overrideCtx).filled;
       flashToast(
         result.data.freshlyAssigned
           ? `Session als Season #${allocated} markiert`
@@ -558,43 +615,44 @@ export function TemplatesModal({
                   <>
                     <div className="td-templates-section-title">Automatisch</div>
                     <dl className="td-templates-auto-list">
-                      {visibleAutoVars.map((v) => (
-                        <AutoVarRow key={v} label={AUTO_VARIABLE_LABELS[v]} value={autoVars[v]} />
-                      ))}
+                      {visibleAutoVars.map((name) => {
+                        const spec = schema.variables[name];
+                        if (!spec || !('auto' in spec)) return null;
+                        const value = resolveAutoPath(spec.auto, ctx);
+                        return (
+                          <AutoVarRow
+                            key={name}
+                            label={formatVariableLabel(name, spec)}
+                            value={value ?? ''}
+                          />
+                        );
+                      })}
                     </dl>
                   </>
                 )}
-                {(visibleRequired.length > 0 || visibleOptional.length > 0) && (
+                {visibleInputs.length > 0 && (
                   <>
                     <div className="td-templates-section-title">Eingaben</div>
-                    {visibleRequired.map((v) => (
-                      <UserInput
-                        key={v}
-                        name={v}
-                        label={USER_VARIABLE_LABELS[v] ?? v}
-                        required
-                        multiline={false}
-                        value={userVars[v] ?? ''}
-                        onChange={(val) => setUserVars((prev) => ({ ...prev, [v]: val }))}
-                      />
-                    ))}
-                    {visibleOptional.map((v) => (
-                      <UserInput
-                        key={v}
-                        name={v}
-                        label={USER_VARIABLE_LABELS[v] ?? v}
-                        required={false}
-                        multiline
-                        value={userVars[v] ?? ''}
-                        onChange={(val) => setUserVars((prev) => ({ ...prev, [v]: val }))}
-                      />
-                    ))}
+                    {visibleInputs.map((name) => {
+                      const spec = schema.variables[name];
+                      if (!spec || !('input' in spec)) return null;
+                      const required = spec.required === true;
+                      const multiline = spec.input === 'textarea';
+                      return (
+                        <UserInput
+                          key={name}
+                          name={name}
+                          label={formatVariableLabel(name, spec)}
+                          required={required}
+                          multiline={multiline}
+                          value={userVars[name] ?? ''}
+                          onChange={(val) =>
+                            setUserVars((prev) => ({ ...prev, [name]: val }))
+                          }
+                        />
+                      );
+                    })}
                   </>
-                )}
-                {fill && fill.unknownTokens.length > 0 && (
-                  <div className="td-templates-warning">
-                    Unbekannte Tokens im Template: {fill.unknownTokens.join(', ')}
-                  </div>
                 )}
               </>
             )}
@@ -733,23 +791,26 @@ function truncate(s: string, n: number): string {
   return `${s.slice(0, n - 1)}…`;
 }
 
-// Phase-2 Season-4 (M1): Stub fuer ein frisch angelegtes Template. Folgt der
-// SEASON_PROMPT.md-Konvention: erklaerendes Kopf-Material + `## Vorlage`-Block
-// mit dem eigentlichen Prompt. Der Body-Extraktor erkennt diese Struktur und
-// pastet ausschliesslich den Code-Fence-Inhalt an die PTY.
+// Phase-2 Season-4 (M1) / Season-23: Stub fuer ein frisch angelegtes Template.
+// Frontmatter deklariert die typischen Tokens, damit das Modal direkt Inputs
+// rendert und Auto-Vars aufloesen kann. Body folgt der SEASON_PROMPT.md-
+// Konvention (`## Vorlage`-Heading + Code-Fence) — Body-Extraktor erkennt
+// die Struktur und pastet ausschliesslich den Code-Fence-Inhalt an die PTY.
 export function createTemplateStub(name: string): string {
   const title = name.replace(/\.md$/i, '').replace(/[-_]+/g, ' ');
   return [
+    '---',
+    'variables:',
+    '  PROJEKT_NAME:       { auto: project.name }',
+    '  DATUM:              { auto: today }',
+    '  FEATURE_NAME:       { input: text,     label: "Feature",  required: true }',
+    '  AUFGABE:            { input: textarea, label: "Aufgabe",  required: true }',
+    '  HINWEISE:           { input: textarea, label: "Hinweise (optional)" }',
+    '---',
+    '',
     `# ${title}`,
     '',
     'Kurzbeschreibung des Templates. Wird vom Modal NICHT in den Prompt eingefuegt — nur der Code-Block unter `## Vorlage` landet im Terminal.',
-    '',
-    '**Auto-Variablen** (optional):',
-    '',
-    '- `{{PROJEKT_NAME}}`, `{{DATUM}}`, `{{NEXT_SEASON_NR}}`, `{{CURRENT_PHASE_FILE}}`',
-    '- `{{LETZTE_SEASON_NAME}}`, `{{TECH_SCHULDEN_RELEVANT}}`, `{{LETZTE_ENTSCHEIDUNGEN}}`',
-    '',
-    '**User-Variablen**: `{{FEATURE_NAME}}` und `{{AUFGABE}}` (Pflicht), `{{HINWEISE}}` (optional).',
     '',
     '---',
     '',

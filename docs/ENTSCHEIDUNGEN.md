@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Template-Tokens: YAML-Frontmatter-Schema pro Template (Variante B)
+
+**Entscheidung:** Jedes Template deklariert seine `{{TOKEN}}`s im YAML-Frontmatter (`variables:`-Map mit `auto: <pfad>` oder `input: text|textarea` plus optional `label`/`required`). Die Engine resolved Tokens schema-getrieben; Tokens ohne Schema-Eintrag bleiben als Literal `{{TOKEN}}` im Output stehen, der frühere „Unbekannte Tokens"-Warnblock entfällt.
+
+**Varianten:**
+
+- **A** Hartcodierte Listen erweitern — die alte `AUTO_VARIABLES`/`REQUIRED_USER_VARIABLES`/`OPTIONAL_USER_VARIABLES`-Konstanten ergänzen, neue Auto-Resolver pro Pfad im Renderer codieren.
+- **B** YAML-Frontmatter pro Template als Schema (gewählt) — jedes Template trägt seine Vertrags-Deklaration selbst, die Engine ist generisch.
+- **C** Auto-Discovery — alle unbekannten Tokens werden automatisch als generische Textfelder im Modal angeboten; die Engine kennt nur eine kleine Auto-Var-Whitelist.
+
+**Grund:** A skaliert nicht — jedes neue Template (Bug-Report, Kickoff, Release, Code-Review) verlangt einen Code-Touch + Build. Außerdem kann A nicht zwischen „User soll das eintippen" und „Agent füllt das zur Laufzeit selbst aus" unterscheiden (= das eigentliche Problem mit `PROJEKT_KICKOFF.md`, dessen Tokens wie `{{KURZBESCHREIBUNG}}`/`{{STACK}}` Lauf-Anweisungen sind, keine Renderer-Inputs). C löst das Skalierungsproblem, verschenkt aber die Semantik, die wir in den Templates ohnehin kennen (Pflicht vs. optional, einzeilig vs. mehrzeilig, automatisch ableitbar) — alles würde generisch zum Textfeld. B kombiniert beide Vorteile: Template trägt selbst die Information, Engine bleibt simpel.
+
+**Konsequenz:** Neue Templates funktionieren ohne Engine-Touch, sobald das Frontmatter passt. Der Schema-Discriminator über Schlüssel-Präsenz (`auto` vs. `input`) statt eines `type`-Feldes hält die YAML-Notation kompakt; `zod.strict()` lehnt vermischte Specs ab und der Reader fällt dann auf `schema=null` zurück (Legacy-Fallback greift), damit ein einzelnes kaputtes Template nicht das Modal blockiert. `LEGACY_TEMPLATE_SCHEMA` im Renderer bildet die alten Hardcoded-Listen 1:1 ab, sodass Bestands-Templates ohne Frontmatter weiterlaufen — `null`-Schema wird also nicht als Fehler behandelt, sondern als „nutze den Legacy-Vertrag".
+
+**Implementierungsdetail:** Auto-Pfade in Punkt-Notation (`claude_md.workbench.trigger_phrases.fix`, `db.last_completed_feature_session`, `today`) als Strings im YAML — Resolver macht einen defensiven Object-Walk auf dem geparsten Frontmatter bzw. mappt auf eine IPC-Map. Ein nicht aufgelöster Auto-Pfad gibt bewusst `undefined` zurück (Token bleibt literal stehen), nicht den leeren String, damit der User die fehlende Quelle im Preview sieht. Server-Pfade fragt der Renderer nur an, wenn das aktive Template sie wirklich verwendet (`collectServerAutoPaths`-Filter auf `db.*`/`docs.*`) — Templates ohne TECH_SCHULDEN/ENTSCHEIDUNGEN-Tokens triggern keinen entsprechenden Datei-Read mehr.
+
+---
+
 ## Kontext-Checkbox: NewSessionModal-Block, Status-sortiert, Markdown-Sections, Pure-Logik im Docs-Sync-Modul (A1+B1+C1+D1)
 
 **Entscheidung:** Die Kontext-Checkbox-Erweiterung lebt als zweiter Block im NewSessionModal fuer alle Session-Arten ausser Docs-Sync (A1), zeigt alle On-Demand-Files aus dem CLAUDE.md-Frontmatter sortiert nach Status (B1), baut beim Submit eine Markdown-Praeambel mit einer Section pro Datei (C1), und packt die drei neuen Pure-Helper (`deriveOnDemandDescriptor`/`stripFrontmatter`/`buildContextPreamble`) in das bestehende `src/shared/docs-sync.ts` statt in ein eigenes Modul (D1).

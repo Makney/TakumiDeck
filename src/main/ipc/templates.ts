@@ -97,36 +97,46 @@ export function registerTemplatesIpc(deps: {
         return err(`Projekt ${input.projectId} nicht gefunden`, 'PROJECT_NOT_FOUND');
       }
 
+      // Phase-2 Season-23: nur die angefragten Server-Pfade aufloesen. Pfad-
+      // Liste kommt vom Renderer und enthaelt nur die Tokens, die im aktiven
+      // Template wirklich vorkommen — Templates ohne Schulden-/Entscheidungen-
+      // Tokens triggern keinen TECH_SCHULDEN/ENTSCHEIDUNGEN-Read.
+      const requested = new Set(input.paths ?? []);
+      const isDefault = project.id === DEFAULT_PROJECT_ID;
       const topN = settings.read().template_top_n;
-      const lastSessionName = await resolveLastSeasonName({
-        sessions,
-        projectId: project.id,
-        projectPath: project.id === DEFAULT_PROJECT_ID ? null : project.path,
-      });
-      const schulden =
-        project.id === DEFAULT_PROJECT_ID || topN.schulden === 0
-          ? ''
-          : await readAndFormat(
-              path.join(project.path, 'docs', 'TECH_SCHULDEN.md'),
-              (md) => formatTechSchuldenRelevant(md, topN.schulden),
-            );
-      const entscheidungen =
-        project.id === DEFAULT_PROJECT_ID || topN.entscheidungen === 0
-          ? ''
-          : await readAndFormat(
-              path.join(project.path, 'docs', 'ENTSCHEIDUNGEN.md'),
-              (md) => formatLetzteEntscheidungen(md, topN.entscheidungen),
-            );
+      const result: TemplatesResolveAutoVarsResult = {};
 
-      const result: TemplatesResolveAutoVarsResult = {
-        letzte_season_name: lastSessionName,
-        tech_schulden_relevant: schulden,
-        letzte_entscheidungen: entscheidungen,
-      };
+      if (requested.has(LAST_SEASON_PATH)) {
+        const value = await resolveLastSeasonName({
+          sessions,
+          projectId: project.id,
+          projectPath: isDefault ? null : project.path,
+        });
+        if (value) result[LAST_SEASON_PATH] = value;
+      }
+      if (requested.has(SCHULDEN_PATH) && !isDefault && topN.schulden > 0) {
+        const value = await readAndFormat(
+          path.join(project.path, 'docs', 'TECH_SCHULDEN.md'),
+          (md) => formatTechSchuldenRelevant(md, topN.schulden),
+        );
+        if (value) result[SCHULDEN_PATH] = value;
+      }
+      if (
+        requested.has(ENTSCHEIDUNGEN_PATH) &&
+        !isDefault &&
+        topN.entscheidungen > 0
+      ) {
+        const value = await readAndFormat(
+          path.join(project.path, 'docs', 'ENTSCHEIDUNGEN.md'),
+          (md) => formatLetzteEntscheidungen(md, topN.entscheidungen),
+        );
+        if (value) result[ENTSCHEIDUNGEN_PATH] = value;
+      }
+
       log.info(
         `[templates:resolve-auto-vars] projectId=${input.projectId} ` +
-          `season="${lastSessionName}" schulden_len=${schulden.length} ` +
-          `entscheidungen_len=${entscheidungen.length}`,
+          `requested=[${[...requested].join(',')}] ` +
+          `resolved=[${Object.keys(result).join(',')}]`,
       );
       return ok(result);
     } catch (e) {
@@ -134,6 +144,18 @@ export function registerTemplatesIpc(deps: {
     }
   });
 }
+
+// Phase-2 Season-23: kanonische Pfad-Konstanten, damit Renderer + Main
+// denselben String teilen (typo-resistent). Die Strings selbst leben in den
+// Template-Frontmatters — kein Refactor kann sie ohne Migration aendern.
+const LAST_SEASON_PATH = 'db.last_completed_feature_session';
+const SCHULDEN_PATH = 'docs.tech_schulden_top_n';
+const ENTSCHEIDUNGEN_PATH = 'docs.entscheidungen_top_n';
+export const TEMPLATE_SERVER_AUTO_PATHS = [
+  LAST_SEASON_PATH,
+  SCHULDEN_PATH,
+  ENTSCHEIDUNGEN_PATH,
+] as const;
 
 // LETZTE_SEASON_NAME: "Phase X Season Y: <Titel>" wenn Phase aus
 // current_phase_file ableitbar; sonst "Season Y: <Titel>" oder nur "<Titel>".
