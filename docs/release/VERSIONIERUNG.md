@@ -77,6 +77,27 @@ DEV (main) ──► Code-Review der geänderten Dateien ──► Fixes ──�
    git push origin v<MAJOR>.<MINOR>.<PATCH>
    ```
 
+9. **GitHub-Release-Objekt anlegen** — der Tag aus Schritt 8 ist nur unter `/tags` sichtbar, nicht im `/releases`-Bereich. Das Release ist ein separates Objekt mit Title + Body, das aus den Release-Notes gespeist wird:
+
+   ```bash
+   gh release create v<MAJOR>.<MINOR>.<PATCH> \
+     --title "{{PROJEKT_NAME}} v<MAJOR>.<MINOR>.<PATCH> - <Titel aus Release-Notes>" \
+     --notes-file docs/release/v<MAJOR>.<MINOR>.<PATCH>.md
+   ```
+
+   Erfordert die `gh` CLI (mindestens authentifiziert auf das Repo). Bei Pre-Release-Charakter (Alpha/Beta-Tag, RC-Stand) `--prerelease` ergänzen — sonst läuft das Release als reguläre, publizierte Version.
+
+10. **Windows-Build erzeugen und als Release-Asset anhängen** — sonst hat das `/releases`-Fenster keine herunterladbare `.exe`/`.zip`:
+
+    ```bash
+    npm run make                                    # Electron-Forge: Squirrel-Setup.exe + win32-zip nach out/make/
+    gh release upload v<MAJOR>.<MINOR>.<PATCH> \
+      "out/make/squirrel.windows/x64/{{PROJEKT_NAME}}-<MAJOR>.<MINOR>.<PATCH> Setup.exe" \
+      "out/make/zip/win32/x64/{{PROJEKT_NAME}}-win32-x64-<MAJOR>.<MINOR>.<PATCH>.zip"
+    ```
+
+    Die Pfade folgen aus `forge.config.ts` (Maker: `MakerSquirrel` + `MakerZIP(['win32'])`); bei abweichenden Makern entsprechend anpassen. Pre-Check: `npm run lint && npm run typecheck && npm test` muss bereits aus Schritt 8 grün sein — keine extra Test-Runde fürs Packaging.
+
 ---
 
 ## Was ein Release-Review NICHT ist
