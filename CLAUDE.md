@@ -3,9 +3,14 @@ workbench:
   project_name: TakumiDeck
   default_model: claude-opus-4-7
   current_phase_file: docs/roadmap/PHASE2.md
+  current_version: "0.1.2"
   trigger_phrases:
     docs_update: "ist korrekt umgesetzt"
     commit: "commit"
+    release: "release"
+    fix: "fix it"
+    release_artifacts: "release artifacts"
+    tag_push: "tag & push"
   on_demand_files:
     - path: docs/CODING_RULES.md
       trigger: "Read for every implementation or refactoring task"
@@ -36,6 +41,15 @@ workbench:
       auto_inject: false
     - path: docs/TAKUMIDECK_ARCHITEKTUR.md
       trigger: "Read when designing or implementing core architecture features"
+      auto_inject: false
+    - path: docs/release/VERSIONIERUNG.md
+      trigger: "Read before any release-related work (versioning, release-review, tagging)"
+      auto_inject: false
+    - path: docs/release/RELEASES.md
+      trigger: "Read when the user asks about released versions or release history"
+      auto_inject: false
+    - path: docs/release/REVIEW_TEMPLATE.md
+      trigger: "Read when preparing a release code-review across all files changed since the last version"
       auto_inject: false
 ---
 

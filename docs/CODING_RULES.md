@@ -62,7 +62,7 @@ Translate tasks into verifiable goals:
 
 For multi-step tasks, present a short plan upfront:
 
-```
+```text
 1. [Step] → Verification: [check]
 2. [Step] → Verification: [check]
 ```

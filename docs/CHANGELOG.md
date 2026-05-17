@@ -17,6 +17,15 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-17 — Doku-Sync: Vorlage-Templates + Release-Workflow ins TakumiDeck-Repo
+
+### Was jetzt geht
+
+- **Vier Templates aus der zentralen Vorlage liegen jetzt im TakumiDeck-Repo** (`docs/templates/BUG_REPORT.md`, `CODE_REVIEW_START.md`, `PROJEKT_KICKOFF.md`, `RELEASE_START.md`). Bisher hatte nur `SEASON_PROMPT.md` lokal existiert; die anderen mussten aus `D:\Projekte\Vorlage\docs\templates\` quergezogen werden. Damit funktioniert der Per-Projekt-Pfad des Template-Readers im TakumiDeck-Workspace ohne Rückgriff auf den Globaler-Slot.
+- **Release-Workflow ist jetzt im Repo dokumentiert** (`docs/release/VERSIONIERUNG.md` als Source-of-Truth fürs `MAJOR.MINOR.PATCH`-Schema, `RELEASES.md` als geplante/released-Tabelle, `TEMPLATE.md` als Release-Notes-Vorlage, `REVIEW_TEMPLATE.md` als release-blockierender Code-Review-Plan). Bisher existierte die Versionierungslogik nur implizit in Git-Tags.
+- **CLAUDE.md-Frontmatter komplett für die in Season 23 vorbereiteten Tokens.** `workbench.current_version: "0.1.2"` plus vier neue Trigger-Phrasen (`fix: "fix it"` · `release_artifacts: "release artifacts"` · `tag_push: "tag & push"` · `release: "release"`). Die kopierten Templates lösen damit `{{CURRENT_VERSION}}`, `{{FIX_TRIGGER}}`, `{{RELEASE_ARTIFACTS_TRIGGER}}`, `{{TAG_PUSH_TRIGGER}}` real auf, statt sie als Literal stehenzulassen. Drei neue `on_demand_files`-Einträge für die `docs/release/`-Files.
+- **Rule-Files konsistent mit den neuen Files.** `MARKDOWN_RULES.md` § 4 erzwingt jetzt das `text`-Tag bei ASCII-/Plain-Text-Fences (vorher: „ohne Tag OK"), § 10 unterscheidet `./` für Sibling/Child und `../` (ohne `./`) für Parent (mit `docs/release/`-Beispiel); `CODING_RULES.md` Demo-Step-Plan-Fence bekam ebenfalls den `text`-Tag.
+
 ## 2026-05-17 — Phase 2 Season 23: Schema-aware Templates
 
 ### Was jetzt geht

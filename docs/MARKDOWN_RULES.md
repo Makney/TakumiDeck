@@ -29,8 +29,8 @@ When creating or editing a markdown file: work through these rules as a checklis
 
 ## 4. Code
 
-- Fenced code blocks with **language tag**: ` ```python `, ` ```sql `, ` ```bash `, ` ```ts `.
-- ASCII art / tree diagrams: fence without language tag is OK.
+- Fenced code blocks **always** with a language tag: ` ```python `, ` ```sql `, ` ```bash `, ` ```ts `.
+- ASCII art / tree diagrams / plain text examples: use ` ```text ` (kein leeres Fence — fängt MD040 sonst).
 - Inline code with backticks for: file names, paths, function names, classes, variables, CLI commands, column names.
 
 ## 5. Tables
@@ -79,10 +79,14 @@ When creating or editing a markdown file: work through these rules as a checklis
 ## 10. Links
 
 - Markdown syntax: `[Display text](./docs/FILE.md)`.
-- **Always relative** and **with `./` prefix** for internal documents:
-  - ✅ `[Features](./docs/FEATURES.md)`
-  - ⛔ `[Features](docs/FEATURES.md)`
-  - ⛔ `[Features](/docs/FEATURES.md)`
+- **Always relative**, never absolute paths:
+  - **Sibling or child** (same directory or below): with `./` prefix.
+    - ✅ `[Features](./docs/FEATURES.md)`
+    - ⛔ `[Features](docs/FEATURES.md)`
+    - ⛔ `[Features](/docs/FEATURES.md)`
+  - **Parent directory** (going up): `../` without leading `./`.
+    - ✅ `[CLAUDE.md](../CLAUDE.md)` from inside `docs/`
+    - ✅ `[CLAUDE.md](../../CLAUDE.md)` from inside `docs/release/`
 - External links: full URL `https://…`.
 - Code line references: `[file.ext:42](./module/file.ext)` (no line anchor – not rendered, but keep the convention).
 
