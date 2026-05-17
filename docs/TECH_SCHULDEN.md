@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Spawn-Tracking als TabContainer-lokales State-Paar statt am Tab (v0.2.0 Bugfix)
+
+**Bereich:** `src/renderer/panels/TabContainer.tsx` (`spawnedIds: Set<string>` + `initialPrompts: Map<string,string>`); Cleanup in `handleClose` plus Pure-Helper in `src/renderer/components/spawnTrackingState.ts`.
+
+**Was:** Ob ein frisch gemounteter `TerminalTab` ein `pty:create` feuern soll (NewSessionModal-Pfad) oder die PTY ueber `session:resume` schon laeuft (Resume-Pfad), entscheidet die `needsSpawn`-Prop. Diese kommt aus zwei TabContainer-lokalen Containern: einem Set fuer den Spawn-Bedarf und einer Map fuer den optionalen Docs-Sync-Auto-Prompt. Beide werden ausschliesslich von `handleClose` in TabContainer aufgeraeumt — andere Close-Pfade (z.B. `LeftSidebar.handleCloseTab` aus dem Sidebar-X-Icon oder `handleConfirmRemove` beim Projekt-Entfernen) wissen nichts von dem State und leaken die Eintraege. Variante A des Fix-Plans hat das fuer den User-relevanten TabContainer-Pfad sauber abgedichtet; die anderen Pfade sind theoretische Edge-Cases (Resume nach Project-Remove plus zufaelliger UUID-Kollision = praktisch unmoeglich), aber das Pattern ist fragil.
+
+**Warum so:** Variante B (Spawn-Flag und Initial-Prompt als Felder im `SessionTab`-Schema im `useSessionStore` heben) war im Bug-Brief als „cleanere Architektur" markiert, aber fuer den Bugfix overkill — der eigentliche Bug saß im fehlenden Cleanup, nicht in der Architektur. Variante A reicht 5 Zeilen + Pure-Helper + Test; Variante B braucht Store-Schema-Erweiterung, addTab-Signatur-Erweiterung, TabContainer-Umverdrahtung plus Migration aller Aufrufstellen (HistoryActionModal, HistoryPane, LeftSidebar). Zeitlich nicht im Fix-Scope.
+
+**Risiko:** Niedrig. Der Bug, den Variante A direkt loest, war der einzige produktive Crash-Pfad. Die theoretischen Edge-Cases (Projekt entfernen → Session-UUID kollidiert spaeter zufaellig mit neuer Session) sind UUID-statistisch nicht erreichbar. Pattern-Risiko: jede neue Close-Aufrufstelle muss daran denken, das TabContainer-State mit zu sauberen. Ohne Lint-Regel oder Konvention wird das beim naechsten Refactor wieder uebersehen — siehe historisch die Sprint-2/3-Tab-Lifecycle-Bugs.
+
+**Aufloesung:** `SessionTab` um `needsSpawn: boolean` (Default false; true nur via addTab beim NewSession-Pfad) und `initialPrompt: string | null` (Default null; true nur fuer Docs-Sync) erweitern. `addTab` bekommt die zwei Felder optional; `closeTab` raeumt automatisch mit, weil die Tab-Row aus dem Store fliegt. TabContainer streicht `spawnedIds` und `initialPrompts` komplett, liest die Werte direkt aus `tab.needsSpawn` / `tab.initialPrompt`. `removeFromIdSet` und `removeFromIdMap` sowie der `handleClose`-Cleanup-Block fallen ersatzlos weg. **Trigger:** sobald sich ein dritter Tracking-Container ansammelt (z.B. fuer ein neues per-Tab-One-Shot-Feature) ODER sobald ein neuer Close-Pfad gebaut wird, der das Cleanup-Plumbing erneut anfassen muesste.
+
+---
+
 ## Markdown-Editor-Split-Layout: 50/50 fix, kein Resize-Handle (Season 24)
 
 **Bereich:** `src/renderer/components/MarkdownEditor.tsx` Split-Modus, CSS-Klassen `.td-md-body-split > .td-md-cm` und `> .td-md-preview` (beide `flex: 1 1 50%`).

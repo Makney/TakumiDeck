@@ -15,6 +15,7 @@ import {
   buildTriggerPillList,
   type TriggerPhrasePill,
 } from '../components/triggerPhrasePills';
+import { removeFromIdMap, removeFromIdSet } from '../components/spawnTrackingState';
 import type { ClaudeMdFrontmatter } from '@shared/types';
 // Sprint 7 (Q8 Variante A): NotesFooter ist hier weg — Notes leben jetzt im
 // RightPane (panels/RightPane.tsx → components/NotesPanel.tsx). Ein klarer Ort
@@ -159,6 +160,13 @@ export function TabContainer({ settings }: Props) {
         console.warn(`[TabContainer] session:close fehlgeschlagen: ${result.error}`);
       }
       closeTab(sessionId);
+      // Bugfix v0.2.0: Spawn-Tracking-State pro Tab muss beim Close mitgehen.
+      // Sonst sieht ein spaeteres Resume (HistoryActionModal/HistoryPane: addTab
+      // mit gleicher sessionId → TerminalTab mountet frisch) needsSpawn=true und
+      // feuert ein zweites pty:create → INSERT INTO sessions kollidiert am
+      // UNIQUE-Index sessions.id.
+      setSpawnedIds((prev) => removeFromIdSet(prev, sessionId));
+      setInitialPrompts((prev) => removeFromIdMap(prev, sessionId));
     },
     [closeTab],
   );
