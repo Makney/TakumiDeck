@@ -259,6 +259,14 @@ export const TemplatesAllocateSeasonForSessionInputSchema = z.object({
   sessionId: z.string().min(1),
 });
 
+// Phase-2 Season-21: docs:sync-status. Renderer schickt die projectId; der
+// Main resolved gegen ProjectRepository.getById und liest die vier
+// Doku-Originale + ihre erwarteten Summary-Files. SHA-256 der Originale wird
+// gegen `source_hash` im Frontmatter der Summary verglichen.
+export const DocsSyncStatusInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
 // --- Filesystem read/write (Sprint 7) ---------------------------------
 
 // fs:read / fs:write laufen ausschließlich relativ zu einem registrierten Projekt.

@@ -63,6 +63,14 @@ interface Props {
   // und seine PTY noch nicht existiert. Beim Resume ist es false (PTY wird vom Resume-IPC
   // gespawnt — der Tab existiert ja bereits).
   needsSpawn: boolean;
+  // Phase-2 Season-21: vorbereiteter Prompt fuer Docs-Sync-Sessions. Wird
+  // nach erfolgreichem Spawn einmalig via Bracketed-Paste an die PTY gesendet.
+  // null fuer alle anderen Sessions.
+  initialPrompt: string | null;
+  // One-Shot-Callback nach erfolgreichem Prompt-Send — TabContainer entfernt
+  // den Eintrag aus seiner Map, damit ein erneuter Tab-Mount nicht erneut
+  // sendet.
+  onInitialPromptSent: (sessionId: string) => void;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
 }
 
@@ -76,6 +84,8 @@ export function TerminalTab({
   settings,
   isActive,
   needsSpawn,
+  initialPrompt,
+  onInitialPromptSent,
   onStatusChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -93,6 +103,19 @@ export function TerminalTab({
   // auf sessions.id. Die Ref überlebt die StrictMode-Mount→Cleanup→Remount-Sequenz,
   // weil React den Fiber wiederverwendet.
   const spawnDispatchedRef = useRef(false);
+  // Phase-2 Season-21: Snapshot des initialPrompts beim Mount. Der Spawn-Effekt
+  // laeuft nur einmal pro Tab-Lebensdauer ([sessionId]-Dep); deshalb muss die
+  // initialPrompt-Prop nicht in die Dep-Liste — die Ref bewahrt den Wert vom
+  // Erstrender. Callback genauso per Ref, damit Identitaets-Wechsel den
+  // Spawn-Effekt nicht neu starten.
+  const initialPromptRef = useRef(initialPrompt);
+  const onInitialPromptSentRef = useRef(onInitialPromptSent);
+  useEffect(() => {
+    initialPromptRef.current = initialPrompt;
+  }, [initialPrompt]);
+  useEffect(() => {
+    onInitialPromptSentRef.current = onInitialPromptSent;
+  }, [onInitialPromptSent]);
 
   // xterm-Initialisierung läuft genau einmal pro Tab-Lebensdauer (sessionId ist stabil).
   useEffect(() => {
@@ -238,6 +261,10 @@ export function TerminalTab({
     // rechts abgeschnitten. RAF stellt sicher, dass das Layout final ist,
     // bevor wir die cols an die PTY schicken.
     let spawnRafHandle: number | null = null;
+    // Phase-2 Season-21: setTimeout-Handle fuer den Auto-Send des Docs-Sync-
+    // Prompts. Im Cleanup geclearedt, falls der Tab unmountet bevor das Warmup
+    // verstrichen ist.
+    let initialPromptTimer: ReturnType<typeof setTimeout> | null = null;
     if (needsSpawn && !spawnDispatchedRef.current) {
       spawnDispatchedRef.current = true;
       const doSpawn = async () => {
@@ -272,6 +299,19 @@ export function TerminalTab({
           }
           if (isActive) {
             terminal.focus();
+          }
+          // Phase-2 Season-21: Auto-Send des Docs-Sync-Prompts. Warmup-Delay,
+          // bis Claudes TUI seine Input-Box gerendert hat — sonst landet der
+          // Paste im Hochfahr-Splash und wird verschluckt. Bracketed-Paste +
+          // separates `\r` analog zur Trigger-Phrasen-Mechanik aus Season 3.
+          const prompt = initialPromptRef.current;
+          if (prompt && prompt.length > 0) {
+            initialPromptTimer = setTimeout(() => {
+              initialPromptTimer = null;
+              terminalRef.current?.paste(prompt);
+              void window.api.pty.write({ sessionId, data: '\r' });
+              onInitialPromptSentRef.current(sessionId);
+            }, 2500);
           }
         }
       };
@@ -338,6 +378,12 @@ export function TerminalTab({
 
     return () => {
       if (initRafHandle !== null) cancelAnimationFrame(initRafHandle);
+      // Phase-2 Season-21: Auto-Send-Timer abbrechen, falls Cleanup zwischen
+      // Spawn-Success und Warmup-Ende laeuft (Tab geschlossen vor Send).
+      if (initialPromptTimer !== null) {
+        clearTimeout(initialPromptTimer);
+        initialPromptTimer = null;
+      }
       if (spawnRafHandle !== null) {
         cancelAnimationFrame(spawnRafHandle);
         // Phase-2 Season-5 Bugfix: Die Spawn-RAF wurde noch nicht gefeuert

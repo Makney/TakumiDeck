@@ -571,6 +571,26 @@ export interface TemplatesAllocateSeasonForSessionResult {
   freshlyAssigned: boolean;
 }
 
+// Phase-2 Season-21 — Docs-Sync. Status-IPC fuer das NewSessionModal mit
+// Typ „Docs-Sync". Re-Export der pure-Helper-Typen aus shared/docs-sync.ts,
+// damit Preload-Bridge + Renderer denselben Vertrag sehen wie das Modul,
+// das die Logik haelt.
+import type {
+  DocsSyncFileDescriptor as _DocsSyncFileDescriptor,
+  DocsSyncFileState as _DocsSyncFileState,
+  DocsSyncFileStatus as _DocsSyncFileStatus,
+  DocsSyncStatusResult as _DocsSyncStatusResult,
+} from './docs-sync';
+
+export type DocsSyncFileDescriptor = _DocsSyncFileDescriptor;
+export type DocsSyncFileState = _DocsSyncFileState;
+export type DocsSyncFileStatus = _DocsSyncFileStatus;
+export type DocsSyncStatusResult = _DocsSyncStatusResult;
+
+export interface DocsSyncStatusInput {
+  projectId: string;
+}
+
 // --- Token-Tracking (Sprint 5) ---------------------------------------
 
 // Geparste JSONL-Zeile, gefiltert auf das, was wir tatsächlich brauchen.
@@ -879,6 +899,11 @@ export interface RendererApi {
     allocateSeasonForSession: (
       input: TemplatesAllocateSeasonForSessionInput,
     ) => Promise<IpcResult<TemplatesAllocateSeasonForSessionResult>>;
+  };
+  // Phase-2 Season-21: Docs-Sync-Session — Status der vier Doku-Files
+  // (CHANGELOG/FEATURES/TECH_SCHULDEN/ENTSCHEIDUNGEN) fuers Modal.
+  docs: {
+    syncStatus: (input: DocsSyncStatusInput) => Promise<IpcResult<DocsSyncStatusResult>>;
   };
   fs: {
     listTemplates: (input: FsListTemplatesInput) => Promise<IpcResult<TemplateFile[]>>;

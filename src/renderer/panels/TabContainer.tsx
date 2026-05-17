@@ -94,6 +94,13 @@ export function TabContainer({ settings }: Props) {
   // Tabs, die in dieser Session-Lebensdauer schon gespawnt wurden — verhindert,
   // dass ein erneuter Tab-Mount (z.B. nach React-Tree-Repaint) eine zweite PTY öffnet.
   const [spawnedIds, setSpawnedIds] = useState<Set<string>>(() => new Set());
+  // Phase-2 Season-21: Initial-Prompts fuer frisch gespawnte Docs-Sync-Sessions.
+  // Wird nach dem ersten erfolgreichen Spawn vom TerminalTab konsumiert (one-
+  // shot, dann via onInitialPromptSent ausgetragen). Map statt Object, damit
+  // Add/Delete keine Object-Spread-Identitaeten zerhauen.
+  const [initialPrompts, setInitialPrompts] = useState<Map<string, string>>(
+    () => new Map(),
+  );
 
   // Wenn das Modal schließt, soll der Fokus zurück aufs aktive Terminal gehen.
   // Sonst bleibt er auf dem (jetzt unmounteten) Submit-/Cancel-Button und Tastatur-
@@ -190,6 +197,10 @@ export function TabContainer({ settings }: Props) {
       model: string;
       // Phase-2 Season-5: bei type='custom' Pflicht-Bezeichnung, sonst null.
       customTypeLabel?: string | null;
+      // Phase-2 Season-21: bei type='docs-sync' der vorbereitete Prompt aus
+      // dem Modal — wird nach dem Spawn via Bracketed-Paste an die Session
+      // gesendet.
+      initialPrompt?: string | null;
     }) => {
       if (!activeProjectId || !activeProject) return;
       // Bereich-4-Review (B-5): cwd wird im Main aus projects.getById(projectId).path
@@ -207,10 +218,29 @@ export function TabContainer({ settings }: Props) {
         next.add(tab.sessionId);
         return next;
       });
+      if (input.initialPrompt) {
+        setInitialPrompts((prev) => {
+          const next = new Map(prev);
+          next.set(tab.sessionId, input.initialPrompt as string);
+          return next;
+        });
+      }
       setShowNewSessionModal(false);
     },
     [addTab, activeProjectId, activeProject, setShowNewSessionModal],
   );
+
+  // Phase-2 Season-21: One-Shot-Cleanup, sobald der TerminalTab den Prompt
+  // gepastet hat. Verhindert, dass ein erneutes Tab-Mount (StrictMode oder
+  // React-Tree-Repaint) den Prompt nochmal sendet.
+  const handleInitialPromptSent = useCallback((sessionId: string) => {
+    setInitialPrompts((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Map(prev);
+      next.delete(sessionId);
+      return next;
+    });
+  }, []);
 
   const canAddSession = activeProjectId !== null && activeProject !== null;
 
@@ -267,6 +297,8 @@ export function TabContainer({ settings }: Props) {
               settings={settings}
               isActive={tab.sessionId === activeId}
               needsSpawn={spawnedIds.has(tab.sessionId)}
+              initialPrompt={initialPrompts.get(tab.sessionId) ?? null}
+              onInitialPromptSent={handleInitialPromptSent}
               onStatusChange={setStatus}
             />
           </div>
@@ -297,6 +329,7 @@ export function TabContainer({ settings }: Props) {
         <NewSessionModal
           defaultModel={effectiveDefaultModel}
           nextSeasonPreview={activeProject?.next_season_number ?? null}
+          projectId={activeProjectId}
           onCancel={() => setShowNewSessionModal(false)}
           onCreate={handleNewSession}
         />

@@ -16,6 +16,7 @@ import { setMainWebContentsResolver } from './ipc/sender-guard';
 import { registerFsIpc, screenshotsDirFromUserData, templatesDirFromUserData } from './ipc/fs';
 import { registerGitIpc } from './ipc/git';
 import { registerTemplatesIpc } from './ipc/templates';
+import { registerDocsIpc } from './ipc/docs';
 import { realGitDriver } from './git/driver';
 import { PtyManager } from './pty/manager';
 import { realPtySpawn } from './pty/spawn';
@@ -269,6 +270,10 @@ void app.whenReady().then(async () => {
       projects: projectRepo,
       sessions,
       settings,
+      log: logger,
+    });
+    registerDocsIpc({
+      projects: projectRepo,
       log: logger,
     });
 

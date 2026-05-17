@@ -251,7 +251,7 @@ Settings-Slot für die Anzahl der ins Template eingefügten Einträge.
 
 ## Bereich: Docs-Sync
 
-### Feature: Docs-Sync-Session
+### Feature: Docs-Sync-Session ✅
 
 Spezielle Session-Art für Doku-Komprimierung.
 

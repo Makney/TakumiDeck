@@ -82,6 +82,12 @@ export const Channels = {
   // pty:create-Spawn mit (Bug aus Season 8/9/10: Counter blieb stehen, weil
   // Seasons per Templates-Send statt neuer Feature-Session gestartet wurden).
   TemplatesAllocateSeasonForSession: 'templates:allocate-season-for-session',
+  // Phase-2 Season-21: Status fuer die vier Docs-Sync-Doku-Dateien
+  // (CHANGELOG/FEATURES/TECH_SCHULDEN/ENTSCHEIDUNGEN). Renderer ruft beim
+  // Oeffnen des NewSessionModals mit Typ „Docs-Sync" und vergleicht
+  // SHA-256-Hash der Originaldatei mit `source_hash` im Frontmatter der
+  // Summary-Datei.
+  DocsSyncStatus: 'docs:sync-status',
   FsListTree: 'fs:list-tree',
   // Phase-2 Season-2: Screenshot-Drop ins Terminal. Renderer speichert
   // Image-Bytes über diesen Channel in <userData>/screenshots/, bekommt

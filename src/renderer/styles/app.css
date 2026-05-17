@@ -2267,6 +2267,82 @@ body,
   font-weight: 600;
 }
 
+/* Phase-2 Season-21: Docs-Sync-Block im NewSessionModal. Vier Zeilen mit
+   Checkbox + Dateiname + Status-Marker — die Auswahl entscheidet, welche
+   Files in den vorbereiteten Prompt eingebaut werden. */
+.td-docs-sync-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--td-line);
+  border-radius: 3px;
+  background: var(--td-bg);
+  padding: 4px;
+}
+
+.td-docs-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--td-text-mute);
+}
+
+.td-docs-sync-row:hover {
+  background: var(--td-line);
+  color: var(--td-text);
+}
+
+.td-docs-sync-row.selected {
+  color: var(--td-text);
+}
+
+.td-docs-sync-row input[type='checkbox'] {
+  accent-color: var(--td-accent);
+  cursor: pointer;
+}
+
+.td-docs-sync-name {
+  flex: 1;
+  font-family: var(--td-mono);
+  font-size: 12px;
+}
+
+.td-docs-sync-state {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.td-docs-sync-state-fresh {
+  color: var(--td-green, #4ade80);
+}
+
+.td-docs-sync-state-stale {
+  color: var(--td-yellow, #facc15);
+}
+
+.td-docs-sync-state-missing {
+  color: var(--td-text-mute);
+}
+
+.td-docs-sync-state-loading {
+  color: var(--td-text-dim, var(--td-text-mute));
+  font-style: italic;
+}
+
+.td-docs-sync-hint {
+  margin-top: 4px;
+}
+
+.td-docs-sync-hint code {
+  font-family: var(--td-mono);
+  font-size: 11px;
+  color: var(--td-text);
+}
+
 /* ----- Sprint 6: HistoryPane ----- */
 
 .td-history-pane {

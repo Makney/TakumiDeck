@@ -204,7 +204,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
-| `Docs-Sync-Session`                  | ⛔      | Auto-Prompt für Komprimierung nach `docs/SUMMARIES/` |
+| `Docs-Sync-Session`                  | ✅      | 2026-05-17 (Phase-2-Season-21) — Sechste Session-Art „Docs-Sync" im NewSessionModal mit Status-Block fuer die vier Doku-Files (CHANGELOG/FEATURES/TECH_SCHULDEN/ENTSCHEIDUNGEN). SHA-256-basierter Stale-Check vs. `source_hash` im Summary-Frontmatter (✅ aktuell / 🟡 veraltet / ⛔ keine Summary / ⚠️ Datei fehlt). Pro-File-Checkboxen waehlen die Subset-Auswahl. Nach erfolgreichem PTY-Spawn pastet TakumiDeck den vorbereiteten Prompt mit den ausgewaehlten Quelle→Ziel-Pfaden + Frontmatter-Format-Vorgabe automatisch (2,5 s Warmup, Bracketed-Paste + `\r`). Neuer IPC `docs:sync-status` und Pure-Logik in `src/shared/docs-sync.ts` (`DOCS_SYNC_FILES`, `parseSummaryFrontmatter`, `computeFileSyncStatus`, `buildDocsSyncPrompt`). |
 | `Kontext-Checkbox-Erweiterung`       | ⛔      | Summary-Inhalt als Präambel statt Pfad-Erinnerung |
 
 ### Editor (Phase 2)

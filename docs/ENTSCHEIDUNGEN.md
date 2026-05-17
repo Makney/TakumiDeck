@@ -24,6 +24,32 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Docs-Sync-Session: Sechste Session-Art, hartcodierter Prompt, Inline-Status, Hash-im-Frontmatter (E1+P1+S1+H1)
+
+**Entscheidung:** Die Docs-Sync-Session lebt als sechster Button im NewSessionModal (E1), pastet einen hartcodierten Prompt aus einem neuen `shared/docs-sync.ts`-Modul nach erfolgreichem Spawn (P1), zeigt den Sync-Status der vier Doku-Files inline im Modal-Body (S1), und erkennt „Original geaendert?" via SHA-256-Hash im YAML-Frontmatter der Summary-Datei (H1).
+
+**Varianten:**
+
+- **E1** Sechste Session-Art im NewSessionModal (gewaehlt) — folgt Phase-2-Season-5-Pattern (Custom-Type), minimaler UI-Surface-Touch, Status-Block wohnt direkt im Modal-Body.
+- **E2** Eigene „Docs-Sync"-Pille in der Action-Bar mit Badge bei veralteten Summaries — mehr Sichtbarkeit, aber Action-Bar wird voller fuer ein Sekundaer-Feature.
+- **E3** Erweiterung des Templates-Modals (Footer-Bereich) — recycelt Auto-Variable-System, aber Templates pasten *in* Sessions und Docs-Sync *startet* eine neue. Konzeptionelle Vermischung.
+- **P1** Hartcodierter Prompt in neuem Modul (gewaehlt) — Prompt ist implementation detail, kein User-Customization-Punkt. Analog zur K1-Entscheidung aus Season 19 (Easter-Egg-Werk-Set hartcoded).
+- **P2** Template-Datei `_DOCS_SYNC.md` im Workspace, User-editierbar — maximal flexibel, aber Default-Magie schwer zu pflegen (User editiert nach Update → driftet).
+- **P3** Hartcoded-Default + Settings-Override-Feld — beide Welten, aber Configuration-Surface fuer ein selten genutztes Feature.
+- **S1** Status-Block direkt unter dem Docs-Sync-Trigger im Modal (gewaehlt) — Status da, wo die Aktion ist; kein zweites Panel.
+- **S2** Eigenes Panel in der Right-Pane oder Stats-Pane-Tab — mehr Sichtbarkeit, grosser UI-Touch fuer Sekundaer-Feature.
+- **S3** Kein UI-Status, nur `docs/SUMMARIES/`-Ordner — verletzt die Roadmap-Vorgabe „UI fuer Summary-Status pro Datei".
+- **H1** SHA-256-Hash im Summary-Frontmatter (gewaehlt) — robust, idempotent, immun gegen mtime-Touch durch unrelated Tools.
+- **H2** mtime-Vergleich Original vs. Summary-File — einfacher, aber unzuverlaessig (jeder Editor-Open-Save touch´t mtime).
+
+**Grund:** E1 hat das niedrigste Friction-Level: die Session-Type-Buttons sind im Modal schon vorhanden, das `docs-sync`-Enum existiert seit Migration 0005 (Phase-2-Season-5), nur die Funktion fehlte. E2 produziert ein Sichtbarkeits-Problem („Badge mahnt staendig") fuer ein Feature, das eher woechentlich/monatlich genutzt wird als taeglich. E3 vermischt zwei Konzepte (Send-in-Session vs. Start-Session) und macht das Templates-Modal zur Hybrid-UI. P1 vermeidet die User-Last, den Prompt-Wortlaut zu pflegen — falls eine kuenftige Claude-Version das verlangte Frontmatter-Format anders bekommt, wandert die Anpassung in eine TakumiDeck-Code-Aenderung, nicht in eine vergessene Template-Datei in jedem Projekt. P2 wuerde zwei Versions-Quellen schaffen (in-app vs. in-project) und Drift-Bugs nach App-Update wahrscheinlich machen. S1 haelt das Modal kohaerent — der User sieht Auswahl + Status in einer Spalte, ohne den Blick zu zerteilen. Beim mtime-Pfad (H2) reicht es, dass eine Editor-Session die Original-Datei einmal speichert, ohne Inhalt zu aendern, um die Summary unguenstig als „veraltet" zu markieren — das Frontmatter-Hash-Pattern verhindert das deterministisch. SHA-256 ist hier overkill fuers Sicherheits-Argument, aber als Stable-Content-Fingerprint genau richtig.
+
+**Konsequenz:** Bei kuenftigen Doku-Files (z.B. eine fuenfte zu komprimierende Datei) wird `DOCS_SYNC_FILES` in `src/shared/docs-sync.ts` um einen Eintrag erweitert — kein UI-Refactor noetig, der Status-Block iteriert ueber das Array. Falls der Prompt-Wortlaut sich aendern muss (neue Claude-Version oder neues Frontmatter-Format), passiert die Aenderung in `buildDocsSyncPrompt`. Falls der User irgendwann doch eine editierbare Prompt-Vorlage will (= P2-Migration), ist `buildDocsSyncPrompt(selectedFiles)` schon das passende Schnitt-Interface — eine Settings-Property `docs_sync_prompt_override?: string` koennte den Default ueberschreiben, ohne den Modal-/IPC-Pfad zu beruehren. Der Auto-Send mit 2,5 s Warmup ist ein Schaetzwert; falls Claude in einer kuenftigen Version laenger zum TUI-Init braucht oder einen reproducible Ready-Marker liefert, sollte der setTimeout durch ein State-Detection-Event ersetzt werden.
+
+**Implementierungsdetail:** Der Frontmatter-Parser ist bewusst einfach gehalten (Zeile-fuer-Zeile `key: value`-Lookup mit Anfuehrungszeichen-Stripping), kein gray-matter — die Summary-Files haben nur drei flache String-Felder. Bei BOM am Datei-Anfang wird `charCodeAt(0) === 0xfeff` vor dem `startsWith('---')`-Check defensiv abgestreift, damit Summary-Dateien mit Encoding-Header (selten, aber moeglich) nicht faelschlich als „kein Frontmatter" klassifiziert werden. `parseSummaryFrontmatter` returnt `null` bei fehlendem oder unvollstaendigem Block, `computeFileSyncStatus` faengt das ab und klassifiziert als `stale` — die Sync-Session korrigiert das beim naechsten Lauf.
+
+---
+
 ## Top-N für Template-Auto-Variablen: Sub-Objekt im neuen Templates-Tab, IPC liest Settings frisch (F2+T2+I2)
 
 **Entscheidung:** Die zwei Top-N-Werte fuer `{{TECH_SCHULDEN_RELEVANT}}` und `{{LETZTE_ENTSCHEIDUNGEN}}` leben als Sub-Objekt `template_top_n: { schulden, entscheidungen }` im `AppSettings`-Schema (F2), die UI bekommt einen eigenen „Templates"-Tab im Settings-Modal (T2), und der `templates:resolve-auto-vars`-IPC liest die Werte pro Call frisch via `settings.read()` (I2) statt sie als Payload-Argument oder DI-Cache zu beziehen.

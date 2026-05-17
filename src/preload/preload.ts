@@ -5,6 +5,8 @@ import type {
   AppPickFolderResult,
   AppSettings,
   ClaudeMdParseResult,
+  DocsSyncStatusInput,
+  DocsSyncStatusResult,
   SessionStatusPushEvent,
   FsListTemplatesInput,
   FsListTreeInput,
@@ -142,6 +144,15 @@ const api: RendererApi = {
     allocateSeasonForSession: (input: TemplatesAllocateSeasonForSessionInput) =>
       ipcRenderer.invoke(Channels.TemplatesAllocateSeasonForSession, input) as Promise<
         IpcResult<TemplatesAllocateSeasonForSessionResult>
+      >,
+  },
+  // Phase-2 Season-21: Docs-Sync-Status fuer das NewSessionModal mit Typ
+  // „Docs-Sync". Liefert den Sync-Status der vier Doku-Files (CHANGELOG/
+  // FEATURES/TECH_SCHULDEN/ENTSCHEIDUNGEN) im aktiven Projekt.
+  docs: {
+    syncStatus: (input: DocsSyncStatusInput) =>
+      ipcRenderer.invoke(Channels.DocsSyncStatus, input) as Promise<
+        IpcResult<DocsSyncStatusResult>
       >,
   },
   fs: {

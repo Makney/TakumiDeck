@@ -1,5 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
-import type { SessionType } from '@shared/types';
+import { useEffect, useState, useRef, useMemo } from 'react';
+import type { SessionType, DocsSyncFileStatus } from '@shared/types';
+import {
+  DOCS_SYNC_FILES,
+  buildDocsSyncPrompt,
+  type DocsSyncFileDescriptor,
+} from '@shared/docs-sync';
 
 // NewSessionModal: Sprint-3-Pflicht aus Architektur 6.0.1.
 //
@@ -10,6 +15,12 @@ import type { SessionType } from '@shared/types';
 //
 // Phase-2 Season-5: zusätzlicher 5. Button „Eigene Art" blendet ein Freitext-Feld
 // ein, dessen Inhalt als custom_type_label mitgesendet wird.
+//
+// Phase-2 Season-21: Typ „Docs-Sync" zeigt einen Status-Block mit den vier
+// Doku-Files (CHANGELOG/FEATURES/TECH_SCHULDEN/ENTSCHEIDUNGEN). Pro File eine
+// Checkbox + Status-Marker; ausgewaehlte Files werden beim Submit in einen
+// vorbereiteten Prompt eingebaut, den der TabContainer nach erfolgreichem
+// Spawn an die frische Session sendet.
 
 const SESSION_TYPES: SessionType[] = ['feature', 'bug', 'review', 'docs-sync', 'custom'];
 const TYPE_LABELS: Record<SessionType, string> = {
@@ -42,6 +53,11 @@ interface Props {
   // Anzeige, der echte Increment passiert atomar im Main beim pty:create. Lücken
   // (Modal abgebrochen, Spawn-Fehler) sind explizit akzeptiert (Architektur 6.6).
   nextSeasonPreview: number | null;
+  // Phase-2 Season-21: aktives Projekt — gebraucht fuer den docs:sync-status-IPC,
+  // wenn der User auf den Docs-Sync-Tab klickt. Bleibt null bis das Modal mit
+  // einem aktiven Projekt geoeffnet wird (TabContainer rendert das Modal sowieso
+  // nur in diesem Fall).
+  projectId: string | null;
   onCancel: () => void;
   onCreate: (input: {
     title: string;
@@ -49,16 +65,37 @@ interface Props {
     model: string;
     // Phase-2 Season-5: nur gesetzt bei type='custom'.
     customTypeLabel?: string | null;
+    // Phase-2 Season-21: nur gesetzt bei type='docs-sync'. Wird vom
+    // TabContainer nach erfolgreichem PTY-Spawn via Bracketed-Paste an die
+    // frische Session gesendet.
+    initialPrompt?: string | null;
   }) => void;
 }
 
-export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onCreate }: Props) {
+export function NewSessionModal({
+  defaultModel,
+  nextSeasonPreview,
+  projectId,
+  onCancel,
+  onCreate,
+}: Props) {
   const [title, setTitle] = useState('');
   const [type, setType] = useState<SessionType>('feature');
   const [model, setModel] = useState(defaultModel);
   // Phase-2 Season-5: separates State-Feld, damit ein Wechsel zwischen 'custom'
   // und einem festen Typ den eingegebenen Label-Text nicht verliert.
   const [customLabel, setCustomLabel] = useState('');
+  // Phase-2 Season-21: Auswahl der Docs-Sync-Files. Initial alle vier
+  // angewaehlt — der haeufige Fall ist „komplett synchronisieren". Wechsel
+  // zwischen Typen behaelt die Auswahl, damit ein versehentlicher Type-
+  // Wechsel die Auswahl nicht zurueckwirft.
+  const [docsSyncSelection, setDocsSyncSelection] = useState<Set<string>>(
+    () => new Set(DOCS_SYNC_FILES.map((f) => f.sourcePath)),
+  );
+  const [docsSyncStatus, setDocsSyncStatus] = useState<DocsSyncFileStatus[] | null>(
+    null,
+  );
+  const [docsSyncLoading, setDocsSyncLoading] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const customLabelRef = useRef<HTMLInputElement>(null);
 
@@ -87,10 +124,53 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
     }
   }, [type]);
 
+  // Phase-2 Season-21: Status der vier Doku-Files laden, sobald docs-sync
+  // gewaehlt wird. Memory-Guard nicht noetig — der IPC ist ein read-only
+  // Status-Abfrage ohne Server-Side-Effect.
+  useEffect(() => {
+    if (type !== 'docs-sync' || !projectId) return;
+    let cancelled = false;
+    setDocsSyncLoading(true);
+    void window.api.docs.syncStatus({ projectId }).then((result) => {
+      if (cancelled) return;
+      setDocsSyncLoading(false);
+      if (result.ok) {
+        setDocsSyncStatus(result.data.files);
+      } else {
+        // Bei Fehler den Block leer halten — die Checkboxen bleiben aus der
+        // Default-Auswahl (alle vier), der Submit ist weiter moeglich, nur
+        // ohne Status-Marker.
+        setDocsSyncStatus(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [type, projectId]);
+
   const trimmedCustomLabel = customLabel.trim();
+
+  // Phase-2 Season-21: Submit-Validierung. Docs-Sync braucht mindestens eine
+  // angewaehlte Datei, sonst waere der Prompt leer und die frische Session
+  // bekaeme keinen sinnvollen ersten Input.
+  const selectedDocsSyncFiles = useMemo<DocsSyncFileDescriptor[]>(
+    () => DOCS_SYNC_FILES.filter((f) => docsSyncSelection.has(f.sourcePath)),
+    [docsSyncSelection],
+  );
+
   const canSubmit =
     title.trim().length > 0 &&
-    (type !== 'custom' || trimmedCustomLabel.length > 0);
+    (type !== 'custom' || trimmedCustomLabel.length > 0) &&
+    (type !== 'docs-sync' || selectedDocsSyncFiles.length > 0);
+
+  const toggleDocsSyncFile = (sourcePath: string) => {
+    setDocsSyncSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(sourcePath)) next.delete(sourcePath);
+      else next.add(sourcePath);
+      return next;
+    });
+  };
 
   const submit = () => {
     if (!canSubmit) return;
@@ -99,6 +179,8 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
       type,
       model,
       customTypeLabel: type === 'custom' ? trimmedCustomLabel : null,
+      initialPrompt:
+        type === 'docs-sync' ? buildDocsSyncPrompt(selectedDocsSyncFiles) : null,
     });
   };
 
@@ -173,6 +255,36 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
             </label>
           )}
 
+          {type === 'docs-sync' && (
+            <div className="td-field">
+              <span>Doku-Dateien</span>
+              <div className="td-docs-sync-list">
+                {DOCS_SYNC_FILES.map((file) => {
+                  const status = docsSyncStatus?.find((s) => s.sourcePath === file.sourcePath);
+                  const checked = docsSyncSelection.has(file.sourcePath);
+                  return (
+                    <label
+                      key={file.sourcePath}
+                      className={`td-docs-sync-row${checked ? ' selected' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleDocsSyncFile(file.sourcePath)}
+                      />
+                      <span className="td-docs-sync-name">{file.name}</span>
+                      <DocsSyncStatusBadge status={status} loading={docsSyncLoading} />
+                    </label>
+                  );
+                })}
+              </div>
+              <span className="td-form-meta td-docs-sync-hint">
+                Ausgewählte Dateien werden komprimiert nach{' '}
+                <code>docs/SUMMARIES/</code> abgelegt.
+              </span>
+            </div>
+          )}
+
           {type === 'feature' && nextSeasonPreview !== null && (
             <div className="td-field td-form-hint">
               <span />
@@ -212,4 +324,63 @@ export function NewSessionModal({ defaultModel, nextSeasonPreview, onCancel, onC
       </div>
     </div>
   );
+}
+
+// Status-Badge fuer eine einzelne Doku-Datei. Vier Zustaende:
+//   - missing-source: Original-Datei fehlt im Projekt
+//   - missing-summary: Original existiert, Summary noch nicht
+//   - stale: Original wurde seit der letzten Sync veraendert
+//   - fresh: Hash-Match, Summary ist aktuell
+// Bei laufendem IPC-Call zeigen wir „lädt…" als Platzhalter.
+function DocsSyncStatusBadge({
+  status,
+  loading,
+}: {
+  status: DocsSyncFileStatus | undefined;
+  loading: boolean;
+}) {
+  if (loading || !status) {
+    return <span className="td-docs-sync-state td-docs-sync-state-loading">lädt…</span>;
+  }
+  switch (status.state) {
+    case 'fresh':
+      return (
+        <span
+          className="td-docs-sync-state td-docs-sync-state-fresh"
+          title={status.summarizedAt ? `Zuletzt: ${formatSummaryTimestamp(status.summarizedAt)}` : undefined}
+        >
+          ✅ aktuell
+        </span>
+      );
+    case 'stale':
+      return (
+        <span
+          className="td-docs-sync-state td-docs-sync-state-stale"
+          title={status.summarizedAt ? `Zuletzt: ${formatSummaryTimestamp(status.summarizedAt)}` : undefined}
+        >
+          🟡 veraltet
+        </span>
+      );
+    case 'missing-summary':
+      return (
+        <span className="td-docs-sync-state td-docs-sync-state-missing">
+          ⛔ keine Summary
+        </span>
+      );
+    case 'missing-source':
+      return (
+        <span className="td-docs-sync-state td-docs-sync-state-missing">
+          ⚠️ Datei fehlt
+        </span>
+      );
+  }
+}
+
+// ISO-8601 → lesbares Datum (z.B. „2026-05-17"). Bei unparsbaren Strings den
+// rohen Wert zeigen — das passiert nur, wenn Claude den Frontmatter mit einem
+// abweichenden Format geschrieben hat (defensiv).
+function formatSummaryTimestamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toISOString().slice(0, 10);
 }
