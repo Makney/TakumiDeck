@@ -24,6 +24,45 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Markdown-Editor-Layout: Side-by-Side als Default + prozentuales Sync-Scrolling (B + S1)
+
+**Entscheidung:** Der Markdown-Editor rendert Editor und Preview parallel mit synchronem Scrolling als neuen Daily-Driver-Default. Die alten Phase-1-Modi „Nur Editor" und „Nur Preview" bleiben als Per-Datei-Switch in der Toolbar erreichbar und als Default in den Settings wählbar. Sync-Scroll läuft prozentual und einseitig getrieben — das Pane, in dem der User scrollt, schiebt das andere; keine Heading-Map.
+
+**Varianten (Layout):**
+
+- **A** Dritter Modus „Split" additiv zur Phase-1-Toggle-Reihe (Editor · Preview · Split). Konservativ, ändert keinen bestehenden Workflow; Side-by-Side ist Opt-in.
+- **B** Side-by-Side als Default, Toolbar schaltet Panels ein/aus (gewählt). „Beide" zuerst, dann „Nur Editor" / „Nur Preview" als Reduktionsmodi. Bestandsuser sehen einmalig ein ungewohntes Layout.
+- **C** Layout-Wechsel nur in Settings, keine Modus-Buttons in der Toolbar. Settings als Single-Source-of-Truth.
+
+**Varianten (Sync-Scroll):**
+
+- **S1** Prozentual, einseitig getrieben (gewählt) — `scrollTop / (scrollHeight - clientHeight)` auf beide Panes spiegeln, Last-Scrolled-Wins via `active`-Source-Flag mit `requestAnimationFrame`-Reset.
+- **S2** Heading-Anchor-Mapping — Heading-Bucket-Map zwischen Editor-Zeilen und Preview-DOM-Positionen, Scroll-Position über Buckets mappen. Präziser bei sauber strukturierten Dokumenten.
+
+**Grund:** B folgt der Memory-Regel „konvenient vor traditionell" — die Daily-Driver-Erwartung beim Schreiben in CLAUDE.md/CHANGELOG ist „beides parallel sehen", und genau dafür steht das Feature seit Phase 2 in der Roadmap. A wäre additiv-konservativ, aber wenn das neue Verhalten das richtige ist, ist eine versteckte Drittwahl die schlechtere Lösung — Phase-1-User bekommen den modernen Modus, der zurück-Klick auf „Nur Editor" ist genau einen Toolbar-Button entfernt, und der Default ist in Settings persistent änderbar. C verschenkt den Per-Datei-Switch und macht „kurz mal nur Preview gucken" zu einer Settings-Reise. S1 schlägt S2, weil S2 bei Code-Blöcken und Tabellen brüchig wird (DOM-Höhe pro Heading-Bucket schwankt extrem) — die Präzision würde nur in einem schmalen Best-Case-Dokument-Typ helfen, dafür sind die Mapping-Datenstrukturen und ihr Re-Build bei jedem Edit teuer. S1 ist O(1) bei jedem Scroll-Event und robust gegen jede Markdown-Struktur.
+
+**Konsequenz:** Per-Datei-Layout wird im React-State (`useState<'split' | 'editor' | 'preview'>`) gehalten, nicht persistiert — der Setting-Default greift beim Tab-Open, danach ist die Wahl Datei-lokal und überlebt nur den aktuellen Tab. Wer einen Datei-individuellen Wunsch (etwa „CLAUDE.md immer im Split, README.md immer im Preview") behalten möchte, müsste per-Datei-Memory ins `useFileTabsStore`-Schema bauen — das ist nicht passiert, weil das Setting-Default plus 1-Klick-Switch in der Toolbar im Daily-Use genügt.
+
+**Implementierungsdetail:** CodeMirror bleibt im DOM verankert über alle Layout-Wechsel — der Container wird im Preview-Only-Modus mit `display:none` ausgeblendet statt React-unmount/re-mount. Sonst würde jeder Toolbar-Klick `EditorView` zerstören und neu bauen, was Cursor-Position, Selection und Undo-History abräumt. Der Sync-Scroll-Listener attached/detached an die `view.scrollDOM` bei jedem Layout-Wechsel auf/von `'split'` — im Editor- oder Preview-Only-Modus laufen die Listener nicht und halten keine fremden DOM-Knoten. Das `active`-Source-Flag ist nötig, weil ein programmatisches `scrollTop = ...` im anderen Pane wieder ein `scroll`-Event feuert, das ohne Guard zurückspiegeln und einen Drift-Loop auslösen würde; der Reset im nächsten `requestAnimationFrame`-Tick gibt einen echten User-Scroll im Ziel-Pane danach wieder frei.
+
+---
+
+## Markdown-Preview-GFM-Tabellen: `remark-gfm` als Plugin statt eigenem Tabellen-Parser
+
+**Entscheidung:** Die GFM-Erweiterungen (Tabellen, Strikethrough, Task-Lists, Autolinks) kommen über `remark-gfm` als `remarkPlugins`-Eintrag in den `<ReactMarkdown>`-Aufruf. Eine Modul-Konstante `MARKDOWN_REMARK_PLUGINS = [remarkGfm]` reicht das Plugin durch, damit `react-markdown` bei jedem Render dieselbe Plugin-Liste sieht.
+
+**Varianten:**
+
+- **A** `remark-gfm` als offizielles Plugin (gewählt) — Maintainer ist dieselbe Org wie `react-markdown` (unified/remark), Versionierung läuft mit, MIT-lizenziert.
+- **B** Eigener Markdown-Tabellen-Parser im Renderer — kontrolliert die Edge-Cases selbst.
+- **C** Beim Save Markdown vorab in HTML transformieren (Server-seitig, mit `marked`/`markdown-it`), Preview rendert nur das HTML — wäre konsistenter, aber großer Architektur-Eingriff.
+
+**Grund:** A ist die Standard-Lösung der `react-markdown`-Doku. B ist Bring-Your-Own-Parser für ein gelöstes Problem — die GFM-Spec hat Edge-Cases (Pipe-Escaping, Alignment-Markers, multi-line cells), die eine eigene Implementierung über Wochen pflegen müsste. C löst nicht das Preview-Problem, sondern ändert den Save-Pfad — überschießt das Scope.
+
+**Konsequenz:** Strikethrough (`~~text~~`), Task-Lists (`- [ ]`), Autolinks und Tabellen funktionieren überall in der Preview, nicht nur in Säulen. Tabellen-Layout ist eigen-gestyled (Block-Display + Horizontal-Scroll als Sicherheitsnetz, Header in der Akzent-Display-Schrift), weil die Default-Browser-Tabellen unleserlich gegen den dunklen Panel-Hintergrund wären.
+
+---
+
 ## Template-Tokens: YAML-Frontmatter-Schema pro Template (Variante B)
 
 **Entscheidung:** Jedes Template deklariert seine `{{TOKEN}}`s im YAML-Frontmatter (`variables:`-Map mit `auto: <pfad>` oder `input: text|textarea` plus optional `label`/`required`). Die Engine resolved Tokens schema-getrieben; Tokens ohne Schema-Eintrag bleiben als Literal `{{TOKEN}}` im Output stehen, der frühere „Unbekannte Tokens"-Warnblock entfällt.

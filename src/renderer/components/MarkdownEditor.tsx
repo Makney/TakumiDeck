@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, drawSelection, highlightActiveLine } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -11,6 +12,19 @@ import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { validateClaudeMdYaml } from './yamlValidator';
 import { markdownEditorThemeOverride } from './markdownEditorTheme';
 import { isDirty, makeEditorState, markSaved, updateBuffer, type EditorDirtyState } from './editorDirtyState';
+
+// Phase-2 Season-24: Side-by-Side-Modus. 'split' = Editor + Preview parallel
+// mit synchronem Scrolling (neuer Default), 'editor' = nur CodeMirror,
+// 'preview' = nur die gerenderte Ansicht. Per Datei in der Toolbar
+// umschaltbar; der Startwert kommt aus settings.markdown_editor_layout.
+export type MarkdownEditorLayout = 'split' | 'editor' | 'preview';
+
+// Konstanten fuer die remark-Plugin-Liste. Eine Modul-Konstante, damit
+// react-markdown bei jedem Render dieselbe Referenz sieht und nicht intern
+// neu parst. remark-gfm liefert die GFM-Erweiterungen (Tabellen,
+// Strikethrough, Task-Lists, Autolinks) — react-markdown selbst kennt nur
+// CommonMark.
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
 
 // MarkdownEditor (Sprint 7, Phase 3).
 //
@@ -44,6 +58,12 @@ interface Props {
   // (z.B. der Datei-Tab-Stack) nutzt das, um in der Tab-Pille einen ●-Indikator
   // zu setzen. Wird mit dem aktuellen Wert gefeuert, sobald isDirty kippt.
   onDirtyChange?: (dirty: boolean) => void;
+  // Phase-2 Season-24: initialer Layout-Modus aus settings.markdown_editor_layout.
+  // Der User kann pro Datei in der Toolbar umschalten — diese Prop liefert nur
+  // den Startwert beim Mount. Default 'split' (Side-by-Side ist der neue
+  // Daily-Driver). Bestandsuser ohne das Feld bekommen den Default ueber
+  // SettingsStore.read().
+  initialLayout?: MarkdownEditorLayout;
 }
 
 export function MarkdownEditor({
@@ -52,13 +72,17 @@ export function MarkdownEditor({
   isClaudeMd,
   onSave,
   onDirtyChange,
+  initialLayout = 'split',
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const [editorState, setEditorState] = useState<EditorDirtyState>(() =>
     makeEditorState(initialContent),
   );
-  const [showPreview, setShowPreview] = useState(false);
+  // Phase-2 Season-24: Drei-Wege-Mode statt Editor/Preview-Boolean.
+  // Mount-Init aus initialLayout (Setting); danach lokal pro Datei wechselbar.
+  const [layout, setLayout] = useState<MarkdownEditorLayout>(initialLayout);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -252,6 +276,60 @@ export function MarkdownEditor({
     onDirtyChangeRef.current?.(dirty);
   }, [dirty]);
 
+  // Phase-2 Season-24: Sync-Scroll im Split-Modus. Prozentual, einseitig
+  // getrieben — das Pane, in dem der User scrollt, schiebt das andere
+  // (Last-Scrolled-Wins). Robust gegen Markdown-Strukturwechsel (keine
+  // Heading-Map), kostet nur einen Scroll-Listener pro Pane. Re-attach bei
+  // Layout-Wechsel auf/von 'split', damit Listener im Editor-/Preview-Only-
+  // Modus nicht unnoetig feuern und keine fremden DOM-Knoten halten.
+  useEffect(() => {
+    if (layout !== 'split') return;
+    const view = viewRef.current;
+    const cmScroller = view?.scrollDOM ?? null;
+    const previewEl = previewScrollRef.current;
+    if (!cmScroller || !previewEl) return;
+
+    // Active-Source-Flag verhindert Echo-Schleife: wenn wir das andere Pane
+    // programmatisch scrollen, feuert dort ein 'scroll'-Event, das ohne Guard
+    // wieder zurueckspiegeln wuerde. Wir setzen die Quelle und resetten sie
+    // im naechsten Tick, damit ein User-Scroll-Event danach wieder durchgeht.
+    let active: 'cm' | 'preview' | null = null;
+    let resetHandle: number | null = null;
+    const resetActive = () => {
+      active = null;
+      resetHandle = null;
+    };
+
+    const syncFrom = (source: 'cm' | 'preview', target: HTMLElement, sourceEl: HTMLElement) => {
+      const denom = sourceEl.scrollHeight - sourceEl.clientHeight;
+      if (denom <= 0) return;
+      const ratio = sourceEl.scrollTop / denom;
+      const targetDenom = target.scrollHeight - target.clientHeight;
+      if (targetDenom <= 0) return;
+      active = source;
+      target.scrollTop = ratio * targetDenom;
+      if (resetHandle !== null) cancelAnimationFrame(resetHandle);
+      resetHandle = requestAnimationFrame(resetActive);
+    };
+
+    const onCmScroll = () => {
+      if (active === 'preview') return;
+      syncFrom('cm', previewEl, cmScroller);
+    };
+    const onPreviewScroll = () => {
+      if (active === 'cm') return;
+      syncFrom('preview', cmScroller, previewEl);
+    };
+
+    cmScroller.addEventListener('scroll', onCmScroll, { passive: true });
+    previewEl.addEventListener('scroll', onPreviewScroll, { passive: true });
+    return () => {
+      cmScroller.removeEventListener('scroll', onCmScroll);
+      previewEl.removeEventListener('scroll', onPreviewScroll);
+      if (resetHandle !== null) cancelAnimationFrame(resetHandle);
+    };
+  }, [layout]);
+
   return (
     <div className="td-md-edit">
       <div className="td-md-toolbar">
@@ -259,17 +337,25 @@ export function MarkdownEditor({
         <span className="td-md-spacer" />
         <button
           type="button"
-          className={`td-md-mode${showPreview ? '' : ' active'}`}
-          onClick={() => setShowPreview(false)}
-          title="Editor (Ctrl+S speichert)"
+          className={`td-md-mode${layout === 'split' ? ' active' : ''}`}
+          onClick={() => setLayout('split')}
+          title="Editor und Preview parallel mit synchronem Scrolling"
+        >
+          ▤⎘ Beide
+        </button>
+        <button
+          type="button"
+          className={`td-md-mode${layout === 'editor' ? ' active' : ''}`}
+          onClick={() => setLayout('editor')}
+          title="Nur Editor (Ctrl+S speichert)"
         >
           ▤ Editor
         </button>
         <button
           type="button"
-          className={`td-md-mode${showPreview ? ' active' : ''}`}
-          onClick={() => setShowPreview(true)}
-          title="Markdown-Preview (read-only)"
+          className={`td-md-mode${layout === 'preview' ? ' active' : ''}`}
+          onClick={() => setLayout('preview')}
+          title="Nur Markdown-Preview (read-only)"
         >
           ⎘ Preview
         </button>
@@ -287,13 +373,21 @@ export function MarkdownEditor({
         </span>
       </div>
       {saveError && <div className="td-md-error">Save fehlgeschlagen: {saveError}</div>}
-      <div className="td-md-body">
-        {showPreview ? (
-          <div className="td-md-preview">
-            <ReactMarkdown>{editorState.buffer}</ReactMarkdown>
+      {/* CodeMirror bleibt im DOM verankert (auch im Preview-Only-Modus),
+          damit ein Layout-Wechsel den Buffer/History/Cursor nicht verliert.
+          Sichtbarkeit ueber CSS (display:none), nicht via React-Mount/Unmount. */}
+      <div className={`td-md-body td-md-body-${layout}`}>
+        <div
+          ref={containerRef}
+          className="td-md-cm"
+          style={{ display: layout === 'preview' ? 'none' : 'flex' }}
+        />
+        {layout !== 'editor' && (
+          <div ref={previewScrollRef} className="td-md-preview">
+            <ReactMarkdown remarkPlugins={MARKDOWN_REMARK_PLUGINS}>
+              {editorState.buffer}
+            </ReactMarkdown>
           </div>
-        ) : (
-          <div ref={containerRef} className="td-md-cm" />
         )}
       </div>
     </div>

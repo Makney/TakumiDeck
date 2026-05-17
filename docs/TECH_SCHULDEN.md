@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Markdown-Editor-Split-Layout: 50/50 fix, kein Resize-Handle (Season 24)
+
+**Bereich:** `src/renderer/components/MarkdownEditor.tsx` Split-Modus, CSS-Klassen `.td-md-body-split > .td-md-cm` und `> .td-md-preview` (beide `flex: 1 1 50%`).
+
+**Was:** Im Split-Modus teilen sich Editor und Preview die Body-Breite hart 50/50. Es gibt keinen draggable Splitter zwischen den Panes, keine Persistenz der gewaehlten Aufteilung, keine Tastatur-Shortcuts zum Verschieben der Grenze. Pane-Groesse ist eine reine CSS-Konstante.
+
+**Warum so:** Das Roadmap-Wortlaut fuer „Markdown-Preview Side-by-Side" verlangt nur „Zwei-Panel-Layout, in Settings konfigurierbar" — die Layout-Auswahl ist da (split/editor/preview), die Groessen-Konfigurierbarkeit nicht. Der Resize-Handle waere ein eigenes Phase-2.5-Sub-Feature (Mouse-Drag-Logik, persistierter Anteilswert pro User, Touch-Support); das ist nicht das Daily-Use-Schmerzpunkt-Feature, sondern ein Polish-Add-On. 50/50 ist die neutrale Default-Aufteilung, mit der die meisten Dokumente lesbar sind. Wer wirklich Pane-Breite braucht, schaltet auf „Nur Editor" oder „Nur Preview" — der gleiche Toolbar-Button loest das ohne Splitter.
+
+**Risiko:** Bei sehr breitem oder sehr schmalem Right-Pane (Right-Pane sitzt in einer 1fr-Spalte der 4-Spalten-Grid) ist 50/50 nicht immer optimal — schmale Editor-Spalten erzwingen viele Soft-Wrap-Brueche, breite Vorschauen verschwenden Platz bei kurzen Files. User koennen das nur ueber die Modus-Buttons kompensieren („nur eine Seite voll sehen"), nicht ueber einen Mittelpunkt-Shift. Empirisch eher Komfort-Tradeoff als Bug.
+
+**Aufloesung:** Beim ersten echten User-Schmerz (Feedback „der Preview-Anteil ist mir zu schmal" oder umgekehrt). Drei Aufholpfade: (a) draggable Splitter via Maus-Drag-Listener auf einem 4-px-Trennstrich, persistiert pro File-Tab oder global in Settings; (b) Settings-Slot `markdown_editor_split_ratio: number` (0.3..0.7) — keine UI-Drag, aber globale Wahl; (c) Per-Datei-Memory im `useFileTabsStore`, sodass die Aufteilung pro Datei klebt. (b) ist der billigste Zwischenschritt, falls (a) noch zu viel Engineering ist.
+
+---
+
 ## Easter-Egg-Werk-Liste hartcodiert (Season 19)
 
 **Bereich:** `src/shared/easter-egg-works.ts` — `DEFAULT_EASTER_EGG_WORKS`-Konstante mit fuenf Default-Werken (Der Hobbit, The Lord of the Rings, Krieg und Frieden, Die Bibel, Harry-Potter-Reihe).

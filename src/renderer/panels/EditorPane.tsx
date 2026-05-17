@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useUiStore } from '../stores/ui';
 import { useFileTabsStore, type FileTab } from '../stores/fileTabs';
-import { MarkdownEditor } from '../components/MarkdownEditor';
+import { MarkdownEditor, type MarkdownEditorLayout } from '../components/MarkdownEditor';
 import { buildQuickAccessList } from '../components/quickAccess';
 import { DiffViewer } from '../components/DiffViewer';
-import type { GitStatusResult } from '@shared/types';
+import type { AppSettings, GitStatusResult } from '@shared/types';
 
 // EditorPane (Sprint 7, post-User-Feedback Layout-Umstellung).
 //
@@ -24,9 +24,14 @@ import type { GitStatusResult } from '@shared/types';
 
 const EMPTY_TAB_ARRAY: ReadonlyArray<FileTab> = [];
 
-export function EditorPane() {
+interface EditorPaneProps {
+  settings: AppSettings;
+}
+
+export function EditorPane({ settings }: EditorPaneProps) {
   const projectId = useUiStore((s) => s.activeProjectId);
   const frontmatter = useUiStore((s) => s.activeProjectFrontmatter);
+  const initialLayout: MarkdownEditorLayout = settings.markdown_editor_layout;
 
   const tabs = useFileTabsStore((s) =>
     projectId ? s.tabs[projectId] ?? EMPTY_TAB_ARRAY : EMPTY_TAB_ARRAY,
@@ -163,6 +168,7 @@ export function EditorPane() {
               <FileTabEditor
                 tab={tab}
                 isClaudeMd={isClaudeMd}
+                initialLayout={initialLayout}
                 onDirtyChange={(dirty) => setDirty(projectId, tab.id, dirty)}
                 onSave={(content) =>
                   handleSave(projectId, tab.id, tab.relPath ?? '', content)
@@ -244,16 +250,18 @@ function useGitStatus(projectId: string | null, enabled: boolean): GitStatusStat
 interface FileTabEditorProps {
   tab: FileTab & { kind: 'file' };
   isClaudeMd: boolean;
+  initialLayout: MarkdownEditorLayout;
   onDirtyChange: (dirty: boolean) => void;
   onSave: (content: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 }
 
-function FileTabEditor({ tab, isClaudeMd, onDirtyChange, onSave }: FileTabEditorProps) {
+function FileTabEditor({ tab, isClaudeMd, initialLayout, onDirtyChange, onSave }: FileTabEditorProps) {
   return (
     <MarkdownEditor
       filePath={tab.relPath ?? ''}
       initialContent={tab.savedContent ?? ''}
       isClaudeMd={isClaudeMd}
+      initialLayout={initialLayout}
       onSave={onSave}
       onDirtyChange={onDirtyChange}
     />

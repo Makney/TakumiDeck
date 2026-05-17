@@ -35,6 +35,7 @@ export function buildTestSettings(overrides: Partial<AppSettings> = {}): AppSett
     screenshot_retention: { max_age_days: 30, max_total_mib: 500 },
     easter_egg_enabled: true,
     template_top_n: { schulden: 3, entscheidungen: 3 },
+    markdown_editor_layout: 'split',
     ...overrides,
   };
 }

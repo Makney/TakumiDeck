@@ -97,6 +97,12 @@ export function buildDefaultSettings(): AppSettings {
       entscheidungen: 3,
     },
 
+    // Phase-2 Season-24: Side-by-Side ist der neue Daily-Driver-Default.
+    // Bestandsuser auf der Phase-1-Toggle bekommen einmalig Editor+Preview
+    // parallel; wer das nicht will, stellt im Allgemein-Tab auf 'editor'
+    // oder 'preview' um.
+    markdown_editor_layout: 'split',
+
     terminal_font_family: 'JetBrains Mono, Cascadia Code, MesloLGS NF',
     terminal_font_size: 13,
 

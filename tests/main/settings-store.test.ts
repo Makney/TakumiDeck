@@ -40,6 +40,19 @@ describe('SettingsStore', () => {
     expect(store.read().workspace_wizard_completed).toBe(true);
   });
 
+  // Phase-2 Season-24: dieselbe Default-Merge-Mechanik trägt Bestandsuser ohne
+  // markdown_editor_layout-Feld auf den Default 'split' (Side-by-Side ist der
+  // neue Daily-Driver). Verhindert, dass das Schema-Parse bei alten
+  // settings.json mit fehlendem Feld kippt.
+  it('read() merged markdown_editor_layout=split fuer Bestandsuser ohne Feld', () => {
+    SettingsStore.initialize(filePath);
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    delete raw.markdown_editor_layout;
+    fs.writeFileSync(filePath, JSON.stringify(raw), 'utf-8');
+    const store = new SettingsStore(filePath);
+    expect(store.read().markdown_editor_layout).toBe('split');
+  });
+
   it('initialize() lässt vorhandene Datei unangetastet', () => {
     const store1 = SettingsStore.initialize(filePath);
     const before = store1.patch({ terminal_font_size: 17 });

@@ -92,6 +92,11 @@ export interface AppSettings {
     schulden: number;
     entscheidungen: number;
   };
+  // Phase-2 Season-24: Default-Layout fuer den Markdown-Editor. 'split'
+  // rendert Editor und Preview parallel mit synchronem Scrolling (neuer
+  // Daily-Driver-Default), 'editor' und 'preview' verhalten sich wie der
+  // alte Phase-1-Toggle. Per Datei in der Editor-Toolbar umschaltbar.
+  markdown_editor_layout: 'split' | 'editor' | 'preview';
   terminal_font_family: string;
   terminal_font_size: number;
   theme: 'dark' | 'light';

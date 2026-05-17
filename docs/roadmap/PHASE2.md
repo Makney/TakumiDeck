@@ -273,7 +273,7 @@ Aufbauend auf Phase-1-Pfad-Erinnerung.
 
 ## Bereich: Editor
 
-### Feature: Markdown-Preview Side-by-Side
+### Feature: Markdown-Preview Side-by-Side ✅
 
 Erweiterung des Toggle-Modes aus Phase 1.
 

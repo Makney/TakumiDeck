@@ -211,7 +211,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
-| `Markdown-Preview Side-by-Side`      | ⛔      | Zwei-Panel mit Synced-Scrolling, ergänzt Phase-1-Toggle |
+| `Markdown-Preview Side-by-Side`      | ✅      | 2026-05-17 (Phase-2-Season-24) — Drei-Modi-Toolbar (Beide/Editor/Preview), Side-by-Side ist neuer Default. Sync-Scroll prozentual und einseitig getrieben (Last-Scrolled-Wins, `active`-Flag + RAF-Reset verhindert Echo-Schleife). CodeMirror bleibt mounted (`display:none` im Preview-Only-Modus), damit Cursor/Selection/Undo Layout-Wechsel überleben. Per-Datei-Switch jederzeit in der Toolbar, Default-Modus in Settings „Allgemein"-Tab konfigurierbar (`markdown_editor_layout: 'split' \| 'editor' \| 'preview'`). Side-Quest: `remark-gfm` als `remarkPlugins`-Eintrag bringt Tabellen + Strikethrough + Task-Lists + Autolinks in die Preview, plus eigenes CSS für `table`/`th`/`td`/`blockquote`/`ul`/`li`. Bestandsuser werden via `SettingsStore.read()`-Default-Merge automatisch auf `'split'` gehoben. |
 
 ### Build & Distribution (Phase 2)
 

@@ -82,6 +82,12 @@ export const AppSettingsSchema = z.object({
     schulden: z.number().int().min(0).max(20),
     entscheidungen: z.number().int().min(0).max(20),
   }),
+  // Phase-2 Season-24: Default-Layout fuer den Markdown-Editor.
+  // 'split' rendert Editor und Preview parallel mit synchronem Scrolling
+  // (Daily-Driver), 'editor' nur den CodeMirror-Buffer, 'preview' nur die
+  // gerenderte Ansicht. Per-Datei kann der Modus weiterhin in der Toolbar
+  // umgeschaltet werden — diese Einstellung legt nur den Startwert fest.
+  markdown_editor_layout: z.enum(['split', 'editor', 'preview']),
   terminal_font_family: z.string(),
   terminal_font_size: z.number().positive(),
   theme: z.enum(['dark', 'light']),

@@ -351,6 +351,28 @@ function GeneralTab({ settings, setField }: TabBaseProps) {
           />
         </label>
       </Field>
+
+      {/* Phase-2 Season-24: Default-Layout fuer den Markdown-Editor.
+          Side-by-Side ist der neue Daily-Driver; alte Phase-1-Toggle bleibt
+          als 'editor'/'preview' weiter im Per-Datei-Switch der Editor-Toolbar
+          erreichbar. Diese Einstellung legt nur den Startwert fest, mit dem
+          ein frisch geoeffneter Tab kommt. */}
+      <Field
+        label="Markdown-Editor-Layout"
+        hint="Standard-Modus beim Oeffnen einer Markdown-Datei. Pro Datei jederzeit in der Editor-Toolbar umstellbar."
+      >
+        <select
+          className="td-settings-input td-settings-input--narrow"
+          value={settings.markdown_editor_layout}
+          onChange={(e) =>
+            setField('markdown_editor_layout', e.target.value as AppSettings['markdown_editor_layout'])
+          }
+        >
+          <option value="split">Beide (Editor + Preview)</option>
+          <option value="editor">Nur Editor</option>
+          <option value="preview">Nur Preview</option>
+        </select>
+      </Field>
     </div>
   );
 }

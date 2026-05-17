@@ -3833,6 +3833,26 @@ body,
   background: var(--td-panel);
 }
 
+/* Phase-2 Season-24: Side-by-Side-Layout. Editor und Preview teilen sich
+   die Body-Hoehe 50/50 mit einer 1px-Trennlinie dazwischen. Im Editor-
+   oder Preview-Only-Modus uebernimmt die einzig sichtbare Spalte die volle
+   Breite (flex:1 reicht, weil das andere Element entweder display:none
+   oder gar nicht im DOM ist). */
+.td-md-body-split {
+  flex-direction: row;
+}
+
+.td-md-body-split > .td-md-cm {
+  flex: 1 1 50%;
+  border-right: 1px solid var(--td-line);
+  min-width: 0;
+}
+
+.td-md-body-split > .td-md-preview {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+
 .td-md-cm {
   flex: 1;
   min-height: 0;
@@ -3893,6 +3913,64 @@ body,
 
 .td-md-preview a:hover {
   text-decoration: underline;
+}
+
+/* Phase-2 Season-24: GFM-Tabellen via remark-gfm. Default-Browser-Styling
+   rendert sie ohne Rahmen/Padding und ohne abgesetzten Header — unleserlich
+   bei Markdown-Files wie FEATURES.md / RELEASES.md. Block-Display verhindert
+   das Inline-Flow-Verhalten von <table> in Flex-Containern, der
+   max-width-Trick haelt die Tabelle in der Pane-Breite (sonst sprengt sie
+   das Preview-Pane bei vielen Spalten). */
+.td-md-preview table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  font-size: 12px;
+}
+
+.td-md-preview thead {
+  background: var(--td-bg);
+}
+
+.td-md-preview th,
+.td-md-preview td {
+  border: 1px solid var(--td-line);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.td-md-preview th {
+  font-family: var(--td-display);
+  color: var(--td-accent);
+  font-weight: normal;
+  letter-spacing: 0.02em;
+}
+
+.td-md-preview blockquote {
+  margin: 0.6em 0;
+  padding: 4px 12px;
+  border-left: 2px solid var(--td-accent);
+  color: var(--td-muted);
+  background: var(--td-bg);
+}
+
+.td-md-preview ul,
+.td-md-preview ol {
+  padding-left: 1.4em;
+}
+
+.td-md-preview li {
+  margin: 0.15em 0;
+}
+
+/* GFM-Task-Lists: Checkboxen sitzen am Listenpunkt, das Default-Listen-
+   Bullet rechts davon sieht doppelt aus. */
+.td-md-preview li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -1.4em;
 }
 
 /* === Sprint 8 — Header-Bar (Architektur 6.0, td-titlebar-Klassen aus

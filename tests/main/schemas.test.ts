@@ -166,6 +166,30 @@ describe('AppSettings-Schema', () => {
     };
     expect(() => AppSettingsSchema.parse(fractional)).toThrow();
   });
+
+  // Phase-2 Season-24: Markdown-Editor-Layout (Side-by-Side / Editor-Only /
+  // Preview-Only). Default 'split', Werte hartcodiert (kein Freitext).
+  it('markdown_editor_layout Default ist split', () => {
+    const defaults = buildDefaultSettings();
+    expect(defaults.markdown_editor_layout).toBe('split');
+  });
+
+  it('akzeptiert markdown_editor_layout=editor und =preview', () => {
+    const defaults = buildDefaultSettings();
+    const editor = { ...defaults, markdown_editor_layout: 'editor' as const };
+    const preview = { ...defaults, markdown_editor_layout: 'preview' as const };
+    expect(() => AppSettingsSchema.parse(editor)).not.toThrow();
+    expect(() => AppSettingsSchema.parse(preview)).not.toThrow();
+  });
+
+  it('lehnt unbekannten markdown_editor_layout-Wert ab', () => {
+    const defaults = buildDefaultSettings();
+    const invalid = {
+      ...defaults,
+      markdown_editor_layout: 'side-by-side' as unknown as 'split',
+    };
+    expect(() => AppSettingsSchema.parse(invalid)).toThrow();
+  });
 });
 
 describe('AppSettingsPatch-Schema', () => {

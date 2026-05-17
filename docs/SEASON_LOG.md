@@ -20,6 +20,31 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 24 — Markdown-Preview Side-by-Side
+
+**Ziel:** Phase-2-Roadmap-Feature aus dem „Editor"-Bereich umsetzen. Der Markdown-Editor hatte seit Phase 1 nur einen Toggle zwischen Editor-only und Preview-only. Roadmap-Vorgabe: „Editor und Preview gleichzeitig sichtbar · Synchronized Scrolling · Zwei-Panel-Layout, in Settings konfigurierbar". Nebenwunsch im Aufgabentext: Tabellen-Rendering in der Preview ist defekt.
+
+**Ergebnis:** Variante **B + S1** aus zwei Achsen (Layout-Modus, Sync-Scroll-Mechanik). **B Side-by-Side als Default** statt **A Dritter Modus „Split" additiv zur Phase-1-Reihe** oder **C Layout nur in Settings, keine Toolbar-Modi** — folgt der Memory-Regel „konvenient vor traditionell". Drei-Modi-Toolbar (Beide · Editor · Preview), Per-Datei-Switch jederzeit, Default in Settings-Allgemein-Tab konfigurierbar (`markdown_editor_layout: 'split' | 'editor' | 'preview'`, Default `'split'`). Read-Merge in `SettingsStore.read()` migriert Bestandsuser auf `'split'`. **S1 Prozentual + einseitig getrieben** statt **S2 Heading-Anchor-Mapping** — Last-Scrolled-Wins via `active`-Source-Flag mit `requestAnimationFrame`-Reset gegen Echo-Schleife. Listener nur im Split-Modus an `view.scrollDOM` und Preview-Container, attach/detach via Layout-Wechsel-Effect. CodeMirror bleibt mounted über alle Layout-Wechsel — Container per `display:none` ausgeblendet im Preview-Only-Modus, damit Cursor/Selection/Undo überleben. Tabellen-Side-Quest separat via `remark-gfm` als `remarkPlugins`-Eintrag plus CSS-Block für `table`/`th`/`td`/`blockquote`/`ul`/`li` und GFM-Task-Lists (`:has(> input[type='checkbox'])` entfernt das Default-Bullet). 4 neue Tests (3 Schema-Tests + 1 Settings-Store-Migration-Test). Gesamtsuite 848/848 grün (+4 gegenüber Season-23-Endstand 844), typecheck + lint sauber. `remark-gfm@^4` als neue Dependency.
+
+**Gut gelaufen:**
+
+- **Variants-Brief als Plain-Language-Tabelle ohne Code-Snippets hat sofort funktioniert.** Layout-Achse (A/B/C) plus Sub-Entscheidungen (Sync-Scroll S1/S2, Settings-Aufhängung, Tabellen-Fix als Side-Quest) — User hat in einem Schritt „B + S1" geantwortet. Lehre bestätigt: Sub-Entscheidungen mit klarer Default-Empfehlung dürfen NICHT als eigene Achse mit drei Optionen verkleidet werden — die Tabellen-Fix-Mechanik (`remark-gfm`) hat im Brief nur einen Absatz bekommen, mit Begründung warum es kein Variants-Picking braucht. Das hat den Brief schlank gehalten und den User nicht mit Pseudo-Wahlen belastet.
+- **Memory-Regel „konvenient vor traditionell" hat die richtige Empfehlung getriggert.** Ohne den Memory-Eintrag hätte ich aus Vorsicht A („additiv, ändert keinen Workflow") empfohlen — das wäre eine versteckte Drittwahl gewesen, die das Feature nie zum echten Daily-Driver gemacht hätte. Memory-Recall am Anfang der Variants-Phase war wertvoll.
+- **`remark-gfm` als bekannte Standard-Lösung bei der ersten Suche.** Tabellen-Fehler war als „in der Preview defekt" beschrieben — Grep nach „remark-gfm"/„gfm" im Repo lieferte 0 Treffer, was die Diagnose direkt zu „CommonMark-only, GFM-Plugin fehlt" geführt hat. Lehre: bei Markdown-Rendering-Bugs in `react-markdown` immer zuerst prüfen, ob `remark-gfm` installiert ist — das ist die häufigste Ursache.
+
+**Gebremst durch:**
+
+- **Bestands-Settings-Tests sind beim Schema-Add stillschweigend gebrochen.** Das neue Pflicht-Feld `markdown_editor_layout` hat sofort die `buildTestSettings`-Fixture (`tests/_helpers/settings-fixture.ts`) zerstört — Typecheck-Error mit `Type 'undefined' is not assignable`. Fix: einen Default in die Fixture, exakt wie bei `template_top_n`/`easter_egg_enabled` zuletzt. Lehre bestätigt: jedes neue `AppSettings`-Pflichtfeld muss in zwei Stellen mit (Defaults in `src/main/settings/defaults.ts` + Test-Fixture). Der „pre-Season-20-Mini-Pass" hat genau dafür die Fixture extrahiert, die Erinnerung daran ist noch nicht voll automatisiert.
+- **Schema-Sync zwischen `schemas.ts` und `types.ts` ist Dual-Write.** Das neue Feld musste in `src/shared/schemas.ts` (zod) UND `src/shared/types.ts` (TS interface) parallel gepflegt werden. Typecheck hat den Diff sofort gefangen, aber konzeptionell ist das eine Drift-Gefahr. Lehre für zukünftige Refactor-Trigger: wenn das dritte oder vierte Mal ein Feld in beiden Files gleichzeitig getoucht werden muss, gibt es das Refactor-Schwellwert-Signal — die TS-Types aus dem zod-Schema ableiten (`z.infer<typeof AppSettingsSchema>`) und das hand-geschriebene Interface entsorgen. Aktuell nicht akut, aber das ist ein Kandidat für TECH_SCHULDEN, falls es dritter/vierter Aufrufer wird.
+
+**Für nächste Season:**
+
+- **Daily-Use-Tests entscheiden, ob 50/50 als Pane-Aufteilung reicht.** TECH_SCHULDEN-Eintrag „Markdown-Editor-Split-Layout: 50/50 fix, kein Resize-Handle" hat drei Aufholpfade skizziert (draggable Splitter, Settings-Slot für globales Ratio, Per-Datei-Memory). Auflösung wartet auf erstes User-Feedback „der Anteil ist mir falsch" — bis dahin ist 50/50 die neutrale Default-Wahl.
+- **Synced-Scroll bei programmatischem Scroll testen.** `active`-Flag-Reset im nächsten RAF-Tick reicht für User-Scrolls, weil die zwischen zwei Scroll-Events einen Frame Pause haben. Für andere programmatische Scroll-Auslöser (z.B. Suchen-im-Editor mit Auto-Scroll-Into-View) ist das Verhalten ungetestet — falls dort die Echo-Erkennung schief geht, müsste der Reset von RAF auf einen längeren Timer wechseln.
+- **`remark-gfm` öffnet die Tür für weitere Plugins** (`remark-math`, `rehype-highlight`, `rehype-sanitize` wenn extern). Die Modul-Konstante `MARKDOWN_REMARK_PLUGINS` ist bewusst als Array gewählt, damit weitere Plugins ohne Component-Touch dazukommen. Aktuell kein Bedarf, aber die Verkabelung sitzt.
+
+---
+
 ## Phase 2 Season 23 — Schema-aware Templates
 
 **Ziel:** Bug-Report aus dem Templates-Modal abarbeiten: in vier Templates (BUG_REPORT, CODE_REVIEW_START, PROJEKT_KICKOFF, RELEASE_START) zeigte TakumiDeck Warnungen `Unbekannte Tokens im Template: …` und ließ die Tokens als Literal stehen, weil die Engine nur zehn hardcodierte Tokens kannte. Außerdem: für jedes neue Template müsste die Hardcoded-Liste angefasst werden. Lösung: einen tragfähigen Vertrag definieren, mit dem Templates ihre Token-Semantik selbst deklarieren, ohne Engine-Touches.

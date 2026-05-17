@@ -165,7 +165,7 @@ export function App() {
         {/* Spalte 3 oben: Editor / Diff (ehemals RightPane-Top, jetzt eigene
             breite Spalte) */}
         <div className="td-col-right-top">
-          <EditorPane />
+          <EditorPane settings={settings} />
         </div>
 
         {/* Spalte 2 unten: Stats (Sprint 5) */}
