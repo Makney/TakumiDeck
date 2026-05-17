@@ -4,7 +4,7 @@ Liste **aller veröffentlichten Versionen** von TakumiDeck. Quelle der Wahrheit 
 
 Schema und Ablauf → [VERSIONIERUNG.md](./VERSIONIERUNG.md)
 
-Aktuelle Release-Version: **`0.2.0`** *(siehe auch `workbench.current_version` in [CLAUDE.md](../../CLAUDE.md))*
+Aktuelle Release-Version: **`0.2.1`** *(siehe auch `workbench.current_version` in [CLAUDE.md](../../CLAUDE.md))*
 
 ---
 
@@ -14,7 +14,7 @@ Welche Versionen als Nächstes anstehen — wird beim Erreichen umbenannt (von �
 
 | Version  | Geplanter Inhalt                                              | Phase   | Status |
 | -------- | ------------------------------------------------------------- | ------- | ------ |
-| `0.2.1`  | Phase-2-Patch — Aufholen der `OFFEN_<BEREICH>.md`-Einträge    | Phase 2 | ⛔      |
+| `0.2.2`  | Phase-2-Patch — Aufholen der `OFFEN_<BEREICH>.md`-Einträge + SUMMARIES-Resync nach Season 24 | Phase 2 | ⛔      |
 | `1.0.0`  | Phase 2 abgeschlossen — alle Phase-2-Roadmap-Features ✅      | Phase 2 | ⛔      |
 
 ---
@@ -25,6 +25,7 @@ Tabelle aller veröffentlichten Versionen, **neueste zuerst**. Jeder Eintrag ver
 
 | Version | Datum      | Typ      | Phase   | Notes                                                          |
 | ------- | ---------- | -------- | ------- | -------------------------------------------------------------- |
+| `0.2.1` | 2026-05-17 | Hotfix   | Phase 2 | [Release Notes](./v0.2.1.md)                                   |
 | `0.2.0` | 2026-05-17 | Minor    | Phase 2 | [Release Notes](./v0.2.0.md)                                   |
 | `0.1.2` | 2026-05-12 | Patch    | Phase 1 | *(rückwirkend erfasst, keine eigene Release-Notes-Datei)*      |
 | `0.1.1` | 2026-05-11 | Patch    | Phase 1 | *(rückwirkend erfasst, keine eigene Release-Notes-Datei)*      |

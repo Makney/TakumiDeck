@@ -83,3 +83,16 @@ Befunde aus dem Release-Review von v0.1.2 → v0.2.0, die bewusst nicht release-
 - **Beschreibung:** Der Season-22-Effekt für `docs:on-demand-status` cached den Status modal-lokal über `if (onDemandStatus !== null) return;`. Wenn die `projectId`-Prop sich während des Modal-Lifecycles ändert, wird der alte Cache weiter angezeigt — der Effekt feuert nicht neu, weil `onDemandStatus !== null` ist. In der aktuellen App-Struktur ist das nicht erreichbar: das Modal wird per `setShowNewSessionModal(true)` im `TabContainer` geöffnet und bleibt unverändert offen, bis Submit oder Cancel. Ein Projekt-Wechsel über die Sidebar findet vor dem Modal-Open statt.
 - **Begründung:** Implicite Annahme „projectId ist stabil über Modal-Lebensdauer" ist im Code nicht festgehalten. Fix wäre eine zusätzliche Reset-Logik (`useEffect(() => { setOnDemandStatus(null); setOnDemandSelection(new Set()); }, [projectId])`) — drei Zeilen, aber ändert die Cache-Semantik (jeder simulierte Projekt-Wechsel würde IPC neu triggern). Bewusst aus Season-22-Scope rausgehalten, weil die Annahme heute trägt.
 - **Trigger:** wenn das NewSessionModal jemals so erweitert wird, dass es Projekt-Wechsel während Open verarbeiten muss (z.B. „Session in anderem Projekt anlegen"-Dropdown), oder als Drive-by-Fix beim nächsten Touch.
+
+---
+
+## Release-Review v0.2.1 (2026-05-17)
+
+Befunde aus dem Release-Review von v0.2.0 → v0.2.1, die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### `HistoryActionModal.handleResume` nutzt hardcoded Font-Size 14 statt `settings.terminal_font_size`
+
+- `src/renderer/modals/HistoryActionModal.tsx:80` · Kategorie: **Bug / Inkonsistenz**
+- **Beschreibung:** `HistoryActionModal.handleResume` ruft `estimateTerminalCols(14)` mit hardcoded 14, kommentiert als „Default-Font-Size 14 ist robust für die ersten ~100 ms". Die drei anderen Resume-Pfade (`TabContainer.handleResume:182`, `LeftSidebar.handleResumeFromTabs:191`, `HistoryPane.handleResume:255`) ziehen alle `settings.terminal_font_size`. Bei abweichendem User-Setting sieht der Resume aus dem Action-Modal kurzzeitig falsche cols/rows.
+- **Begründung:** Keine Regression durch den v0.2.1-Hotfix, sondern eine bereits bestehende Inkonsistenz zur Sprint-9-Settings-Migration der anderen Resume-Pfade. Praktisch geringer Effekt (Initial-Resize-Schätzung für die ersten ~100 ms, danach übernimmt der echte xterm-Resize). Fix wäre eine Zeile (`settings.terminal_font_size` statt `14`), aber außerhalb des Hotfix-Scopes.
+- **Trigger:** Drive-by beim nächsten Touch an `HistoryActionModal` oder als Teil einer „Resume-Pfade vereinheitlichen"-Mini-Season.

@@ -269,6 +269,17 @@ Aufbauend auf Phase-1-Pfad-Erinnerung.
 
 **Trigger:** Wenn Token-Limits in Phase 1 zum Schmerz werden — bis dahin reicht die Pfad-Erinnerung aus Phase 1.
 
+### Feature: SUMMARIES-Resync nach Season 24
+
+Mini-Doku-Sync-Session zur Aktualisierung der `docs/SUMMARIES/*.md` nach v0.2.1.
+
+- Der Doku-Sync-Commit aus v0.2.0 (`ed2b724`, Season-23-Tail) lief zeitlich vor dem Season-24-Commit (`49a0753`) — entsprechend zeigen die vier Summaries den Vor-Season-24-Stand
+- Konkrete Drifts (Stand v0.2.1-Release-Review): `SUMMARIES/FEATURES.md` führt Markdown-Preview Side-by-Side noch als ⛔ Offen (Original hat ✅), `SUMMARIES/CHANGELOG.md` erwähnt Season 24 nicht, `SUMMARIES/ENTSCHEIDUNGEN.md` kennt weder die display:none-Mount-Strategie noch `remark-gfm`, `SUMMARIES/TECH_SCHULDEN.md` enthält weder den Resume-Bugfix-Eintrag noch den Markdown-Layout-Eintrag
+- Eine reguläre Docs-Sync-Session (Knopfdruck → vorbereiteter Prompt → Re-Erzeugung der vier Summaries) reicht aus; Frontmatter `source_hash` aktualisiert sich dabei automatisch
+- Kein Code-Touch nötig — reine Inhalts-Aktualisierung
+
+**Trigger:** Sobald das nächste Mal Kontext-Checkbox-Erweiterung im Daily-Use einen Summary heranzieht und die Diskrepanz sichtbar wird. Bis dahin ist die Drift dokumentiert, aber harmlos (Settings-Erfahrung bleibt funktional unverändert).
+
 ---
 
 ## Bereich: Editor

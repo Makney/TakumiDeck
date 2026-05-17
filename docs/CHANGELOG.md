@@ -17,7 +17,19 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
-## 2026-05-17 — v0.2.0 — Phase 2 Season 24: Markdown-Preview Side-by-Side
+## 2026-05-17 — v0.2.1 — Hotfix: Resume-UNIQUE-Constraint sessions.id
+
+### Was jetzt geht
+
+- **Resume einer geschlossenen Session aus dem Verlauf-Panel oder dem History-Action-Modal funktioniert wieder zuverlässig.** Vorher konnte folgender Pfad einen DB-Crash auslösen: User schließt einen aktiven Tab über das Tab-Bar-„×", öffnet danach denselben Eintrag aus dem Verlauf oder über die History-Action-„Fortsetzen". TabContainer hielt die alte sessionId weiterhin in `spawnedIds` + `initialPrompts` — ein erneuter Mount des TerminalTab sah `needsSpawn=true` und feuerte ein zweites `pty:create`. Das `INSERT INTO sessions` knallte am `UNIQUE`-Index auf `sessions.id`, das Resume scheiterte stumm. Der Hotfix räumt `spawnedIds` + `initialPrompts` jetzt in `TabContainer.handleClose` mit auf, sodass ein späterer Resume mit derselben sessionId kein versehentliches Re-Spawn mehr auslöst.
+
+### Architektur-Notiz
+
+Variante **A** aus zwei vorgestellten Pfaden. **A TabContainer.handleClose räumt spawnedIds + initialPrompts mit auf** statt **B `needsSpawn` + `initialPrompt` ins `SessionTab`-Schema heben**: minimale Hotfix-Surface, fixt den UNIQUE-Crash am einzigen Pfad, der `spawnedIds` füllt (Tab-Bar-„×"). Variante B wäre die strukturell sauberere Auflösung, weil `LeftSidebar.handleCloseTab` (Sidebar-„×") und `handleConfirmRemove` (Projekt-Entfernen) den TabContainer-State nicht aufräumen können — sie sind heute durch den Dedupe-Guard in `useSessionStore.addTab` abgesichert (Re-Add derselben sessionId gibt `existing` zurück, TerminalTab wird nicht remounted). Variante B ist als TECH_SCHULDEN-Eintrag mit Trigger hinterlegt. Zwei neue Pure-Helper `removeFromIdSet` / `removeFromIdMap` in `src/renderer/components/spawnTrackingState.ts`: bei No-op-Aufruf (id nicht enthalten) geben sie exakt die Input-Referenz zurück, damit React keine unnötigen Re-Renders auslöst; bei Treffer kommt eine neue Set/Map-Instanz heraus, das Original bleibt unverändert (immutable-Vertrag). 8 neue Tests in `tests/renderer/spawn-tracking-state.test.ts` (Helper-Verträge + Bugfix-Szenario auf Helper-Ebene). Gesamtsuite 856/856 grün (+8 gegenüber Season-24-Endstand 848), typecheck + lint sauber.
+
+---
+
+## 2026-05-17 — v0.2.1 — Phase 2 Season 24: Markdown-Preview Side-by-Side
 
 ### Was jetzt geht
 
