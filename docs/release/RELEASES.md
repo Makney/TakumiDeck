@@ -1,10 +1,10 @@
 # Releases – Übersicht
 
-Liste **aller veröffentlichten Versionen** von {{PROJEKT_NAME}}. Quelle der Wahrheit für die Release-Historie.
+Liste **aller veröffentlichten Versionen** von TakumiDeck. Quelle der Wahrheit für die Release-Historie.
 
 Schema und Ablauf → [VERSIONIERUNG.md](./VERSIONIERUNG.md)
 
-Aktuelle Release-Version: **`{{CURRENT_VERSION}}`** *(siehe auch `workbench.current_version` in [CLAUDE.md](../../CLAUDE.md))*
+Aktuelle Release-Version: **`0.2.0`** *(siehe auch `workbench.current_version` in [CLAUDE.md](../../CLAUDE.md))*
 
 ---
 
@@ -12,11 +12,10 @@ Aktuelle Release-Version: **`{{CURRENT_VERSION}}`** *(siehe auch `workbench.curr
 
 Welche Versionen als Nächstes anstehen — wird beim Erreichen umbenannt (von „geplant" zu eingerücktem Datum).
 
-| Version  | Geplanter Inhalt                                           | Phase   | Status |
-| -------- | ---------------------------------------------------------- | ------- | ------ |
-| `0.1.0`  | Phase 1 abgeschlossen — minimal lauffähige Version         | Phase 1 | ⛔      |
-| `0.1.1`  | Erstes Phase-2-Patch-Release (Feature-Block X stabilisiert) | Phase 2 | ⛔      |
-| `1.0.0`  | Phase 2 abgeschlossen — ausgereifte Anwendung              | Phase 2 | ⛔      |
+| Version  | Geplanter Inhalt                                              | Phase   | Status |
+| -------- | ------------------------------------------------------------- | ------- | ------ |
+| `0.2.1`  | Phase-2-Patch — Aufholen der `OFFEN_<BEREICH>.md`-Einträge    | Phase 2 | ⛔      |
+| `1.0.0`  | Phase 2 abgeschlossen — alle Phase-2-Roadmap-Features ✅      | Phase 2 | ⛔      |
 
 ---
 
@@ -24,14 +23,17 @@ Welche Versionen als Nächstes anstehen — wird beim Erreichen umbenannt (von �
 
 Tabelle aller veröffentlichten Versionen, **neueste zuerst**. Jeder Eintrag verlinkt auf eine eigene Release-Notes-Datei.
 
-| Version | Datum      | Typ      | Phase   | Notes                                    |
-| ------- | ---------- | -------- | ------- | ---------------------------------------- |
-| —       | —          | —        | —       | *(noch kein Release veröffentlicht)*    |
+| Version | Datum      | Typ      | Phase   | Notes                                                          |
+| ------- | ---------- | -------- | ------- | -------------------------------------------------------------- |
+| `0.2.0` | 2026-05-17 | Minor    | Phase 2 | [Release Notes](./v0.2.0.md)                                   |
+| `0.1.2` | 2026-05-12 | Patch    | Phase 1 | *(rückwirkend erfasst, keine eigene Release-Notes-Datei)*      |
+| `0.1.1` | 2026-05-11 | Patch    | Phase 1 | *(rückwirkend erfasst, keine eigene Release-Notes-Datei)*      |
+| `0.1.0` | 2026-05-10 | Phasen-Milestone | Phase 1 | *(rückwirkend erfasst, keine eigene Release-Notes-Datei)* |
 
 Sobald veröffentlicht, Zeile nach diesem Muster anfügen (neuste oben):
 
 ```text
-| `0.1.0` | 2026-MM-DD | Phasen-Milestone | Phase 1 | [Release Notes](./v0.1.0.md) |
+| `0.2.1` | 2026-MM-DD | Patch | Phase 2 | [Release Notes](./v0.2.1.md) |
 ```
 
 Typ-Spalte: `Phasen-Milestone` (Phasen-Ende, semver-Minor- oder Major-Bump), `Minor` (größerer Block ohne Phasen-Ende), `Patch` (Zwischen-Release), `Hotfix` (Notfall-Fix).

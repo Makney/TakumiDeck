@@ -70,3 +70,16 @@ Neue Befunde aus dem manuellen Lese-Pass über alle Modale + Components. Die hie
 - **Beschreibung:** Höchste Komplexitätswerte der gesamten Codebase. Inhärent bei Form-Modalen mit IPC-Lifecycle, Loading/Error/Empty/Content-State-Maschinen und mehreren Render-Pfaden.
 - **Begründung:** Mögliche Extraktion (z.B. `PreCommitFileList`, `PreCommitSensitiveWarning`, `PreCommitTriggerInfo` als Sub-Komponenten) würde die Werte halbieren, aber den Top-Level-State weiter zentralisieren. Aktuell tragbar, keine konkreten Bugs daraus.
 - **Trigger:** sobald ein konkreter Bug auf einen der Modal-Render-Pfade zurückzuführen ist, der durch Sub-Komponenten besser isoliert wäre.
+
+---
+
+## Release-Review v0.2.0 (2026-05-17)
+
+Befunde aus dem Release-Review von v0.1.2 → v0.2.0, die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### `NewSessionModal` On-Demand-Status-Cache invalidiert nicht bei `projectId`-Wechsel
+
+- `src/renderer/modals/NewSessionModal.tsx:178-202` · Kategorie: **Warnung**
+- **Beschreibung:** Der Season-22-Effekt für `docs:on-demand-status` cached den Status modal-lokal über `if (onDemandStatus !== null) return;`. Wenn die `projectId`-Prop sich während des Modal-Lifecycles ändert, wird der alte Cache weiter angezeigt — der Effekt feuert nicht neu, weil `onDemandStatus !== null` ist. In der aktuellen App-Struktur ist das nicht erreichbar: das Modal wird per `setShowNewSessionModal(true)` im `TabContainer` geöffnet und bleibt unverändert offen, bis Submit oder Cancel. Ein Projekt-Wechsel über die Sidebar findet vor dem Modal-Open statt.
+- **Begründung:** Implicite Annahme „projectId ist stabil über Modal-Lebensdauer" ist im Code nicht festgehalten. Fix wäre eine zusätzliche Reset-Logik (`useEffect(() => { setOnDemandStatus(null); setOnDemandSelection(new Set()); }, [projectId])`) — drei Zeilen, aber ändert die Cache-Semantik (jeder simulierte Projekt-Wechsel würde IPC neu triggern). Bewusst aus Season-22-Scope rausgehalten, weil die Annahme heute trägt.
+- **Trigger:** wenn das NewSessionModal jemals so erweitert wird, dass es Projekt-Wechsel während Open verarbeiten muss (z.B. „Session in anderem Projekt anlegen"-Dropdown), oder als Drive-by-Fix beim nächsten Touch.

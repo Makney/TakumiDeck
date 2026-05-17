@@ -60,3 +60,23 @@ Die im Auftrag genannten Fallow-Hypothesen sind im Code bereits adressiert — s
 - Komplexitäts-Hotspots `session.ts:93` (Cyclo 11), `project.ts:64` (Cyclo 10), `app.ts:62` (Cyclo 8), `pty.ts:59` (Cyclo 8), `session.ts:62` (Cyclo 7): jede dieser Funktionen ist ein IPC-Handler, der eine echte Multi-Schritt-Orchestrierung (zod-Parse → DB-Lookup → State-Machine → Side-Effect → Result-Wrap) machen muss. Sender-Guard, zod-Parse und try/catch tragen pro Handler zwingend ~6 Branches bei. Der Pfad ist nicht produktiv aufteilbar, ohne den Lese-Fluss zu zersplittern — keine Refactoring-Aktion.
 
 Ungenutzte Cross-Schemas aus Bereich 1 (`SessionUpdatePatchSchema`, `ClaudeMdOnDemandFileSchema`, `JsonlUsageSchema`, `SessionTypeSchema`, `SessionStatusSchema`): verifiziert — alle sind als interne Schema-Bestandteile in `src/shared/schemas.ts` referenziert (Composition aus dem Patch-Schema, dem OnDemand-Union-Member, dem JSONL-Outer-Schema bzw. den Filter-Listen). Keine Stelle, an der ein Handler ohne Validation gegen ein passendes Schema arbeitet.
+
+---
+
+## Release-Review v0.2.0 (2026-05-17)
+
+Befunde aus dem Release-Review von v0.1.2 → v0.2.0, die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### `docs:sync-status` / `docs:on-demand-status` ohne DEFAULT-Projekt-Guard
+
+- `src/main/ipc/docs.ts:53`, `src/main/ipc/docs.ts:99` · Kategorie: **Warnung**
+- **Beschreibung:** Der Season-21/22-Handler `registerDocsIpc` resolved `projects.getById(input.projectId)` und arbeitet danach mit `project.path` weiter. Wenn der Renderer den Legacy-Bucket (`DEFAULT_PROJECT_ID`) übergibt, ist `project.path` der Wert von `settings.workspace_path` zum Zeitpunkt von `ensureDefaultProject` — nach Wizard-Skip (Season 18) kann der leer sein. `path.join('', 'docs/CHANGELOG.md')` resolved dann relativ zur Process-CWD des Electron-Mains; im Dev-Modus zufällig das TakumiDeck-Repo selbst, im Produktiv-Build typischerweise ENOENT → `state: 'missing-source'` (harmlos). Inkonsistent zum Schwester-Handler `templates:resolve-auto-vars`, der DEFAULT explizit per `isDefault`-Branch ausschließt (`src/main/ipc/templates.ts:105`).
+- **Begründung:** Renderer öffnet das NewSessionModal realistisch nur für ein User-Projekt aus der Sidebar, nicht für den Legacy-Bucket. Kein Datenverlust, kein Sicherheits-Surface (relative Reads landen bei ENOENT auf `missing-source`). Der Guard wäre zwei Zeilen, lohnt aber den eigenen Patch-Commit nicht — beim nächsten Touch am `docs.ts`-Handler gleich mitnehmen.
+- **Trigger:** nächste Änderung am `docs:sync-status`-Pfad (z.B. wenn der Status-Resolver weitere File-Reads bekommt) — dann analog zu `templates.ts:105` einen `isDefault`-Branch ergänzen und in beiden Handlern `PROJECT_DEFAULT_IMMUTABLE` als Error-Code zurückgeben.
+
+### `pty:exit` und State-Detection-Loop pushen denselben `SessionStatusPush`-Channel
+
+- `src/main/ipc/pty.ts:75-83` ↔ `src/main/sessions/state-detection-loop.ts` · Kategorie: **Verbesserung**
+- **Beschreibung:** Season-21 hat dem `pty:exit`-Handler einen zusätzlichen `Channels.SessionStatusPush`-Send hinzugefügt, damit eine im Hintergrund auf `completed`/`interrupted`/`error` gewanderte Session sofort im Verlauf-Panel erscheint. Der State-Detection-Loop sendet denselben Channel für `running`/`idle`/`waiting`/`permission-prompt`. Die Events tragen keine Sequenz-ID, eine ungünstige Reihenfolge (Loop-Tick zwischen `pty:exit`-DB-Write und `SessionStatusPush`-Receive im Renderer) könnte einen kurzen Status-Flicker erzeugen.
+- **Begründung:** Renderer-Seite filtert defensiv (`HistoryPane.tsx:198`: `if (existing.status === event.status) return prev` und vergleichbare Stelle im Store). Ein Echo führt zu einer No-Op statt einem falschen Status. Praktisch im Daily-Use nicht beobachtbar. Korrelations-IDs einzuführen wäre ein eigenständiger Refactor mit Schema-Erweiterung (`SessionStatusPushEvent` um `seq` oder `source`-Feld).
+- **Trigger:** wenn ein User-Report „Status flackert kurz nach Session-Ende" auftaucht oder die State-Detection-Loop um eine weitere Status-Quelle erweitert wird (dritter Sender macht die Reihenfolgen-Annahme brüchig).

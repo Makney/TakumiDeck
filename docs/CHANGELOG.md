@@ -17,7 +17,7 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
-## 2026-05-17 — Doku-Sync: Vorlage-Templates + Release-Workflow ins TakumiDeck-Repo
+## 2026-05-17 — v0.2.0 — Doku-Sync: Vorlage-Templates + Release-Workflow ins TakumiDeck-Repo
 
 ### Was jetzt geht
 
@@ -26,7 +26,7 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 - **CLAUDE.md-Frontmatter komplett für die in Season 23 vorbereiteten Tokens.** `workbench.current_version: "0.1.2"` plus vier neue Trigger-Phrasen (`fix: "fix it"` · `release_artifacts: "release artifacts"` · `tag_push: "tag & push"` · `release: "release"`). Die kopierten Templates lösen damit `{{CURRENT_VERSION}}`, `{{FIX_TRIGGER}}`, `{{RELEASE_ARTIFACTS_TRIGGER}}`, `{{TAG_PUSH_TRIGGER}}` real auf, statt sie als Literal stehenzulassen. Drei neue `on_demand_files`-Einträge für die `docs/release/`-Files.
 - **Rule-Files konsistent mit den neuen Files.** `MARKDOWN_RULES.md` § 4 erzwingt jetzt das `text`-Tag bei ASCII-/Plain-Text-Fences (vorher: „ohne Tag OK"), § 10 unterscheidet `./` für Sibling/Child und `../` (ohne `./`) für Parent (mit `docs/release/`-Beispiel); `CODING_RULES.md` Demo-Step-Plan-Fence bekam ebenfalls den `text`-Tag.
 
-## 2026-05-17 — Phase 2 Season 23: Schema-aware Templates
+## 2026-05-17 — v0.2.0 — Phase 2 Season 23: Schema-aware Templates
 
 ### Was jetzt geht
 
@@ -40,7 +40,7 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 Variante **B** aus drei vorgestellten Pfaden (A Hardcoded-Liste erweitern, B Frontmatter-Schema, C Auto-Discovery für unbekannte Tokens als generische Felder). B löst beide Bedarfe (neue Tokens deklarativ, Kickoff-Tokens als Literal) ohne pro Template Code-Touches. Variante A skaliert nicht mit weiteren Templates, C verschenkt die Semantik (was ist Pflicht-Input vs. Auto-Pfad), die wir in den Templates ohnehin kennen. Schema-Discriminator über Schlüssel-Präsenz (`auto` vs. `input`) statt eines `type`-Feldes hält die YAML-Notation kompakt (`SYMPTOM: { input: textarea, required: true }`); zod-Schema mit `.strict()` lehnt vermischte Specs ab und der Reader fällt dann auf `schema=null` zurück, damit ein einzelnes kaputtes Template nicht das ganze Modal lahmlegt. Auto-Pfad-Resolver ist ein simpler Walk auf das geparste Frontmatter-Objekt (`claude_md.workbench.trigger_phrases.fix` → `frontmatter.workbench.trigger_phrases.fix`), Server-Pfade kommen als Map aus dem IPC-Bundle; ein nicht aufgelöster Pfad gibt `undefined` zurück, was die Engine als „Token bleibt literal" interpretiert (bewusst kein leerer String, damit der User die fehlende Quelle im Preview sieht). 27 neue Tests (`tests/renderer/template-variables.test.ts` komplett neu mit 24 Specs für `findVariablesInTemplate`/`resolveAutoPath`/`fillTemplateVariables`/`collectServerAutoPaths`/`LEGACY_TEMPLATE_SCHEMA`/`buildResolverContext`, plus 2 Schema-Aware-Cases in `tests/main/template-reader.test.ts` und ein eigener `parseTemplateSchema`-`describe`-Block mit 6 Tests). Targeted-Test-Lauf grün (64/64 über die vier betroffenen Test-Files), `tsc --noEmit` sauber. TanaLib (das Referenzprojekt aus dem Bug-Report) hat zusätzlich einen `workbench:`-Frontmatter in seine CLAUDE.md bekommen, damit die Trigger-Tokens dort auch tatsächlich aufgelöst werden. package.json gebumpt 0.1.8 → 0.1.9.
 
-## 2026-05-17 — Phase 2 Season 22: Kontext-Checkbox-Erweiterung
+## 2026-05-17 — v0.2.0 — Phase 2 Season 22: Kontext-Checkbox-Erweiterung
 
 ### Was jetzt geht
 
@@ -54,7 +54,7 @@ Variante **A1 + B1 + C1 + D1** aus drei orthogonalen Achsen plus Sub-Frage zur M
 
 ---
 
-## 2026-05-17 — Phase 2 Season 21: Docs-Sync-Session
+## 2026-05-17 — v0.2.0 — Phase 2 Season 21: Docs-Sync-Session
 
 ### Was jetzt geht
 
@@ -68,7 +68,7 @@ Variante **E1 + P1 + S1 + H1** aus drei orthogonalen Achsen plus Sub-Entscheidun
 
 ---
 
-## 2026-05-16 — Verlauf-Tabelle: Name-Spalte mit Ellipsis kappen
+## 2026-05-16 — v0.2.0 — Verlauf-Tabelle: Name-Spalte mit Ellipsis kappen
 
 ### Was jetzt geht
 
@@ -76,7 +76,7 @@ Variante **E1 + P1 + S1 + H1** aus drei orthogonalen Achsen plus Sub-Entscheidun
 
 ---
 
-## 2026-05-16 — Phase 2 Season 20: Top-N für Template-Auto-Variablen konfigurierbar
+## 2026-05-16 — v0.2.0 — Phase 2 Season 20: Top-N für Template-Auto-Variablen konfigurierbar
 
 ### Was jetzt geht
 
@@ -90,7 +90,7 @@ Variante **F2 + T2 + I2 + R1** aus drei orthogonalen Achsen plus Pre-Season-Refa
 
 ---
 
-## 2026-05-15 — Phase 2 Season 19: Easter-Egg-Vergleiche
+## 2026-05-15 — v0.2.0 — Phase 2 Season 19: Easter-Egg-Vergleiche
 
 ### Was jetzt geht
 
@@ -104,7 +104,7 @@ Variante **U1 + K1 + D1** aus drei orthogonalen Achsen (Wo, Konfiguration, Daten
 
 ---
 
-## 2026-05-15 — Phase 2 Season 18: First-Start-Workspace-Wizard
+## 2026-05-15 — v0.2.0 — Phase 2 Season 18: First-Start-Workspace-Wizard
 
 ### Was jetzt geht
 
@@ -118,7 +118,7 @@ Variante A aus dem Erst-Brief — „Erledigt-Flag in den Settings" — statt B 
 
 ---
 
-## 2026-05-15 — Phase 2 Season 17: Screenshot-Retention
+## 2026-05-15 — v0.2.0 — Phase 2 Season 17: Screenshot-Retention
 
 ### Was jetzt geht
 

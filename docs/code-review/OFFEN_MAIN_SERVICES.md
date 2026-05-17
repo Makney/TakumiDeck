@@ -44,6 +44,7 @@ Aus dem Main-Services-Review. Bewusst nicht im aktuellen Scope, weil „Kein Ref
 - **Beschreibung:** `{ ...buildDefaultSettings(), ...parsed }` ist ein flacher Spread. Wenn ein User aus Sprint 1 nur ein Subset von `model_limits` in der `settings.json` hat (z.B. `{ 'claude-sonnet-4-5': 200000 }`), und Sprint 8 hat `claude-opus-4-7` zu den Defaults hinzugefügt, fehlt der neue Key im gemergten Result — das ganze User-Object überschreibt das Default-Object. Gleiches gilt für `shortcuts` und `token_warning_thresholds`.
 - **Begründung:** Verhaltensänderung mit Tradeoff (User-Override gewinnt explizit vs. Auto-Migration neuer Default-Keys). Verlangt Variants A/B + Entscheidung; nicht im Review-Scope.
 - **Trigger:** wenn ein neues Default-Modell hinzukommt und User-Reports auftauchen, dass die Per-Session-Kontext-Bar nicht das erwartete Limit zeigt.
+- **Update Release-Review v0.2.0 (2026-05-17):** Oberfläche ist seit v0.1.2 um drei Sub-Objekte gewachsen (`screenshot_retention`, `context_soft_warning` aus Season 8, `template_top_n` aus Season 20), plus zwei neue flache Felder (`workspace_wizard_completed`, `easter_egg_enabled`). Damit gibt es jetzt fünf Sub-Objekte (inkl. `model_limits`, `shortcuts`, `token_warning_thresholds`) plus zwei nicht-Sub-Felder, bei denen ein partieller User-Override defaults verlieren könnte. Drift-Risiko skaliert; Variants-Pass jetzt überfällig.
 
 ---
 
@@ -85,3 +86,23 @@ Hinweise, die für sich kein Bug sind, aber bei zukünftigen Änderungen im Blic
 - `src/main/jsonl/parser.ts:38` · Kategorie: **Warnung**
 - **Beschreibung:** `Buffer.byteLength(lineWithNewline, 'utf8')` zählt Bytes korrekt, **solange** das gelesene Segment nicht mid-codepoint abgeschnitten wurde. Heutiger `realJsonlReadDriver.readTail` liest immer bis Datei-Ende (mit awaitWriteFinish-Schutz), darum kein Risiko. Wenn jemand später einen Chunk-basierten Reader baut, bricht der Byte-Offset.
 - **Begründung:** Dokumentations-Hinweis am Driver-Vertrag; Code-Fix erst nötig, wenn Chunk-Reader gebaut wird.
+
+---
+
+## Release-Review v0.2.0 (2026-05-17)
+
+Befunde aus dem Release-Review von v0.1.2 → v0.2.0, die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### Boot-Screenshot-Retention läuft ohne Settings-Modal-Refresh-Signal
+
+- `src/main/main.ts:317-330`, `src/renderer/modals/SettingsModal.tsx:341-410` (`ScreenshotRetentionBlock`) · Kategorie: **Verbesserung**
+- **Beschreibung:** `runScreenshotRetention` beim App-Start löscht potenziell viele Dateien (Age-Cutoff + Cap). Der `ScreenshotRetentionBlock` im Settings-Modal lädt seine „Aktuell"-Anzeige (`fileCount` + `totalBytes`) per `useEffect`-Refresh erst beim Modal-Open. Beim ersten Settings-Open nach dem Start zeigt er den Stand *nach* der Retention — korrekt, aber ohne Hinweis, dass Files weggeräumt wurden. Der Boot-Log hat die Bilanz (`scanned=X deleted=Y`).
+- **Begründung:** UI-Hinweis „Beim letzten Start wurden N Dateien aufgeräumt" wäre ein zusätzliches Persistenz-Detail (Boot-Report im `meta_kv`-Store oder ein flüchtiger In-Memory-State, der nur den ersten Settings-Open nach App-Start überlebt). Aufwand steht nicht im Verhältnis zum Nutzen — der User sieht beim ersten Open trotzdem die korrekten Zahlen, und die Retention-Schwellen sind seine eigene Vorgabe.
+- **Trigger:** wenn ein User-Report „TakumiDeck hat ohne Vorwarnung alle Screenshots gelöscht" auftaucht, dann einen Boot-Report-Toast hinzufügen oder die letzte Retention-Bilanz im Settings-Block neben den Schwellwert-Inputs anzeigen.
+
+### `extractTemplateBody` strippt YAML-Frontmatter nicht im Fallback-Pfad
+
+- `src/renderer/components/templateBody.ts:28-77` · Kategorie: **Verbesserung**
+- **Beschreibung:** Season-23-Templates haben YAML-Frontmatter (`variables:`-Map) am Datei-Anfang plus einen `## Vorlage`-Heading mit Code-Fence. `extractTemplateBody` findet den `## Vorlage`-Block und gibt nur dessen Fence-Inhalt zurück — das Frontmatter landet *nicht* im Prompt. Wenn ein User aber ein Template *mit* Frontmatter und *ohne* `## Vorlage`-Heading anlegt, fällt der Extraktor auf „voller Content" zurück (Fallback-Path bei Zeile 76) und der YAML-Block fließt in den Prompt mit. Alle in v0.2.0 ausgelieferten Templates (BUG_REPORT/CODE_REVIEW_START/PROJEKT_KICKOFF/RELEASE_START/SEASON_PROMPT plus `createTemplateStub`-Output) haben beides, also nicht in der Praxis exponiert.
+- **Begründung:** Fix wäre einzeilig (vor dem Heading-Match einen `stripFrontmatter`-Call aus `src/shared/docs-sync.ts` einbauen — der Helper existiert seit Season 22). Aber: der Body-Extraktor lebt im Renderer und `docs-sync.ts` im Shared-Layer, der Import ist neutral. Bewusst aus Season-23-Scope rausgehalten, damit der Frontmatter-Schema-Pfad fokussiert bleibt.
+- **Trigger:** beim nächsten Touch von `templateBody.ts` oder wenn ein User-Template ohne `## Vorlage`-Heading auftaucht und der YAML-Block im Prompt landet — dann `stripFrontmatter` vor dem Heading-Scan einsetzen.
