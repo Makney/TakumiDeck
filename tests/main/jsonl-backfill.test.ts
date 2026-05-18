@@ -47,6 +47,7 @@ const baseInsert: Omit<SessionInsert, 'id' | 'cwd' | 'started_at' | 'claude_sess
   ended_at: null,
   custom_type_label: null,
   jsonl_path: null,
+  start_commit_sha: null,
 };
 
 function makeRepos() {

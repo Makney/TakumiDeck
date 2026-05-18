@@ -402,7 +402,7 @@ Visuelle Markierung von Files mit Änderungen.
 
 ## Bereich: Diff-Viewer
 
-### Feature: Multi-Tab-Diff
+### Feature: Multi-Tab-Diff ✅
 
 Drei Diff-Ansichten parallel.
 

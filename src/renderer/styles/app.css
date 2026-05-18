@@ -3357,6 +3357,40 @@ body,
   margin-left: 4px;
 }
 
+/* Phase-2 Season-29 (Multi-Tab-Diff) — Pillen-Toggle „Working Tree / Staged /
+   Session" in der Diff-Head-Zeile. Visuell identisch zum td-dash-tab-Muster
+   aus der Stats-Pane (StatsPane.tsx), damit alle Toggle-Pillen der App das
+   gleiche Verhalten haben: Dim-Border in Idle, Accent-Border + Accent-Text +
+   bg-3-Fill bei active. */
+.td-diff-modes {
+  display: flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.td-diff-mode-pill {
+  padding: 3px 10px;
+  border: 1px solid var(--td-line);
+  background: transparent;
+  color: var(--td-text-dim);
+  font-family: var(--td-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: border-color .12s, color .12s, background .12s;
+}
+
+.td-diff-mode-pill:hover {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-diff-mode-pill.active {
+  background: var(--td-bg-3);
+  color: var(--td-accent);
+  border-color: var(--td-accent-line);
+}
+
 /* Split: links File-Liste, rechts Merge-View. Im engen Right-Pane stapeln
    wir vertikal — File-Liste bleibt schmal oben, Merge-View nimmt den Rest. */
 .td-diff-body-split {

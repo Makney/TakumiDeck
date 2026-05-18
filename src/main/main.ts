@@ -44,6 +44,7 @@ import { reconcileCrashedSessions } from './sessions/reconciliation';
 import { StateDetectionLoop } from './sessions/state-detection-loop';
 import { JsonlWatcher, defaultClaudeProjectsPath } from './jsonl/watcher';
 import { JsonlPollingRing } from './jsonl/polling-ring';
+import { ProjectFilesWatcher } from './fs/project-watcher';
 import { realJsonlReadDriver } from './jsonl/parser';
 import { runJsonlPathBackfill } from './jsonl/backfill';
 import { runScreenshotRetention } from './screenshots/retention';
@@ -74,6 +75,7 @@ let ptyManager: PtyManager | null = null;
 let jsonlWatcher: JsonlWatcher | null = null;
 let jsonlPollingRing: JsonlPollingRing | null = null;
 let stateLoop: StateDetectionLoop | null = null;
+let projectFilesWatcher: ProjectFilesWatcher | null = null;
 
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
@@ -237,6 +239,9 @@ void app.whenReady().then(async () => {
       log: logger,
       pollingRing: jsonlPollingRing,
       claudeProjectsRoot,
+      // Phase-2 Season-29: GitDriver injizieren, damit der Spawn den HEAD-SHA
+      // als Diff-Baseline einfangen kann.
+      gitDriver: realGitDriver,
     });
     registerProjectIpc({
       projects: projectRepo,
@@ -257,14 +262,27 @@ void app.whenReady().then(async () => {
       models: modelStatsRepo,
       log: logger,
     });
+    // Phase-2 Season-29: Datei-Watcher fuers aktive Projekt. Renderer wechselt
+    // via fs:set-watched-project; Push-Events laufen ueber Channels.FsChanged
+    // an den Renderer. Wir registrieren den Watcher hier in main, damit er
+    // genau einen mainWindow.webContents.send-Closure bekommt.
+    projectFilesWatcher = new ProjectFilesWatcher({
+      log: logger,
+      push: (eventPayload) => {
+        mainWindow?.webContents.send(Channels.FsChanged, eventPayload);
+      },
+    });
+
     registerFsIpc({
       projects: projectRepo,
       templatesDir: templatesDirFromUserData(getDataDir()),
       screenshotsDir: screenshotsDirFromUserData(getDataDir()),
+      projectWatcher: projectFilesWatcher,
       log: logger,
     });
     registerGitIpc({
       projects: projectRepo,
+      sessions,
       driver: realGitDriver,
       log: logger,
     });
@@ -445,6 +463,14 @@ void app.whenReady().then(async () => {
           await jsonlWatcher?.stop();
         } catch (e) {
           logger.warn('JSONL-Watcher-Stop fehlgeschlagen', e);
+        }
+        // Phase-2 Season-29: chokidar-Watcher fuers aktive Projekt sauber
+        // schliessen, bevor die App beendet. Eigene Watcher-Instanz, daher
+        // unabhaengig vom JSONL-Watcher.
+        try {
+          await projectFilesWatcher?.stop();
+        } catch (e) {
+          logger.warn('Project-Files-Watcher-Stop fehlgeschlagen', e);
         }
         try {
           db.close();

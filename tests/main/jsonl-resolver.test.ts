@@ -22,6 +22,7 @@ const baseSession: Omit<SessionRow, 'id' | 'claude_session_id' | 'started_at' | 
   ended_at: null,
   custom_type_label: null,
   jsonl_path: null,
+  start_commit_sha: null,
 };
 
 function makeSession(overrides: Partial<SessionRow>): SessionRow {

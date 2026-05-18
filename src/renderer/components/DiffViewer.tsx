@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView, lineNumbers, drawSelection } from '@codemirror/view';
 import { syntaxHighlighting, defaultHighlightStyle, indentOnInput } from '@codemirror/language';
@@ -7,26 +7,35 @@ import { yaml as yamlLang } from '@codemirror/lang-yaml';
 import { unifiedMergeView } from '@codemirror/merge';
 import { oneDark, oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { markdownEditorThemeOverride } from './markdownEditorTheme';
-import type { GitFileChange, GitStatusResult } from '@shared/types';
+import type { GitFileChange, GitSessionDiffResult, GitStatusResult } from '@shared/types';
 
-// DiffViewer (Sprint 7, Phase 6).
+// DiffViewer (Sprint 7 — Phase 6; Season 29 Multi-Tab-Diff).
 //
-// Architektur 6.7: „Working Tree Diff via simple-git, Render mit @codemirror/merge".
+// Drei Modi via Pillen-Toggle in der td-diff-head-Zeile:
+//   - 'working'  HEAD vs. Working-Tree (= Phase-1-Pfad)
+//   - 'staged'   HEAD vs. Index (`git show :path` als doc, HEAD als original)
+//   - 'session'  Session-Baseline-Commit vs. Working-Tree
 //
-// UI-Aufbau:
-//   1. Branch + Counts (td-diff-head wie im Design-Handoff)
-//   2. Liste der geänderten Files links (klickbar, einer aktiv)
-//   3. unifiedMergeView rechts: HEAD-Version vs. Working-Tree-Inhalt
+// File-Liste:
+//   - working: gefiltert aus git:status auf worktreeStatus !== 'unchanged'
+//   - staged:  gefiltert aus git:status auf indexStatus  !== 'unchanged'
+//   - session: dedizierter Fetch via git:session-diff (nur einmal pro Mount /
+//     refreshKey-Tick / Sessions-Wechsel)
 //
-// Datenpfad pro Aktiv-File:
-//   - git:show liefert die HEAD-Version (oder leer bei untracked → alle Zeilen
-//     erscheinen als Hinzufügung)
-//   - fs:read liefert den aktuellen Working-Tree-Inhalt
-//   - unifiedMergeView({ original: HEAD }) + doc=working berechnet die Diffs
-//     intern und markiert sie inline.
+// Per-File-Pane (rechts):
+//   - working: original = git.show(HEAD), doc = fs.read
+//   - staged:  original = git.show(HEAD), doc = git.showStaged
+//   - session: original = git.show(baselineSha), doc = fs.read
 //
-// Read-only: keine Inline-Edit-Buttons, keine accept/reject-UX. „accept hunk"
-// in unifiedMergeView ist out-of-scope (Phase 2+).
+// Auto-Open-Pairing (Season 29): Klick auf einen File-Eintrag oeffnet die
+// Datei ZUSAETZLICH als Editor-Tab. Der Diff bleibt aktiv und zeigt den Diff
+// derselben Datei.
+//
+// Auto-Refresh (Season 29): der EditorPane hebt den `refreshKey` an, wenn
+// chokidar eine Datei-Aenderung im Projekt-Root meldet. Wir nutzen das, um
+// den session-Mode-Fetch und die Per-File-Inhalte neu zu laden.
+
+export type DiffMode = 'working' | 'staged' | 'session';
 
 interface Props {
   projectId: string;
@@ -34,24 +43,96 @@ interface Props {
   loading: boolean;
   loadError: string | null;
   hasGit: boolean;
+  // Phase-2 Season-29: aktive Session fuer den Session-Modus. null deaktiviert
+  // den Modus (Pille bleibt klickbar, zeigt aber den passenden Empty-State).
+  activeSessionId: string | null;
+  // Phase-2 Season-29: hebt sich pro Datei-Aenderung im Projekt-Root, damit
+  // der DiffViewer seinen Fetch-Pfad neu spielt. Pure-Counter — Identitaets-
+  // vergleich reicht.
+  refreshKey: number;
+  // Phase-2 Season-29: Auto-Open-Pairing. Klick auf eine Datei in der Diff-
+  // Liste fokussiert den Editor-Tab — wenn er noch nicht offen ist, oeffnet
+  // ihn EditorPane via useFileTabsStore.openFile.
+  onOpenInEditor: (relPath: string, label: string) => void;
 }
 
-export function DiffViewer({ projectId, status, loading, loadError, hasGit }: Props) {
+export function DiffViewer({
+  projectId,
+  status,
+  loading,
+  loadError,
+  hasGit,
+  activeSessionId,
+  refreshKey,
+  onOpenInEditor,
+}: Props) {
+  const [mode, setMode] = useState<DiffMode>('working');
   const [activeFile, setActiveFile] = useState<string | null>(null);
 
-  // Beim Status-Update die aktive Datei initialisieren — erste geänderte File
-  // bevorzugt. Wenn der User eine andere Datei manuell ausgewählt hat und sie
-  // weiter geändert ist, behalten wir die Auswahl.
+  // Working/Staged ziehen ihre File-Liste aus dem bereits geladenen status.
+  // Session laeuft ueber einen eigenen Fetch.
+  const [sessionDiff, setSessionDiff] = useState<GitSessionDiffResult | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+
+  // Race-Schutz fuer den session-Fetch — User kann zwischen Modi zappen, nur
+  // die juengste Antwort gewinnt.
+  const sessionSeq = useRef(0);
   useEffect(() => {
-    if (!status) return;
-    const candidates = status.files.filter(isShowableInDiff);
-    if (candidates.length === 0) {
+    if (mode !== 'session') return;
+    if (!activeSessionId) {
+      setSessionDiff(null);
+      setSessionError(null);
+      setSessionLoading(false);
+      return;
+    }
+    const mySeq = ++sessionSeq.current;
+    setSessionLoading(true);
+    setSessionError(null);
+    void window.api.git.sessionDiff({ sessionId: activeSessionId }).then((result) => {
+      if (sessionSeq.current !== mySeq) return;
+      setSessionLoading(false);
+      if (result.ok) {
+        setSessionDiff(result.data);
+      } else {
+        setSessionDiff(null);
+        setSessionError(result.error);
+      }
+    });
+    // refreshKey ist absichtlich in der Dep-Liste, damit ein fs:changed-Push
+    // den Session-Fetch ebenfalls anstoesst.
+  }, [mode, activeSessionId, refreshKey]);
+
+  // File-Liste je nach Modus. Memoisiert, damit der useEffect unten nicht
+  // pro Render einen neuen activeFile-Default zieht.
+  const showableFiles = useMemo<GitFileChange[]>(() => {
+    if (mode === 'working') {
+      return status?.files.filter((f) => f.worktreeStatus !== 'unchanged') ?? [];
+    }
+    if (mode === 'staged') {
+      return status?.files.filter((f) => f.indexStatus !== 'unchanged') ?? [];
+    }
+    return sessionDiff?.files ?? [];
+  }, [mode, status, sessionDiff]);
+
+  // Bei Modi-/Status-Wechsel die aktive Datei initialisieren — wenn die alte
+  // Auswahl in der neuen Liste vorkommt, behalten; sonst auf erste springen.
+  useEffect(() => {
+    if (showableFiles.length === 0) {
       setActiveFile(null);
       return;
     }
-    if (activeFile && candidates.some((f) => f.path === activeFile)) return;
-    setActiveFile(candidates[0]!.path);
-  }, [status, activeFile]);
+    if (activeFile && showableFiles.some((f) => f.path === activeFile)) return;
+    setActiveFile(showableFiles[0]?.path ?? null);
+  }, [showableFiles, activeFile]);
+
+  // Branch-Anzeige je nach Modus.
+  const branchLabel = useMemo(() => {
+    if (mode === 'session') {
+      return sessionDiff?.branch ?? '';
+    }
+    return status?.branch ?? '';
+  }, [mode, status, sessionDiff]);
 
   if (!hasGit) {
     return (
@@ -66,50 +147,59 @@ export function DiffViewer({ projectId, status, loading, loadError, hasGit }: Pr
     );
   }
 
-  if (loading) {
-    return (
-      <div className="td-diff">
-        <div className="td-skeleton">Lade Diff…</div>
-      </div>
-    );
-  }
+  // Empty-State fuer Session-Modus ohne Baseline.
+  const sessionEmpty =
+    mode === 'session' && (!activeSessionId || sessionDiff?.hasBaseline === false);
 
-  if (loadError) {
-    return (
-      <div className="td-diff">
-        <div className="td-md-error">git status fehlgeschlagen: {loadError}</div>
-      </div>
-    );
-  }
-
-  if (!status) return null;
-
-  const showableFiles = status.files.filter(isShowableInDiff);
-  const adds = showableFiles.filter(
-    (f) => f.worktreeStatus === 'added' || f.worktreeStatus === 'untracked',
-  ).length;
-  const rems = showableFiles.filter((f) => f.worktreeStatus === 'deleted').length;
-  const mods = showableFiles.filter((f) => f.worktreeStatus === 'modified').length;
+  const isLoadingForMode =
+    (mode !== 'session' && loading) || (mode === 'session' && sessionLoading);
+  const errorForMode = mode === 'session' ? sessionError : loadError;
 
   return (
     <div className="td-diff">
       <div className="td-diff-head">
         <span className="crumb">
-          <b>{status.branch}</b>
+          <b>{branchLabel || '—'}</b>
         </span>
         <span className="arr">›</span>
         <span className="crumb">{showableFiles.length} Files</span>
+        <DiffModeToggle
+          mode={mode}
+          onSelect={setMode}
+          hasActiveSession={activeSessionId !== null}
+        />
         <div className="meta">
-          <span className="add" title={`${adds} neue Datei(en)`}>+{adds}</span>
-          <span className="modify" title={`${mods} geänderte Datei(en)`}>~{mods}</span>
-          <span className="rem" title={`${rems} gelöschte Datei(en)`}>−{rems}</span>
-          <span className="source-hint">simple-git · merge</span>
+          {!isLoadingForMode && (
+            <>
+              <span
+                className="add"
+                title="neue / hinzugefuegte Datei(en)"
+              >+{countByStatus(showableFiles, ['added', 'untracked'])}</span>
+              <span
+                className="modify"
+                title="geaenderte Datei(en)"
+              >~{countByStatus(showableFiles, ['modified'])}</span>
+              <span
+                className="rem"
+                title="geloeschte Datei(en)"
+              >−{countByStatus(showableFiles, ['deleted'])}</span>
+            </>
+          )}
+          <span className="source-hint">{sourceHintFor(mode)}</span>
         </div>
       </div>
-      {showableFiles.length === 0 ? (
+      {isLoadingForMode ? (
+        <div className="td-skeleton">Lade Diff…</div>
+      ) : errorForMode ? (
+        <div className="td-md-error">git-Aufruf fehlgeschlagen: {errorForMode}</div>
+      ) : sessionEmpty ? (
         <div className="td-skeleton">
-          Working-Tree ist sauber — keine geänderten Dateien.
+          {!activeSessionId
+            ? 'Keine aktive Session — Session-Diff zeigt Aenderungen seit dem Spawn der aktiven Session.'
+            : 'Diese Session hat keinen Baseline-Commit (Legacy-Session, kein Git-Repo zum Spawn-Zeitpunkt oder revParse-Fehler).'}
         </div>
+      ) : showableFiles.length === 0 ? (
+        <div className="td-skeleton">{emptyMessageFor(mode)}</div>
       ) : (
         <div className="td-diff-body-split">
           <div className="td-diff-files">
@@ -122,7 +212,11 @@ export function DiffViewer({ projectId, status, loading, loadError, hasGit }: Pr
                 <div
                   key={f.path}
                   className={`td-diff-file${activeFile === f.path ? ' active' : ''} ${f.worktreeStatus}`}
-                  onClick={() => setActiveFile(f.path)}
+                  onClick={() => {
+                    setActiveFile(f.path);
+                    // Auto-Open-Pairing: Datei auch im Editor-Tab oeffnen.
+                    onOpenInEditor(f.path, name);
+                  }}
                   title={f.path}
                 >
                   <span className="td-diff-file-mark">
@@ -148,7 +242,13 @@ export function DiffViewer({ projectId, status, loading, loadError, hasGit }: Pr
           </div>
           <div className="td-diff-content">
             {activeFile ? (
-              <DiffPaneSingleFile projectId={projectId} relPath={activeFile} />
+              <DiffPaneSingleFile
+                projectId={projectId}
+                relPath={activeFile}
+                mode={mode}
+                baselineSha={sessionDiff?.baselineSha ?? null}
+                refreshKey={refreshKey}
+              />
             ) : (
               <div className="td-skeleton">Keine Datei ausgewählt.</div>
             )}
@@ -159,61 +259,138 @@ export function DiffViewer({ projectId, status, loading, loadError, hasGit }: Pr
   );
 }
 
+// ============================================================ Pillen-Toggle
+
+interface DiffModeToggleProps {
+  mode: DiffMode;
+  onSelect: (m: DiffMode) => void;
+  hasActiveSession: boolean;
+}
+
+function DiffModeToggle({ mode, onSelect, hasActiveSession }: DiffModeToggleProps) {
+  return (
+    <div className="td-diff-modes" role="tablist" aria-label="Diff-Modus">
+      <ModePill mode="working" active={mode === 'working'} onSelect={onSelect} label="Working Tree" />
+      <ModePill mode="staged" active={mode === 'staged'} onSelect={onSelect} label="Staged" />
+      <ModePill
+        mode="session"
+        active={mode === 'session'}
+        onSelect={onSelect}
+        label="Session"
+        title={
+          hasActiveSession
+            ? 'Aenderungen seit dem Start der aktiven Session'
+            : 'Aenderungen seit Session-Start — aktiv erst, wenn eine Session laeuft'
+        }
+      />
+    </div>
+  );
+}
+
+interface ModePillProps {
+  mode: DiffMode;
+  active: boolean;
+  onSelect: (m: DiffMode) => void;
+  label: string;
+  title?: string;
+}
+
+function ModePill({ mode, active, onSelect, label, title }: ModePillProps) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      className={`td-diff-mode-pill${active ? ' active' : ''}`}
+      onClick={() => onSelect(mode)}
+      title={title ?? label}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ============================================================ Per-File-Pane
 
 interface DiffPaneProps {
   projectId: string;
   relPath: string;
+  mode: DiffMode;
+  // Nur fuer mode='session' relevant; null in den anderen Modi.
+  baselineSha: string | null;
+  refreshKey: number;
 }
 
-function DiffPaneSingleFile({ projectId, relPath }: DiffPaneProps) {
+function DiffPaneSingleFile({
+  projectId,
+  relPath,
+  mode,
+  baselineSha,
+  refreshKey,
+}: DiffPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const [head, setHead] = useState<string | null>(null);
+  const [original, setOriginal] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
 
   // Beide Inhalte laden (parallel). Race-Schutz über Sequence-Zähler — wenn
-  // der User schnell zwischen Files zappt, gewinnt nur die jüngste Antwort.
+  // der User schnell zwischen Files/Modi zappt, gewinnt nur die jüngste
+  // Antwort.
   useEffect(() => {
     const mySeq = ++seq.current;
-    setHead(null);
+    setOriginal(null);
     setWorking(null);
     setError(null);
-    void Promise.all([
-      window.api.git.show({ projectId, relPath }),
-      window.api.fs.read({ projectId, relPath }),
-    ]).then(([showRes, readRes]) => {
-      if (seq.current !== mySeq) return;
-      if (showRes.ok) {
-        setHead(showRes.data.content);
-      } else {
-        // Untracked Files liefert der Driver als ok+empty — ein Err hier ist
-        // immer ein echter Git-Fehler (GIT_SHOW_FAILED / PROJECT_NOT_FOUND).
-        // Wir behandeln ihn als leeren HEAD, damit der Diff trotzdem rendert,
-        // loggen aber für Diagnose.
-        setHead('');
-        console.warn(`[DiffViewer] git:show fehlgeschlagen für ${relPath}: ${showRes.error}`);
+
+    const originalPromise = (() => {
+      if (mode === 'session' && baselineSha) {
+        // Original am Baseline-Commit. Wenn die Datei zum Baseline-Zeitpunkt
+        // noch nicht existierte (= komplett neu in der Session), liefert der
+        // Driver einen leeren String, was den Diff-Viewer alle Zeilen als
+        // Hinzufuegung markieren laesst.
+        return window.api.git.show({ projectId, relPath, ref: baselineSha });
       }
-      if (readRes.ok) {
-        setWorking(readRes.data.content);
+      // working + staged vergleichen beide gegen HEAD.
+      return window.api.git.show({ projectId, relPath });
+    })();
+    const docPromise = (() => {
+      if (mode === 'staged') {
+        return window.api.git.showStaged({ projectId, relPath });
+      }
+      // working + session zeigen den Working-Tree-Inhalt als doc.
+      return window.api.fs.read({ projectId, relPath });
+    })();
+
+    void Promise.all([originalPromise, docPromise]).then(([origRes, docRes]) => {
+      if (seq.current !== mySeq) return;
+      if (origRes.ok) {
+        setOriginal(origRes.data.content);
+      } else {
+        setOriginal('');
+        console.warn(`[DiffViewer] original load fuer ${relPath} (${mode}) fehlgeschlagen: ${origRes.error}`);
+      }
+      if (docRes.ok) {
+        setWorking(docRes.data.content);
       } else {
         setWorking('');
-        setError(readRes.error);
+        setError(docRes.error);
       }
     });
-  }, [projectId, relPath]);
+  }, [projectId, relPath, mode, baselineSha, refreshKey]);
 
-  // CodeMirror-View aufbauen, sobald beide Inhalte da sind. Bei Pfad-Wechsel
-  // re-mounten wir komplett — unifiedMergeView rebuildet seine Decorations
-  // intern, und das ist sicherer als ein dispatch.reconfigure-Pfad.
+  // CodeMirror-View aufbauen, sobald beide Inhalte da sind. Bei Pfad-/Modus-
+  // Wechsel oder Auto-Refresh re-mounten wir komplett — unifiedMergeView
+  // rebuildet seine Decorations intern, und das ist sicherer als ein
+  // dispatch.reconfigure-Pfad.
   useEffect(() => {
-    if (head === null || working === null) return;
+    if (original === null || working === null) return;
     if (!containerRef.current) return;
-    const langExt = relPath.toLowerCase().endsWith('.yaml') || relPath.toLowerCase().endsWith('.yml')
-      ? yamlLang()
-      : markdown();
+    const langExt =
+      relPath.toLowerCase().endsWith('.yaml') || relPath.toLowerCase().endsWith('.yml')
+        ? yamlLang()
+        : markdown();
     const state = EditorState.create({
       doc: working,
       extensions: [
@@ -226,7 +403,7 @@ function DiffPaneSingleFile({ projectId, relPath }: DiffPaneProps) {
         oneDark,
         syntaxHighlighting(oneDarkHighlightStyle),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        unifiedMergeView({ original: head }),
+        unifiedMergeView({ original }),
         markdownEditorThemeOverride,
       ],
     });
@@ -236,12 +413,12 @@ function DiffPaneSingleFile({ projectId, relPath }: DiffPaneProps) {
       view.destroy();
       viewRef.current = null;
     };
-  }, [head, working, relPath]);
+  }, [original, working, relPath]);
 
   if (error !== null) {
     return <div className="td-md-error">Datei lesen fehlgeschlagen: {error}</div>;
   }
-  if (head === null || working === null) {
+  if (original === null || working === null) {
     return <div className="td-skeleton">Lade {relPath}…</div>;
   }
   return <div ref={containerRef} className="td-diff-cm" />;
@@ -249,13 +426,34 @@ function DiffPaneSingleFile({ projectId, relPath }: DiffPaneProps) {
 
 // ============================================================ helpers
 
-// File ist im Diff sichtbar, wenn es eine relevante Worktree- oder Index-
-// Veränderung hat. unmodified Files gibt git status zwar nicht zurück, aber
-// die Defensivkraft hier kostet nichts.
-function isShowableInDiff(f: GitFileChange): boolean {
-  return (
-    f.worktreeStatus !== 'unchanged' || f.indexStatus !== 'unchanged'
-  );
+function countByStatus(files: GitFileChange[], wanted: GitFileChange['worktreeStatus'][]): number {
+  let n = 0;
+  for (const f of files) {
+    if (wanted.includes(f.worktreeStatus)) n++;
+  }
+  return n;
+}
+
+function sourceHintFor(mode: DiffMode): string {
+  switch (mode) {
+    case 'working':
+      return 'HEAD ↔ working tree';
+    case 'staged':
+      return 'HEAD ↔ index';
+    case 'session':
+      return 'baseline ↔ working tree';
+  }
+}
+
+function emptyMessageFor(mode: DiffMode): string {
+  switch (mode) {
+    case 'working':
+      return 'Working-Tree ist sauber — keine ungestagten Aenderungen.';
+    case 'staged':
+      return 'Index ist leer — keine gestagten Aenderungen (`git add`).';
+    case 'session':
+      return 'Keine Aenderungen seit Session-Start.';
+  }
 }
 
 // Single-Char-Marker für die File-Liste — kompakte Darstellung statt langer

@@ -19,6 +19,7 @@ import { assertFromMainWindow } from './sender-guard';
 import { expectedJsonlPath } from '../jsonl/cwd-encoding';
 import { defaultClaudeProjectsPath } from '../jsonl/watcher';
 import type { JsonlPollingRing } from '../jsonl/polling-ring';
+import type { GitDriver } from '../git/driver';
 
 // IPC-Handler für pty:create / pty:write / pty:resize / pty:kill.
 // Forwarded außerdem die PtyManager-Events ans aktive BrowserWindow.
@@ -37,6 +38,10 @@ export function registerPtyIpc(deps: {
   // Phase-2 Season-15: Override fuer Tests, damit kein echtes ~/.claude/
   // angefragt wird. Default = defaultClaudeProjectsPath().
   claudeProjectsRoot?: string;
+  // Phase-2 Season-29: GitDriver fuer Baseline-SHA-Capture beim Spawn. Optional
+  // — Tests, die den Git-Pfad nicht ueberschreiben wollen, lassen das Feld weg
+  // (die Session bleibt dann mit start_commit_sha=NULL).
+  gitDriver?: GitDriver;
 }): void {
   const {
     manager,
@@ -47,6 +52,7 @@ export function registerPtyIpc(deps: {
     getWebContents,
     log,
     pollingRing,
+    gitDriver,
   } = deps;
   const claudeProjectsRoot = deps.claudeProjectsRoot ?? defaultClaudeProjectsPath();
 
@@ -199,6 +205,26 @@ export function registerPtyIpc(deps: {
       // die Token-Bars in Echtzeit pushen statt erst am 100-ms-awaitWriteFinish.
       // Detach laeuft ueber den SessionLifecycle bei terminalen Statuswechseln.
       pollingRing?.attach(input.sessionId, jsonlPath);
+
+      // Phase-2 Season-29 (Multi-Tab-Diff): Baseline-SHA fuer den Session-Diff-
+      // Modus fixieren. Fire-and-forget — der DiffViewer fragt erst bei Tab-
+      // Wechsel auf den Session-Modus nach, da reichen die ~50-100 ms revParse-
+      // Roundtrip allemal. Bei has_git=0, detached HEAD oder Git-Fehler bleibt
+      // start_commit_sha auf NULL — der Renderer zeigt dann den Empty-State.
+      if (gitDriver && project.has_git === 1) {
+        void gitDriver
+          .revParse(cwd, 'HEAD')
+          .then((sha) => {
+            if (sha) {
+              sessions.setStartCommitSha(input.sessionId, sha);
+            }
+          })
+          .catch((e) => {
+            log.warn(
+              `[pty] revParse fuer Baseline-SHA fehlgeschlagen sessionId=${input.sessionId}: ${e}`,
+            );
+          });
+      }
 
       log.info(`[pty] erstellt sessionId=${input.sessionId} model=${input.model}`);
       return ok(row);

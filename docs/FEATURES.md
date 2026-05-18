@@ -239,7 +239,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
-| `Multi-Tab-Diff`                     | ⛔      | Working Tree / Staged / Session-spezifisch |
+| `Multi-Tab-Diff`                     | ✅      | 2026-05-18 (Phase-2-Season-29) — Pillen-Toggle „Working Tree / Staged / Session" in der td-diff-head-Zeile (Konvention `td-dash-tab` aus der Stats-Pane). Working = HEAD ↔ Working-Tree (Phase-1-Pfad), Staged = HEAD ↔ Index via `git show :<file>`, Session = Baseline-Commit ↔ Working-Tree. Baseline = HEAD-SHA zum PTY-Spawn-Zeitpunkt, persistiert in `sessions.start_commit_sha` (Migration 0009), via neuer `GitDriver.revParse`-Methode fire-and-forget beim Spawn gecaptured. Zwei neue IPC-Channels: `git:show-staged` und `git:session-diff` (Main resolved sessionId → projectId + Baseline-SHA, Renderer holt per-File-Inhalt am Baseline ueber bestehendes `git:show` mit `ref=baselineSha`). Plus zwei Komfort-Erweiterungen ausserhalb der Roadmap-Beschreibung: (1) Diff-Tab oeffnet sich automatisch beim Projekt-Wechsel fuer Git-Repos; (2) Auto-Open-Pairing — Klick auf File in der Diff-Liste oeffnet ihn zusaetzlich als Editor-Tab im Hintergrund; (3) Auto-Refresh via chokidar-Watch auf den aktiven Projekt-Root (Skip-Liste node_modules/.git/dist/build/.vite/.next/.idea/.vscode/out/coverage, Debounce 200 ms, neuer IPC `fs:set-watched-project` + Push-Event `fs:changed`) — Diff + Editor (clean Tabs) aktualisieren sich live bei externen Datei-Aenderungen, dirty Tabs bleiben unangetastet. 17 neue Tests, Suite 935/935. |
 
 ---
 

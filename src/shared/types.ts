@@ -162,6 +162,12 @@ export interface SessionRow {
   // parsen. null fuer Legacy-Sessions, bis Spawn-Pfad / Watcher-Backfill /
   // Boot-One-Shot-Pass die Spalte befuellt.
   jsonl_path: string | null;
+  // Phase-2 Season-29 (Multi-Tab-Diff): HEAD-SHA des Projekt-Repos zum
+  // Zeitpunkt des PTY-Spawns. Der Session-Diff-Modus im DiffViewer
+  // vergleicht den Working-Tree gegen diesen Baseline-Commit. NULL bei
+  // Legacy-Sessions, has_git=0-Projekten, detached HEAD ohne Commit oder
+  // wenn der revParse-Aufruf beim Spawn fehlgeschlagen ist.
+  start_commit_sha: string | null;
 }
 
 // PTY-IPC-Payloads (Renderer → Main).
@@ -430,6 +436,29 @@ export interface FsClearScreenshotsResult {
   failures: number;
 }
 
+// Phase-2 Season-29 (Multi-Tab-Diff Auto-Refresh): Renderer-Signal an den
+// Main, welches Projekt aktuell beobachtet werden soll. Pro App-Instanz
+// laeuft genau ein chokidar-Watcher auf dem Projekt-Root; ein Wechsel der
+// activeProjectId stoppt den alten Watcher und startet einen neuen. null
+// stoppt nur. Bei has_git=0-Projekten startet der Watcher trotzdem — der
+// Auto-Refresh ist nicht Git-spezifisch, sondern reagiert auf jede Datei-
+// Aenderung im Working-Tree.
+export interface FsSetWatchedProjectInput {
+  projectId: string | null;
+}
+
+// Phase-2 Season-29: Push vom Main an den Renderer, wenn der chokidar-
+// Watcher Aenderungen im aktiven Projekt detektiert hat. Liste der
+// betroffenen Pfade (projektrelativ, Forward-Slash) plus die projectId,
+// damit der Renderer einen stale Push aus einem laengst gewechselten
+// Projekt verwerfen kann. Debounce 200 ms auf Main-Seite — bei einem
+// Editor-Save kommen oft mehrere chokidar-Events binnen 50 ms, die zu
+// einem einzigen Push gebuendelt werden.
+export interface FsChangedEvent {
+  projectId: string;
+  paths: string[];
+}
+
 // Phase-2 Season-18: Ordner-Picker fuer den First-Start-Workspace-Wizard.
 // `title` ist optional; wenn weg, nimmt der Handler einen Default. Es gibt
 // bewusst kein `defaultPath` — der Wizard waehlt typischerweise sowieso
@@ -521,6 +550,36 @@ export interface GitShowResult {
   // weil der Caller vorher git:status gerufen hat (das hätte schon NOT_A_GIT_REPO
   // geliefert). Hier zur Defensiv-Konsistenz.
   hasGit: boolean;
+}
+
+// Phase-2 Season-29 (Multi-Tab-Diff): Index-Version einer Datei aus dem
+// Staging-Area lesen (`git show :<relPath>`). Sub-Pfad des Diff-Viewers im
+// 'staged'-Modus, der die Index-Inhalte gegen HEAD vergleicht.
+export interface GitShowStagedInput {
+  projectId: string;
+  relPath: string;
+}
+
+export type GitShowStagedResult = GitShowResult;
+
+// Phase-2 Season-29 (Multi-Tab-Diff): Session-Diff. Renderer schickt die
+// Session-ID, der Main resolved das Projekt + den persistierten
+// `start_commit_sha`. Bei fehlendem Baseline-SHA (Legacy-Session, has_git=0,
+// revParse-Fehler) kommt `hasBaseline=false` zurueck — Renderer zeigt dann
+// einen Empty-State, statt einen leeren Diff zu rendern. Bei Erfolg listet
+// `files` die Aenderungen seit dem Baseline-Commit; pro Datei holt der
+// Renderer den Original-Inhalt via `git:show` mit `ref=baselineSha`.
+export interface GitSessionDiffInput {
+  sessionId: string;
+}
+
+export interface GitSessionDiffResult {
+  hasBaseline: boolean;
+  // Baseline-SHA, der fuer per-File-git:show-Aufrufe wiederverwendet wird.
+  // null gdw. hasBaseline=false.
+  baselineSha: string | null;
+  branch: string;
+  files: GitFileChange[];
 }
 
 // --- Templates (Sprint 6) --------------------------------------------
@@ -1029,6 +1088,13 @@ export interface RendererApi {
     // wenn das File keine Disk-Repräsentation hat (z.B. Clipboard-
     // Image oder Browser-Drag).
     getPathForFile: (file: File) => string;
+    // Phase-2 Season-29 (Multi-Tab-Diff Auto-Refresh): aktives Projekt
+    // beim Main fuer den chokidar-Watcher setzen. Renderer ruft beim
+    // Projekt-Wechsel; null stoppt den Watcher.
+    setWatchedProject: (input: FsSetWatchedProjectInput) => Promise<IpcResult<null>>;
+    // Push-Subscription fuer Datei-Aenderungen im aktiven Projekt.
+    // Liefert nur Paths, der Caller refetcht selbst (Diff + Editor).
+    onChanged: (handler: (event: FsChangedEvent) => void) => () => void;
   };
   git: {
     // Sprint 7: Branch + geänderte Files für Pre-Commit-Panel + Diff-Tab.
@@ -1037,6 +1103,12 @@ export interface RendererApi {
     diff: (input: GitDiffInput) => Promise<IpcResult<GitDiffResult>>;
     // Datei-Inhalt am Ref (Default 'HEAD'); für Diff-Viewer (Phase 6).
     show: (input: GitShowInput) => Promise<IpcResult<GitShowResult>>;
+    // Phase-2 Season-29 (Multi-Tab-Diff): Index-Version einer Datei
+    // (`git show :<relPath>`) fuer den 'staged'-Modus.
+    showStaged: (input: GitShowStagedInput) => Promise<IpcResult<GitShowStagedResult>>;
+    // Phase-2 Season-29 (Multi-Tab-Diff): Aenderungen seit Session-Start.
+    // Main resolved sessions.start_commit_sha + Branch + Diff-Counts.
+    sessionDiff: (input: GitSessionDiffInput) => Promise<IpcResult<GitSessionDiffResult>>;
   };
   projects: {
     list: () => Promise<IpcResult<ProjectRow[]>>;

@@ -32,6 +32,7 @@ const baseInsert: Omit<SessionInsert, 'id' | 'claude_session_id'> = {
   ended_at: 2000,
   custom_type_label: null,
   jsonl_path: null,
+  start_commit_sha: null,
 };
 
 describe('SessionRepository.setClaudeSessionId', () => {

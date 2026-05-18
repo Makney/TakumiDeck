@@ -29,6 +29,23 @@ export interface GitDriver {
   // Driver einen leeren String — damit zeigt der Diff-Viewer alle Zeilen
   // korrekt als Hinzufügung.
   showFile(repoPath: string, relPath: string, ref?: string): Promise<string>;
+  // Phase-2 Season-29 (Multi-Tab-Diff): aufgeloesten Commit-SHA fuer einen Ref
+  // liefern. PTY-Spawn nutzt das, um die Baseline der Session zu fixieren
+  // (revParse(repoPath, 'HEAD')). Bei detached HEAD ohne Commits returnt der
+  // Driver null — Session-Diff-Modus zeigt dann einen Empty-State.
+  revParse(repoPath: string, ref: string): Promise<string | null>;
+  // Phase-2 Season-29 (Multi-Tab-Diff): Index-Version einer Datei
+  // (`git show :<relPath>`). Bei nicht gestagter Datei (also Working-Tree-
+  // Aenderung ohne `git add`) liefert das den HEAD-Inhalt; bei gar nicht
+  // versionierter Datei liefert simple-git einen Error — wir fangen ab und
+  // returnen leeren String (Konsistenz mit showFile).
+  showStagedFile(repoPath: string, relPath: string): Promise<string>;
+  // Phase-2 Season-29 (Multi-Tab-Diff): Liste der Dateien, die sich seit dem
+  // Baseline-Ref geaendert haben (Working-Tree + Index gesammelt, gegen
+  // einen Commit-SHA verglichen). Result-Shape gleich GitFileChange wie bei
+  // status(), damit der Renderer denselben File-Liste-Komponente nutzen kann.
+  // Untracked-Files sind bewusst enthalten — sie sind „neu seit Session-Start".
+  changedFilesAgainst(repoPath: string, baselineRef: string): Promise<GitFileChange[]>;
 }
 
 // Real-Driver: instanziiert simple-git pro Aufruf am gegebenen Pfad. Kein Caching
@@ -112,6 +129,114 @@ export const realGitDriver: GitDriver = {
     } catch {
       return '';
     }
+  },
+
+  async revParse(repoPath: string, ref: string): Promise<string | null> {
+    const git: SimpleGit = simpleGit(repoPath);
+    try {
+      const sha = await git.revparse([ref]);
+      const trimmed = sha.trim();
+      // Detached HEAD ohne jeden Commit liefert manchmal leere Strings statt zu
+      // werfen — defensiv abfangen.
+      return trimmed.length > 0 ? trimmed : null;
+    } catch {
+      // Frisches Repo ohne HEAD-Commit oder kein Git-Repo: kein Baseline-SHA
+      // → null. Caller (pty:create) interpretiert das als „Session ohne
+      // Diff-Baseline" und schreibt NULL in sessions.start_commit_sha.
+      return null;
+    }
+  },
+
+  async showStagedFile(repoPath: string, relPath: string): Promise<string> {
+    const git: SimpleGit = simpleGit(repoPath);
+    try {
+      // `git show :<path>` liest den Blob aus der Staging-Area. Wenn die Datei
+      // ungestaget ist, liefert Git den HEAD-Inhalt; nur bei gar nicht
+      // versionierter Datei (neu + untracked) wirft Git.
+      return await git.show([`:${relPath}`]);
+    } catch {
+      return '';
+    }
+  },
+
+  async changedFilesAgainst(repoPath: string, baselineRef: string): Promise<GitFileChange[]> {
+    const git: SimpleGit = simpleGit(repoPath);
+    // 1. Tracked-Changes seit dem Baseline-Commit. `git diff --name-status`
+    //    listet die Aenderungen, `--numstat` liefert die Insertions/Deletions.
+    //    Beide gegen denselben Ref, damit das Mapping konsistent ist.
+    const summary = await git
+      .diffSummary([baselineRef])
+      .catch(() => ({ files: [] as Array<{ file: string; insertions?: number; deletions?: number; binary?: boolean }> }));
+    const counts = new Map<string, { insertions: number | null; deletions: number | null }>();
+    for (const f of summary.files) {
+      if ('binary' in f && f.binary) {
+        counts.set(f.file, { insertions: null, deletions: null });
+      } else if ('insertions' in f && 'deletions' in f) {
+        counts.set(f.file, {
+          insertions: f.insertions ?? 0,
+          deletions: f.deletions ?? 0,
+        });
+      }
+    }
+    // `--name-status` liefert den Aenderungs-Code (M/A/D/R/C). Wir parsen den
+    // Raw-Output, weil simple-git's `.diff(['--name-status'])` einen
+    // unstrukturierten String zurueckgibt.
+    const nameStatusRaw = await git
+      .diff(['--name-status', baselineRef])
+      .catch(() => '');
+    const statusByPath = new Map<string, GitFileStatus>();
+    for (const line of nameStatusRaw.split('\n')) {
+      if (!line) continue;
+      // Format pro Zeile: "<code>\t<path>" bzw. bei rename/copy
+      // "<code><score>\t<oldPath>\t<newPath>".
+      const parts = line.split('\t');
+      if (parts.length < 2) continue;
+      const code = (parts[0] ?? '').charAt(0); // R100 → R
+      const finalPath = parts[parts.length - 1] ?? '';
+      if (!finalPath) continue;
+      statusByPath.set(finalPath, mapStatusCode(code));
+    }
+
+    // 2. Untracked-Files vom aktuellen Working-Tree dazumischen — sie sind
+    //    „neu seit Session-Start", auch wenn sie weder im Baseline-Commit
+    //    noch im HEAD enthalten waren. `git status --porcelain` liefert sie
+    //    als ?? .
+    let untracked: string[] = [];
+    try {
+      const status = await git.status();
+      untracked = status.not_added; // simple-git: not_added = untracked
+    } catch {
+      // Status-Fehler ist nicht kritisch — die diff-basierte Liste reicht
+      // schon fuer den Session-Modus.
+    }
+
+    const out: GitFileChange[] = [];
+    for (const [path, status] of statusByPath) {
+      const c = counts.get(path);
+      out.push({
+        path,
+        worktreeStatus: status,
+        indexStatus: 'unchanged',
+        insertions: c?.insertions ?? null,
+        deletions: c?.deletions ?? null,
+      });
+    }
+    for (const path of untracked) {
+      // Defensiv: untracked-Datei koennte schon ueber den diff-Pfad
+      // gelistet sein (sollte nicht passieren, weil untracked weder im
+      // Baseline noch im HEAD lebt), aber Doppelung vermeiden.
+      if (statusByPath.has(path)) continue;
+      out.push({
+        path,
+        worktreeStatus: 'untracked',
+        indexStatus: 'unchanged',
+        insertions: null,
+        deletions: null,
+      });
+    }
+    // Stabile Reihenfolge fuer die UI: alphabetisch nach Pfad.
+    out.sort((a, b) => a.path.localeCompare(b.path));
+    return out;
   },
 };
 

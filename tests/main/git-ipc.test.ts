@@ -156,6 +156,18 @@ class FakeGitDriver implements GitDriver {
   showFn = vi
     .fn<(repoPath: string, relPath: string, ref?: string) => Promise<string>>()
     .mockResolvedValue('');
+  // Phase-2 Season-29 (Multi-Tab-Diff): drei neue Methoden im GitDriver.
+  // Defaults sind harmlos — Tests, die die Pfade pruefen, ueberschreiben sie
+  // via mockResolvedValueOnce.
+  revParseFn = vi
+    .fn<(repoPath: string, ref: string) => Promise<string | null>>()
+    .mockResolvedValue(null);
+  showStagedFn = vi
+    .fn<(repoPath: string, relPath: string) => Promise<string>>()
+    .mockResolvedValue('');
+  changedFilesAgainstFn = vi
+    .fn<(repoPath: string, baselineRef: string) => Promise<import('../../src/shared/types').GitFileChange[]>>()
+    .mockResolvedValue([]);
 
   status(repoPath: string): Promise<GitStatusResult> {
     return this.statusFn(repoPath);
@@ -167,6 +179,21 @@ class FakeGitDriver implements GitDriver {
 
   showFile(repoPath: string, relPath: string, ref?: string): Promise<string> {
     return this.showFn(repoPath, relPath, ref);
+  }
+
+  revParse(repoPath: string, ref: string): Promise<string | null> {
+    return this.revParseFn(repoPath, ref);
+  }
+
+  showStagedFile(repoPath: string, relPath: string): Promise<string> {
+    return this.showStagedFn(repoPath, relPath);
+  }
+
+  changedFilesAgainst(
+    repoPath: string,
+    baselineRef: string,
+  ): Promise<import('../../src/shared/types').GitFileChange[]> {
+    return this.changedFilesAgainstFn(repoPath, baselineRef);
   }
 }
 

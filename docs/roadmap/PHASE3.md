@@ -12,6 +12,22 @@ Features haben keine feste Reihenfolge. Alle sind optional.
 
 ---
 
+## Bereich: Editor
+
+### Feature: Unterstützung für Programmiersprachen-Syntax
+
+Heute kennt der CodeMirror-Editor nur Markdown + YAML. Programmiersprachen-Files (`.ts`/`.tsx`/`.js`/`.jsx`/`.py`/`.go`/`.rs`/`.json`/`.css`/`.html`/...) werden ohne Syntax-Highlighting im Plain-Text-Modus angezeigt — beim direkten Editieren der Projekt-Files unhandlich.
+
+- Erkennung der Sprache aus dem Datei-Suffix (Map `extension → lang-id`); Fallback-Eintraege fuer Ungewoehnliches wie `.mjs`/`.cjs`/`.cts`/`.mts`
+- CodeMirror-6-Pakete pro Sprache als On-Demand-Dependencies (`@codemirror/lang-javascript`/`-python`/`-rust`/`-go`/`-json`/`-css`/`-html`); Lazy-Import beim ersten Treffer, damit der Initial-Bundle nicht aufgebläht wird
+- Auto-Indent + Bracket-Matching pro Sprache fallen automatisch ueber das jeweilige `lang-*`-Paket an
+- Optional: Settings-Map fuer Spezial-Faelle (z.B. `.proto`, `.toml`, `.ini`) ohne offizielles CM6-Paket — Plain-Text bleibt der Default
+- Preview-Toggle bleibt fuer Markdown-Files; bei Code-Files ist die Toolbar ohne Preview-Pille
+
+**Trigger:** Wenn das direkte Editieren von Code-Files (statt Wechsel zu VS Code) im Daily-Use haeufig genug wird, dass Plain-Text-Modus stoert. Phase 2 Season 29 (Multi-Tab-Diff) macht durch Auto-Open-Pairing erstmals jedes File aus dem Working-Tree per Klick direkt oeffenbar — damit waechst der Druck auf den Editor-Komfort fuer Nicht-Markdown-Files.
+
+---
+
 ## Bereich: Multi-Engine-Support
 
 ### Feature: OpenAI Codex als zweite Engine

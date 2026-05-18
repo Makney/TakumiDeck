@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Auto-Refresh ueberschreibt Dirty-Tabs nicht — aber zeigt auch keinen Warn-Marker (Season 29)
+
+**Bereich:** `src/renderer/panels/EditorPane.tsx` (`fs:changed`-Subscription) plus `MarkdownEditor.tsx`. Die fileTabs-Store-API hat heute keinen Slot fuer „externe Aenderung verfuegbar, lokal aber dirty".
+
+**Was:** Wenn eine Datei im Working-Tree extern geaendert wird (z.B. Claude-Lauf, zweites Editor-Fenster) waehrend in TakumiDeck ein File-Tab dieser Datei dirty ist, ueberschreibt der Auto-Refresh den Editor-Buffer NICHT — soweit korrekt. Aber: der User sieht nichts davon. Beim naechsten manuellen Save in TakumiDeck wird die externe Aenderung leise ueberschrieben, weil TakumiDeck den lokalen Buffer-Stand (mit aelterem Disk-Inhalt als Basis) auf die Platte schreibt. Kein Konflikt-Dialog, kein Warn-Marker, kein Re-Read-Hint.
+
+**Warum so:** Der „External-Change-Marker bei Dirty-Tab"-Flow waere ein eigener kleiner Sub-Pfad mit drei Sub-Entscheidungen (Marker-Position: Tab-Pille vs. Editor-Toolbar vs. modaler Banner · Action: nur Hinweis vs. Reload-Button vs. Diff-Button · Re-Sync-Strategie wenn der User den Save trotzdem ausloest). Mid-Season-Scope und Variants-First-Pflicht haetten den Auto-Refresh-Scope um eine ganze Diskussion verbreitert. Im Daily-Use ist der Fall „externe Aenderung + lokal dirty im selben File" empirisch selten, weil der User typischerweise entweder im Terminal oder im Editor arbeitet, nicht in beidem parallel an derselben Datei. Risiko ist tolerabel, Auto-Refresh ohne Marker schon ein grosser Sprung gegenueber dem Phase-1-Stand (manuelle Tab-Close-und-Open).
+
+**Risiko:** Mittel. Konkretes Szenario: User hat `docs/CHANGELOG.md` in TakumiDeck geoeffnet und drei Zeilen ergaenzt (dirty). Parallel laesst er Claude im Terminal einen anderen Absatz im CHANGELOG ergaenzen — Claude schreibt die Datei, TakumiDeck refetcht den Inhalt im fs:changed-Handler aber laesst den Dirty-Tab in Ruhe (korrekt). User druckt Ctrl+S in TakumiDeck: der Claude-Absatz ist weg, ueberschrieben durch den TakumiDeck-Buffer-Stand. Datenverlust-Schwere ist niedrig (Git-History rettet bei committed Files), aber Surprise-Wert hoch.
+
+**Aufloesung:** Drei Sub-Entscheidungen zu klaeren, sobald die Inzidenz im Daily-Use auftaucht: (a) Marker-Position — Tab-Pille mit zusaetzlichem Symbol (z.B. `⚠ M`-Doppel-Marker fuer „externe Aenderung + lokal dirty"); (b) Action — passive Anzeige + manuelles Reload via Button, ODER aktiver Conflict-Dialog beim naechsten Save-Versuch; (c) Re-Sync-Pfad bei aktiver Reload-Action — externer Inhalt ueberschreibt lokale Edits (User akzeptiert Verlust), ODER 3-Way-Merge ueber `@codemirror/merge` mit dem letzten gespeicherten Stand als Basis. Pragmatischer Default fuer V1: (a) Tab-Pille mit „⚠"-Marker, (b) passiver Hinweis, (c) optionaler Reload-Button im Editor-Toolbar. Storage: neuer `externalChanged: boolean`-Flag im FileTab-State, gesetzt im `fs:changed`-Handler bei dirty Match, gecleart bei `setSaved` oder explizitem Reload-Klick.
+
+---
+
 ## Per-Tab-Font-Zoom nicht persistiert, nur Session-lokal (Season 28)
 
 **Bereich:** `src/renderer/panels/TerminalTab.tsx` (`fontSizeOverride`-useState) + `src/renderer/components/terminalFontZoom.ts`. Settings-Feld `terminal_font_size` bleibt globale Default-Quelle.

@@ -5,15 +5,20 @@ import {
   GitStatusInputSchema,
   GitDiffInputSchema,
   GitShowInputSchema,
+  GitShowStagedInputSchema,
+  GitSessionDiffInputSchema,
 } from '@shared/schemas';
 import type {
   GitDiffResult,
+  GitSessionDiffResult,
   GitShowResult,
+  GitShowStagedResult,
   GitStatusResult,
   IpcResult,
   ProjectRow,
 } from '@shared/types';
 import type { ProjectRepository } from '../db/repos/projects';
+import type { SessionRepository } from '../db/repos/sessions';
 import type { GitDriver } from '../git/driver';
 import type { Logger } from '../logger';
 import { assertFromMainWindow } from './sender-guard';
@@ -37,10 +42,14 @@ import { assertFromMainWindow } from './sender-guard';
 
 export function registerGitIpc(deps: {
   projects: ProjectRepository;
+  // Phase-2 Season-29: SessionRepository fuer den sessionDiff-Handler — der
+  // resolved sessionId → projectId + start_commit_sha (Renderer schickt nie
+  // einen freien Baseline-SHA, sondern nur die Session-ID).
+  sessions: SessionRepository;
   driver: GitDriver;
   log: Logger;
 }): void {
-  const { projects, driver, log } = deps;
+  const { projects, sessions, driver, log } = deps;
 
   ipcMain.handle(Channels.GitStatus, async (event, payload: unknown) => {
     const guard = assertFromMainWindow(event);
@@ -118,6 +127,84 @@ export function registerGitIpc(deps: {
       }
     } catch (e) {
       return errFromUnknown(e, 'GIT_DIFF');
+    }
+  });
+
+  // Phase-2 Season-29 (Multi-Tab-Diff): Index-Version einer Datei via
+  // `git show :<relPath>`. Same Resolve-Pfad wie git:show, aber ohne ref.
+  ipcMain.handle(Channels.GitShowStaged, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitShowStagedInputSchema.parse(payload);
+      const project = resolveGitProject(projects, input.projectId);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        const result: GitShowStagedResult = { content: '', hasGit: false };
+        return ok(result);
+      }
+      try {
+        const content = await driver.showStagedFile(project.data.path, input.relPath);
+        const result: GitShowStagedResult = { content, hasGit: true };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:show-staged] simple-git-Aufruf fehlgeschlagen path=${project.data.path}`, e);
+        return err('Git-ShowStaged-Aufruf fehlgeschlagen', 'GIT_SHOW_STAGED_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_SHOW_STAGED');
+    }
+  });
+
+  // Phase-2 Season-29 (Multi-Tab-Diff): Session-Diff. Renderer schickt nur die
+  // sessionId; der Main resolved die Session (Projekt + start_commit_sha) und
+  // ruft den Driver mit dem Baseline-SHA. Bei fehlender Baseline kommt
+  // hasBaseline=false zurueck — der Renderer zeigt einen Empty-State.
+  ipcMain.handle(Channels.GitSessionDiff, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitSessionDiffInputSchema.parse(payload);
+      const session = sessions.findById(input.sessionId);
+      if (!session) {
+        return err(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
+      }
+      const project = resolveGitProject(projects, session.project_id);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0 || session.start_commit_sha === null) {
+        // Kein Git-Repo oder Baseline-Capture beim Spawn fehlgeschlagen →
+        // Empty-State im Renderer. Branch fuellen wir trotzdem mit dem
+        // Project-Namen als Fallback, damit die Head-Zeile nicht leer wirkt.
+        const result: GitSessionDiffResult = {
+          hasBaseline: false,
+          baselineSha: null,
+          branch: '',
+          files: [],
+        };
+        return ok(result);
+      }
+      try {
+        // Branch + Files in zwei Roundtrips — Branch fuer die Head-Zeile,
+        // Files fuer die linke Spalte. Branch kommt aus der bestehenden
+        // status()-Logik (current bzw. Short-SHA bei detached HEAD).
+        const status = await driver.status(project.data.path);
+        const files = await driver.changedFilesAgainst(
+          project.data.path,
+          session.start_commit_sha,
+        );
+        const result: GitSessionDiffResult = {
+          hasBaseline: true,
+          baselineSha: session.start_commit_sha,
+          branch: status.branch,
+          files,
+        };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:session-diff] simple-git-Aufruf fehlgeschlagen path=${project.data.path}`, e);
+        return err('Git-SessionDiff-Aufruf fehlgeschlagen', 'GIT_SESSION_DIFF_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_SESSION_DIFF');
     }
   });
 }

@@ -1,0 +1,18 @@
+-- Phase 2 Season 29 (Multi-Tab-Diff): sessions.start_commit_sha haelt den
+-- HEAD-SHA des Git-Repos zum Zeitpunkt des PTY-Spawns. Der „Session-spezifische
+-- Diff"-Modus im DiffViewer vergleicht den Working-Tree gegen diesen Baseline-
+-- Commit, damit Aenderungen *seit Session-Start* sichtbar werden — egal ob sie
+-- in der Session selbst gemacht wurden, dazwischen committed wurden oder noch
+-- ungestaged sind.
+--
+-- Befuellung:
+-- 1. Beim pty:create direkt nach erfolgreichem Spawn via GitDriver.revParse(HEAD).
+--    Best-Effort: bei has_git=0, detached HEAD ohne Commit oder revParse-Fehler
+--    bleibt die Spalte NULL — der Diff-Modus „Session" zeigt dann einen Hinweis,
+--    dass kein Baseline-Commit verfuegbar ist.
+-- 2. Bei session:resume bewusst NICHT ueberschrieben — Resume soll den
+--    Session-Diff ueber den ganzen bisherigen Verlauf weiterlaufen lassen.
+--
+-- Legacy-Sessions (vor Season 29) bleiben dauerhaft NULL — fuer die zeigt der
+-- Session-Diff-Modus den Empty-State-Hint.
+ALTER TABLE sessions ADD COLUMN start_commit_sha TEXT;

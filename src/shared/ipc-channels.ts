@@ -39,6 +39,14 @@ export const Channels = {
   GitStatus: 'git:status',
   GitDiff: 'git:diff',
   GitShow: 'git:show',
+  // Phase-2 Season-29 (Multi-Tab-Diff): Index-Version einer Datei
+  // (`git show :<relPath>`) fuer den 'staged'-Modus des DiffViewers.
+  GitShowStaged: 'git:show-staged',
+  // Phase-2 Season-29 (Multi-Tab-Diff): Aenderungen seit Session-Start.
+  // Server resolved sessions.start_commit_sha und liefert Branch +
+  // GitFileChange[]. Renderer holt per-File-Inhalt am Baseline via
+  // git:show mit ref=baselineSha.
+  GitSessionDiff: 'git:session-diff',
 
   // Token-Tracking (Sprint 5)
   UsageWindow: 'usage:window',
@@ -102,6 +110,13 @@ export const Channels = {
   // im <userData>/screenshots/ und liefert die Bilanz zurueck.
   FsScreenshotsSummary: 'fs:screenshots-summary',
   FsClearScreenshots: 'fs:clear-screenshots',
+  // Phase-2 Season-29 (Multi-Tab-Diff Auto-Refresh): Renderer setzt das
+  // aktive Projekt fuer den chokidar-Watcher; null stoppt den Watcher.
+  FsSetWatchedProject: 'fs:set-watched-project',
+  // Push-Channel: Main → Renderer, wenn ein File im aktiven Projekt
+  // geaendert / neu / geloescht wurde. Debounced 200 ms; Liste der
+  // Paths (projektrelativ).
+  FsChanged: 'fs:changed',
 
   // Settings (Sprint 1)
   SettingsGet: 'settings:get',

@@ -378,6 +378,14 @@ export const FsSaveScreenshotInputSchema = z.object({
 export const FsScreenshotsSummaryInputSchema = z.object({}).strict();
 export const FsClearScreenshotsInputSchema = z.object({}).strict();
 
+// Phase-2 Season-29 (Multi-Tab-Diff Auto-Refresh): Renderer setzt das aktive
+// Projekt fuer den Datei-Watcher im Main. `projectId=null` stoppt den Watcher
+// (Use-Case: alle Projekte deselektiert, Welcome-Screen, App-Shutdown vor
+// before-quit).
+export const FsSetWatchedProjectInputSchema = z.object({
+  projectId: z.string().min(1).nullable(),
+});
+
 // --- Git (Sprint 7) --------------------------------------------------
 
 // git:status / git:diff laufen immer gegen ein bekanntes Projekt. Renderer schickt
@@ -399,6 +407,21 @@ export const GitShowInputSchema = z.object({
   projectId: z.string().min(1),
   relPath: z.string().min(1),
   ref: z.string().min(1).optional(),
+});
+
+// Phase-2 Season-29 (Multi-Tab-Diff): Index-Version einer Datei. Server ruft
+// `git show :<relPath>` und liefert den gestagten Inhalt zurueck. Ohne ref —
+// die Staging-Area hat keinen frei waehlbaren Ref.
+export const GitShowStagedInputSchema = z.object({
+  projectId: z.string().min(1),
+  relPath: z.string().min(1),
+});
+
+// Phase-2 Season-29 (Multi-Tab-Diff): Session-Diff. sessionId statt projectId,
+// weil der Main das Projekt + den Baseline-SHA aus der Session-Row resolved.
+// Damit kann der Renderer keinen freien Baseline-SHA reinschmuggeln.
+export const GitSessionDiffInputSchema = z.object({
+  sessionId: z.string().min(1),
 });
 
 // --- Workspace / Projects (Sprint 4) ---------------------------------

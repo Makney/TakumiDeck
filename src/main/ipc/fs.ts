@@ -10,6 +10,7 @@ import {
   FsReadInputSchema,
   FsSaveScreenshotInputSchema,
   FsScreenshotsSummaryInputSchema,
+  FsSetWatchedProjectInputSchema,
   FsWriteInputSchema,
 } from '@shared/schemas';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
@@ -28,6 +29,7 @@ import { scanProjectTree, realFsTreeDriver } from '../fs/treeScanner';
 import { buildScreenshotFilename } from '../fs/screenshotSave';
 import { clearAllScreenshots, summarizeScreenshots } from '../screenshots/retention';
 import type { ProjectRepository } from '../db/repos/projects';
+import type { ProjectFilesWatcher } from '../fs/project-watcher';
 import type { Logger } from '../logger';
 import { assertFromMainWindow } from './sender-guard';
 
@@ -53,9 +55,13 @@ export function registerFsIpc(deps: {
   // Phase-2 Season-2: Ziel-Ordner für gedroppte Screenshots
   // (= <userData>/screenshots/, von configurePaths angelegt).
   screenshotsDir: string;
+  // Phase-2 Season-29: Datei-Watcher fuers aktive Projekt. Renderer schaltet
+  // via fs:set-watched-project zwischen Projekten um. Optional, damit Tests
+  // den Handler ohne Watcher-Setup pruefen koennen.
+  projectWatcher?: ProjectFilesWatcher;
   log: Logger;
 }): void {
-  const { projects, templatesDir, screenshotsDir, log } = deps;
+  const { projects, templatesDir, screenshotsDir, projectWatcher, log } = deps;
 
   ipcMain.handle(Channels.FsListTemplates, async (event, payload: unknown) => {
     const guard = assertFromMainWindow(event);
@@ -264,6 +270,41 @@ export function registerFsIpc(deps: {
       }
     } catch (e) {
       return errFromUnknown(e, 'FS_WRITE');
+    }
+  });
+
+  // Phase-2 Season-29 (Multi-Tab-Diff Auto-Refresh): Renderer setzt das aktive
+  // Projekt fuer den chokidar-Watcher. projectId=null stoppt den Watcher.
+  ipcMain.handle(Channels.FsSetWatchedProject, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = FsSetWatchedProjectInputSchema.parse(payload);
+      if (!projectWatcher) {
+        // Kein Watcher konfiguriert (z.B. Test-Setup) — Renderer-Aufruf
+        // schluckt das still.
+        return ok(null);
+      }
+      if (input.projectId === null) {
+        await projectWatcher.setProject(null, null);
+        return ok(null);
+      }
+      // Server-seitige Path-Resolution analog zu allen anderen project-bezogenen
+      // IPCs — der Renderer schickt nie einen freien Pfad rein, sondern nur die
+      // projectId. Defense-in-Depth: Default-Project (Legacy-Bucket) hat keinen
+      // realen Disk-Pfad, daher wird er hier abgelehnt.
+      const project = projects.getById(input.projectId);
+      if (!project) {
+        return err(`Projekt ${input.projectId} nicht gefunden`, 'PROJECT_NOT_FOUND');
+      }
+      if (project.id === DEFAULT_PROJECT_ID) {
+        await projectWatcher.setProject(null, null);
+        return ok(null);
+      }
+      await projectWatcher.setProject(project.id, project.path);
+      return ok(null);
+    } catch (e) {
+      return errFromUnknown(e, 'FS_SET_WATCHED_PROJECT');
     }
   });
 }

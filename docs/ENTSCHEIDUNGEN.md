@@ -24,6 +24,59 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Multi-Tab-Diff: Pillen-Toggle in der bestehenden Pane (A)
+
+**Entscheidung:** Die drei Diff-Modi „Working Tree / Staged / Session" leben als Pillen-Toggle oben in der `td-diff-head`-Zeile derselben Diff-Pane. Ein State-Wechsel pickt die passende File-Liste und die passenden original/doc-Quellen fuer `unifiedMergeView` — kein zusaetzlicher Tab in der Datei-Tab-Reihe, kein Stacked-Layout, kein Mode-Drop-Down.
+
+**Varianten:**
+
+- **A** Pillen-Toggle (gewaehlt). Eine Diff-Pane, drei umschaltbare Modi.
+- **B** Drei separate Tabs in der Datei-Tab-Reihe (Working / Staged / Session als drei eigene `td-code-tab`-Eintraege neben den File-Tabs).
+- **C** Stacked-View — alle drei Modi untereinander in einem Scroll-Container.
+
+**Grund:** A ist konventionell — die App hat bereits `td-dash-tab`-Pillen fuer „Übersicht / Modelle" (Stats-Pane Season 12) und Range-Toggles „Alle / 30d / 7d" (Season 12 + 13). Damit kennt der Daily-Driver-User das Pillen-Muster und versteht den Modus-Wechsel ohne Erklaerung. B haette einen toten dritten Tab fuer den haeufigen Daily-Use-Fall „aktive Session ohne Datei-Touches" produziert — Session-Diff ist oft leer (Resume-Sessions ohne Working-Tree-Edits, Terminal-Sessions, Bug-Sessions die nur in einem Modul lesen). C verschenkt die ohnehin engen Vertikal-Pixel der Diff-Pane (File-Liste 180 px + Merge-View) und triplet die Datenpfade pro Render-Cycle.
+
+**Konsequenz:** Mode-State lebt im DiffViewer-Component (`useState<DiffMode>`), nicht im Zustand-Store — pro Pane-Mount startet er auf 'working'. File-Auswahl wird ueber Modus-Wechsel hinweg gehalten, sofern die Datei im Ziel-Modus existiert; sonst springt sie auf die erste Datei der neuen Liste. Empty-States pro Modus mit konkretem Hinweis (Working: „sauber", Staged: „Index ist leer — keine `git add`", Session: bei fehlender Baseline „Legacy-Session / kein Git-Repo / detached HEAD ohne Commit"). UI-Polish: erste Pillen-Iteration war im Default-Browser-Button-Stil grell-weiss; CSS-Block `.td-diff-modes`/`.td-diff-mode-pill` zieht sie ueber dieselben Tokens wie `td-dash-tab` auf den App-Look.
+
+**Implementierungsdetail:** Working/Staged ziehen ihre File-Liste aus dem schon geladenen `git:status`-Result (gefiltert auf `worktreeStatus !== 'unchanged'` bzw. `indexStatus !== 'unchanged'`). Session braucht einen eigenen Fetch (`git:session-diff`) mit Race-Schutz via Sequence-Counter. Pro Datei nutzt der Per-File-Pane drei verschiedene Quellen-Paerchen: Working = `git.show(HEAD)` + `fs.read`; Staged = `git.show(HEAD)` + `git.showStaged`; Session = `git.show(baselineSha)` + `fs.read`. Untracked-Files im Session-Modus kommen aus `git status not_added` (im Driver in `changedFilesAgainst` reingemerged) — damit erscheinen Dateien, die nach Session-Start angelegt aber nie committed wurden, sauber als „neu seit Session-Start".
+
+---
+
+## Always-visible Diff: Auto-Open-Pairing statt Inline-Diff-Marker (A)
+
+**Entscheidung:** Der Diff-Tab oeffnet sich automatisch beim Projekt-Wechsel (sofern `has_git=1`), und ein Klick auf eine Datei in der Diff-File-Liste oeffnet diese zusaetzlich als Editor-Tab im Hintergrund — der Diff bleibt aktiv. Damit ist „Diff immer sichtbar" mit minimalem Eingriff in das bestehende Tab-Stack-Modell erreicht.
+
+**Varianten:**
+
+- **A** Auto-Open-Pairing (gewaehlt). Diff und Editor bleiben getrennte Tab-Slots im selben Stack; gezielte Coordination zwischen beiden.
+- **B** Inline-Diff-Marker im Editor selbst — der Editor zeigt Gutter-Bars + Hunk-Outline statt einer separaten Diff-Pane. Bricht den Read-Only-Charakter des Diff-Viewers aus Sprint 7 auf und ist eine eigene Phase-3-Architektur-Diskussion.
+
+**Grund:** A behaelt die strikte Trennung „Diff = Read-only, Editor = Read-Write" aus Sprint 7 bei und kostet nichts in der bestehenden Tab-Layout-Mechanik — `openDiffTab` ist idempotent (bei vorhandenem Tab nur fokussieren), `openFile` aktiviert intern den neuen Tab synchron und der Caller setzt direkt danach `setActive('diff')` zurueck. Beide Mutationen landen im selben React-Render-Cycle, also kein Flicker. B haette eine voll neue Edit-aware-Diff-Pipeline gebraucht (Conflict-UX bei Edit-While-Diffing, Save-vs-Hunk-Accept-Reihenfolge, Dirty-State-Coordination zwischen Diff-Markers und Editor-Buffer) — Wochen-Aufwand, kein Phase-2-Scope.
+
+**Konsequenz:** Der Auto-Open des Diff-Tabs greift einmalig beim Projekt-Wechsel; wenn der User den Diff-Tab explizit schliesst und im selben Projekt bleibt, bleibt er zu. Beim naechsten Projekt-Wechsel oeffnet er sich wieder (Idempotenz greift erst wenn der Tab schon im Stack ist) — bewusster Default „neuer Projekt-Kontext → Diff sichtbar". Auto-Open-Pairing geht aktuell nur in eine Richtung (Diff → Editor); der umgekehrte Pfad (Klick im FilesPanel → File-Selection im Diff-Tab synchronisieren) ist als naheliegende Folge-Erweiterung dokumentiert, im V1 aber nicht gebaut — der FilesPanel-Klick aktiviert den Editor-Tab direkt, was den haeufigsten Use-Case bereits abdeckt.
+
+**Implementierungsdetail:** Auto-Open via `useEffect` in `EditorPane` mit deps `[projectId, hasGit, diffTabOpen, openDiffTab]`. Auto-Open-Pairing-Handler in `EditorPane.handleOpenInEditorFromDiff` als `useCallback` (`projectId, openFile, setActive`), reicht ueber den `onOpenInEditor`-Prop in den DiffViewer rein. Die `activeSessionId` fuer den Session-Modus wird im Selector gegen das aktive Projekt gefiltert — eine Session aus einem anderen Projekt blockt den Session-Modus nicht auf die falsche Repo-Wahrheit, sondern faellt zurueck auf den „Keine aktive Session"-Empty-State.
+
+---
+
+## Diff/Editor-Auto-Refresh: Chokidar-Watch im Main mit IPC-Push (A)
+
+**Entscheidung:** Pro aktivem Projekt-Root laeuft genau ein chokidar-Watcher im Main-Prozess (`ProjectFilesWatcher` in `src/main/fs/project-watcher.ts`). Aenderungen werden 200 ms debounced gesammelt und via `fs:changed`-IPC an den Renderer gepusht; dieser refetcht den Diff (alle drei Modi) und laedt fuer alle CLEAN File-Tabs den neuen Inhalt nach. Dirty Tabs bleiben unangetastet — lokale Edits gewinnen.
+
+**Varianten:**
+
+- **A** Chokidar-Watch im Main (gewaehlt). Push-Architektur, gleiche Library wie der JSONL-Watcher aus Sprint 5.
+- **B** Renderer-seitiges Poll-Loop (mtime/size-Check alle ~1 s auf die gerade sichtbaren Dateien). Kein Main-State noetig, dafuer dauerhaft CPU-Hintergrund-Cost.
+- **C** Manueller Refresh-Button + automatischer Trigger nach jeder PTY-`exit`/Idle-Transition. Kein File-Watching, deckt externe Edits (zweiter Editor-Fenster) nicht ab.
+
+**Grund:** A nutzt eingespielte Technik aus dem Stack — chokidar war bereits als JSONL-Watcher-Dependency vorhanden, kein neuer Architektur-Baustein. Push-Modell verbraucht CPU nur bei tatsaechlichen Aenderungen, nicht im Leerlauf. Sub-50ms-Latenz vom Editor-Save bis zur Diff-Aktualisierung — fuehlt sich „live" an. B haette ein Hintergrund-Poll-Loop in den Renderer eingezogen, der auch bei minimiertem Fenster Festplatten-Zugriffe gemacht haette (Akku-Drain im Daily-Use mit mehreren parallelen Projekten). C deckt den haeufigsten User-Case („Claude hat eine Datei veraendert, ich will den Diff sehen") zwar ab, aber bricht beim zweiten alltaeglichen Pfad „ich editiere die Datei parallel in VS Code".
+
+**Konsequenz:** Renderer ruft `fs:set-watched-project({projectId})` bei jedem Projekt-Wechsel; der Main resolved gegen `ProjectRepository.getById` und ruft `setProject(projectId, projectPath)` (idempotent — gleicher Wert ist no-op). `projectId=null` stoppt den Watcher. Skip-Liste ist hartcodiert (`node_modules`/`.git`/`dist`/`build`/`.vite`/`.next`/`.idea`/`.vscode`/`out`/`coverage`); kein Settings-Slot, weil die Liste deckungsgleich mit dem `fs:list-tree`-Scanner ist und Drift zwischen den beiden Listen ein eigener Bug-Vektor waere. Watcher-Stop awaited vor `before-quit`, parallel zum JSONL-Watcher. Tiefen-Limit `depth: 8` analog zum Workspace-Scanner.
+
+**Implementierungsdetail:** `setProject(projectId, projectPath)` schliesst einen ggf. laufenden Watcher zuerst — damit kann kein Event aus dem alten Projekt mehr durchrutschen und faelschlicherweise als neue Aenderung gepusht werden. `awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 30 }` ist aggressiver als beim JSONL-Watcher (100/50), weil Editor-Saves typischerweise <50 ms dauern und der 200-ms-Debounce darunter ohnehin buendelt. Events `add`/`change`/`unlink` sind alle relevant — neue Files, Edits, Deletes erscheinen alle im Diff. Pfad-Normalisierung auf Forward-Slash + projektrelativ (gleiche Konvention wie `FsTreeNode`). Renderer-Effect in `EditorPane`: pro Push wird ein `refreshKey`-Counter inkrementiert (Diff-Pane + `useGitStatus` haben ihn als Dep-Listen-Element) und pro Pfad gepruft, ob ein clean File-Tab existiert — dann ein `fs.read` + `setSaved`. Pre-Save-Race-Check (User druckt zwischen Push und `fs.read` eine Taste) ist ueber den `dirty`-Check auf den juengsten Tab-State abgesichert.
+
+---
+
 ## Terminal-Renderer: WebGL primaer mit Canvas-Fallback (A)
 
 **Entscheidung:** xterm-Renderer auf `@xterm/addon-webgl@0.19.0` mit `loadRendererAddonWithFallback`-Helper umgestellt, der zwei Fallback-Pfade kennt: (1) try/catch um den WebglAddon-Konstruktor (Treiber-Failure oder WebGL2 nicht verfuegbar), (2) `onContextLoss`-Handler (GPU-Reset zur Laufzeit, z.B. nach Treiber-Update). Beide Pfade laden `CanvasAddon` nach. Console-Erfolgs-Log `[TerminalTab] Renderer: WebGL` plus Fallback-Logs fuer DevTools-Diagnostic.

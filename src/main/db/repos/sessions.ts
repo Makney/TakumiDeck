@@ -79,6 +79,11 @@ export interface SessionDbDriver {
   // true, wenn die Spalte tatsaechlich befuellt wurde (= vorher null war), false
   // sonst. Damit ist der Aufruf pro Watcher-Tick gefahrlos.
   setJsonlPath(sessionId: string, jsonlPath: string): boolean;
+  // Phase-2 Season-29 (Multi-Tab-Diff): einmalig den HEAD-SHA als Baseline
+  // setzen. Idempotent — schreibt nur, wenn die Spalte noch NULL ist; bei
+  // bereits gesetztem Wert no-op. Damit ueberlebt der Baseline-Stand auch
+  // einen Resume.
+  setStartCommitSha(sessionId: string, sha: string): boolean;
   // Phase-2 Season-15 (Boot-One-Shot-Backfill): alle Sessions mit gegebenem cwd,
   // die noch keine claude_session_id haben. Sortiert nach started_at ASC (=
   // aelteste zuerst), damit der Backfill sie paarweise mit den nach mtime
@@ -122,6 +127,10 @@ export interface CreateSessionInput {
   // in jsonl/cwd-encoding.ts). Tests koennen das Feld weglassen — der Repo
   // setzt dann null.
   jsonl_path?: string | null;
+  // Phase-2 Season-29 (Multi-Tab-Diff): HEAD-SHA des Repos zum Spawn-Zeitpunkt
+  // als Diff-Baseline. Optional — bei has_git=0 / detached HEAD / revParse-
+  // Fehler bleibt das Feld null.
+  start_commit_sha?: string | null;
 }
 
 // Whitelist für PATCH-Keys: schützt davor, dass jemand über die Schema-Boundary
@@ -164,6 +173,7 @@ export class SessionRepository {
       claude_session_id: input.claude_session_id ?? null,
       custom_type_label: input.custom_type_label ?? null,
       jsonl_path: input.jsonl_path ?? null,
+      start_commit_sha: input.start_commit_sha ?? null,
     };
     this.driver.insert(row);
     return rowFromInsert(row);
@@ -229,6 +239,10 @@ export class SessionRepository {
     return this.driver.setJsonlPath(sessionId, jsonlPath);
   }
 
+  setStartCommitSha(sessionId: string, sha: string): boolean {
+    return this.driver.setStartCommitSha(sessionId, sha);
+  }
+
   listMissingClaudeIdForCwd(cwd: string): SessionRow[] {
     return this.driver.listMissingClaudeIdForCwd(cwd);
   }
@@ -261,6 +275,9 @@ export class SqliteSessionDriver implements SessionDbDriver {
   private readonly findByJsonlPathStmt: Database.Statement<[string], SessionRow>;
   private readonly setJsonlPathStmt: Database.Statement;
   private readonly listMissingClaudeIdForCwdStmt: Database.Statement<[string], SessionRow>;
+  // Phase-2 Season-29: idempotenter UPDATE fuer den Baseline-SHA — gleiches
+  // Muster wie setJsonlPath (WHERE-Klausel wirkt als atomarer Check-and-Set).
+  private readonly setStartCommitShaStmt: Database.Statement;
   // Phase-2 Season-11: drei Statements + Transaction fuer assignSeasonNumber.
   // Read-Step liefert project_id und den aktuellen season_number-Wert; falls NULL,
   // ermittelt der MAX-Step die naechste freie Nummer und der UPDATE-Step schreibt
@@ -294,11 +311,11 @@ export class SqliteSessionDriver implements SessionDbDriver {
       `INSERT INTO sessions (
         id, project_id, title, type, season_number, status, current_model,
         worktree_branch, notes_md, cwd, started_at, ended_at, claude_session_id,
-        custom_type_label, jsonl_path
+        custom_type_label, jsonl_path, start_commit_sha
       ) VALUES (
         @id, @project_id, @title, @type, @season_number, @status, @current_model,
         @worktree_branch, @notes_md, @cwd, @started_at, @ended_at, @claude_session_id,
-        @custom_type_label, @jsonl_path
+        @custom_type_label, @jsonl_path, @start_commit_sha
       )`,
     );
     this.selectStmt = db.prepare<[string], SessionRow>(
@@ -340,6 +357,12 @@ export class SqliteSessionDriver implements SessionDbDriver {
     // setClaudeIdStmt aus Sprint-6-Hotfix).
     this.setJsonlPathStmt = db.prepare(
       'UPDATE sessions SET jsonl_path = @jsonlPath WHERE id = @sessionId AND jsonl_path IS NULL',
+    );
+    // Phase-2 Season-29: gleiches Pattern wie setJsonlPath — der WHERE-Filter
+    // auf IS NULL macht den UPDATE idempotent, sodass ein Resume-Pfad den
+    // Baseline-SHA nicht versehentlich neu schreiben kann.
+    this.setStartCommitShaStmt = db.prepare(
+      'UPDATE sessions SET start_commit_sha = @sha WHERE id = @sessionId AND start_commit_sha IS NULL',
     );
     // Boot-One-Shot-Backfill: Kandidaten pro encodeCwd-Bucket, sortiert nach
     // started_at ASC, damit der Pass sie mit den mtime-aufsteigend sortierten
@@ -526,6 +549,11 @@ export class SqliteSessionDriver implements SessionDbDriver {
     return Number(result.changes) > 0;
   }
 
+  setStartCommitSha(sessionId: string, sha: string): boolean {
+    const result = this.setStartCommitShaStmt.run({ sessionId, sha });
+    return Number(result.changes) > 0;
+  }
+
   listMissingClaudeIdForCwd(cwd: string): SessionRow[] {
     return this.listMissingClaudeIdForCwdStmt.all(cwd);
   }
@@ -679,6 +707,14 @@ export class InMemorySessionDriver implements SessionDbDriver {
     if (!existing) return false;
     if (existing.jsonl_path !== null) return false;
     this.rows.set(sessionId, { ...existing, jsonl_path: jsonlPath });
+    return true;
+  }
+
+  setStartCommitSha(sessionId: string, sha: string): boolean {
+    const existing = this.rows.get(sessionId);
+    if (!existing) return false;
+    if (existing.start_commit_sha !== null) return false;
+    this.rows.set(sessionId, { ...existing, start_commit_sha: sha });
     return true;
   }
 

@@ -72,6 +72,9 @@ function seed(driver: InMemorySessionDriver, input: SeedInput) {
     // Phase-2 Season-15: jsonl_path wird vom listHistory-Pfad nicht gelesen;
     // Defaults auf null, spezifische Tests in tests/main/jsonl-*-test.ts.
     jsonl_path: null,
+    // Phase-2 Season-29: start_commit_sha nur fuer den Session-Diff-Modus
+    // relevant; History-Tests setzen Default null.
+    start_commit_sha: null,
   });
 }
 

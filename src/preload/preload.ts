@@ -12,19 +12,25 @@ import type {
   SessionStatusPushEvent,
   FsListTemplatesInput,
   FsListTreeInput,
+  FsChangedEvent,
   FsClearScreenshotsResult,
   FsReadInput,
   FsReadResult,
   FsSaveScreenshotInput,
   FsSaveScreenshotResult,
   FsScreenshotsSummaryResult,
+  FsSetWatchedProjectInput,
   FsTreeNode,
   FsWriteInput,
   FsWriteResult,
   GitDiffInput,
   GitDiffResult,
+  GitSessionDiffInput,
+  GitSessionDiffResult,
   GitShowInput,
   GitShowResult,
+  GitShowStagedInput,
+  GitShowStagedResult,
   GitStatusInput,
   GitStatusResult,
   IpcResult,
@@ -197,6 +203,15 @@ const api: RendererApi = {
     // contextBridge). Leerer String = das File ist kein Disk-File (Clipboard-Image,
     // Browser-Drag ohne Datei) → Caller fällt auf saveScreenshot zurück.
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
+    // Phase-2 Season-29 (Multi-Tab-Diff Auto-Refresh): aktives Projekt beim
+    // chokidar-Watcher im Main setzen. Renderer ruft bei jedem Wechsel.
+    setWatchedProject: (input: FsSetWatchedProjectInput) =>
+      ipcRenderer.invoke(Channels.FsSetWatchedProject, input) as Promise<IpcResult<null>>,
+    onChanged: (handler: (event: FsChangedEvent) => void) => {
+      const wrapped = (_evt: IpcRendererEvent, payload: FsChangedEvent) => handler(payload);
+      ipcRenderer.on(Channels.FsChanged, wrapped);
+      return () => ipcRenderer.removeListener(Channels.FsChanged, wrapped);
+    },
   },
   git: {
     status: (input: GitStatusInput) =>
@@ -207,6 +222,14 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.GitDiff, input) as Promise<IpcResult<GitDiffResult>>,
     show: (input: GitShowInput) =>
       ipcRenderer.invoke(Channels.GitShow, input) as Promise<IpcResult<GitShowResult>>,
+    showStaged: (input: GitShowStagedInput) =>
+      ipcRenderer.invoke(Channels.GitShowStaged, input) as Promise<
+        IpcResult<GitShowStagedResult>
+      >,
+    sessionDiff: (input: GitSessionDiffInput) =>
+      ipcRenderer.invoke(Channels.GitSessionDiff, input) as Promise<
+        IpcResult<GitSessionDiffResult>
+      >,
   },
   projects: {
     list: () => ipcRenderer.invoke(Channels.ProjectList) as Promise<IpcResult<ProjectRow[]>>,
