@@ -1,4 +1,5 @@
 import type { AppSettings } from '@shared/types';
+import { CURRENT_SETTINGS_SCHEMA_VERSION } from '../../src/main/settings/migrations';
 
 // Test-Fixture fuer AppSettings. Frueher in tests/main/reset-schedule.test.ts und
 // tests/main/usage-aggregation.test.ts inline dupliziert — bei jedem Schema-Add
@@ -12,6 +13,7 @@ import type { AppSettings } from '@shared/types';
 // Werte.
 export function buildTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
+    schema_version: CURRENT_SETTINGS_SCHEMA_VERSION,
     workspace_path: '/tmp/projects',
     workspace_wizard_completed: true,
     default_model: 'claude-sonnet-4-6',

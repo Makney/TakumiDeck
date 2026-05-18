@@ -213,6 +213,12 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 | ------------------------------------ | ------ | --------- |
 | `Markdown-Preview Side-by-Side`      | ✅      | 2026-05-17 (Phase-2-Season-24) — Drei-Modi-Toolbar (Beide/Editor/Preview), Side-by-Side ist neuer Default. Sync-Scroll prozentual und einseitig getrieben (Last-Scrolled-Wins, `active`-Flag + RAF-Reset verhindert Echo-Schleife). CodeMirror bleibt mounted (`display:none` im Preview-Only-Modus), damit Cursor/Selection/Undo Layout-Wechsel überleben. Per-Datei-Switch jederzeit in der Toolbar, Default-Modus in Settings „Allgemein"-Tab konfigurierbar (`markdown_editor_layout: 'split' \| 'editor' \| 'preview'`). Side-Quest: `remark-gfm` als `remarkPlugins`-Eintrag bringt Tabellen + Strikethrough + Task-Lists + Autolinks in die Preview, plus eigenes CSS für `table`/`th`/`td`/`blockquote`/`ul`/`li`. Bestandsuser werden via `SettingsStore.read()`-Default-Merge automatisch auf `'split'` gehoben. |
 
+### Settings & Persistenz (Phase 2)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Settings-Schema-Versionierung`      | ✅      | 2026-05-18 (Phase-2-Season-25) — `AppSettings.schema_version` als Pflichtfeld (Default `CURRENT_SETTINGS_SCHEMA_VERSION = 2`), neue Pipeline in `src/main/settings/migrations.ts` analog zum SQLite-Migrations-Runner (Pure-Funktion `runSettingsMigrations` auf raw geparstem JSON vor Default-Merge, Persist nur bei `ranIds.length > 0`). Erste Migration `defaults_v0_2_x_drift` (id=2) raeumt vier Default-Drifts defensiv pro Feld auf: „Wöchentlich · Claude Design"-Bar nur entfernen, wenn alle fuenf Default-Keys exakt passen; `weekly_sonnet`-Label nur anheben, wenn der Text exakt `'Nur Sonnet'` ist; `default_limit` nur clampen, wenn der Wert *exakt* `1_000_000`; `model_limits` pro Modell-Key gleich behandeln. `sensitive_file_patterns` bewusst nicht migriert (kein Drift im persistierten Dokument — Defaults leben hartcodiert in `sensitiveFiles.ts`). Bestandsuser ohne `schema_version`-Feld werden via `readSchemaVersion()` implizit als Version 1 gelesen. |
+
 ### Build & Distribution (Phase 2)
 
 | Feature                              | Status | Bemerkung |

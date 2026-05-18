@@ -46,6 +46,13 @@ export interface LimitBar {
 // Vollständige Settings-Shape laut Architektur Kapitel 4.
 // Wird als settings.json im AppData-Ordner persistiert.
 export interface AppSettings {
+  // Phase-2 Season-25: Settings-Schema-Versionierung analog zum SQLite-
+  // Migrations-Runner. `SettingsStore.read()` zieht Bestandsuser ueber eine
+  // versionierte TypeScript-Migrations-Pipeline (`src/main/settings/migrations.ts`)
+  // auf den aktuellen Stand, bevor das zod-Vollschema parst. Wert haelt
+  // CURRENT_SETTINGS_SCHEMA_VERSION; Bestandsuser ohne das Feld werden vor
+  // dem Pipeline-Lauf implizit als Version 1 gelesen.
+  schema_version: number;
   workspace_path: string;
   // Phase-2 Season-18: First-Start-Workspace-Wizard. `false` signalisiert, dass
   // der Welcome-Screen noch nicht durchlaufen wurde — der Boot-Scan wird dann

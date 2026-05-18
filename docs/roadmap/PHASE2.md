@@ -298,7 +298,7 @@ Erweiterung des Toggle-Modes aus Phase 1.
 
 ## Bereich: Settings & Persistenz
 
-### Feature: Settings-Schema-Versionierung mit Migrations-Pipeline
+### Feature: Settings-Schema-Versionierung mit Migrations-Pipeline ✅
 
 Versionierte Settings-Migration analog zum SQLite-Migrations-Runner.
 

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { SettingsStore } from '../../src/main/settings/store';
 import { buildDefaultSettings } from '../../src/main/settings/defaults';
+import { CURRENT_SETTINGS_SCHEMA_VERSION } from '../../src/main/settings/migrations';
 
 describe('SettingsStore', () => {
   let tmpDir: string;
@@ -78,5 +79,63 @@ describe('SettingsStore', () => {
     const store = SettingsStore.initialize(filePath);
     store.patch({ terminal_font_size: 18 });
     expect(fs.existsSync(`${filePath}.tmp`)).toBe(false);
+  });
+
+  // Phase-2 Season-25: Settings-Schema-Versionierung. Bestandsuser-Datei ohne
+  // `schema_version`-Feld (vor Season 25 angelegt) wird durch die Pipeline auf
+  // den aktuellen Stand gezogen und mit erhoehter Version + bereinigten
+  // Default-Drifts persistiert.
+  it('read() migriert Bestandsuser ohne schema_version + persistiert das Ergebnis', () => {
+    SettingsStore.initialize(filePath);
+    // Pre-Season-25-Stand simulieren: kein schema_version-Feld, die alte
+    // Claude-Design-Bar, das alte 1M-default_limit.
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    delete raw.schema_version;
+    raw.limit_bars = [
+      { id: '5h', label: '5-Stunden-Limit', window_hours: 5, filter: 'all', limit_method: 'p90' },
+      {
+        id: 'weekly_design',
+        label: 'Wöchentlich · Claude Design',
+        window_hours: 168,
+        filter: 'top_tier',
+        limit_method: 'p90',
+      },
+    ];
+    raw.default_limit = 1_000_000;
+    fs.writeFileSync(filePath, JSON.stringify(raw), 'utf-8');
+
+    const store = new SettingsStore(filePath);
+    const settings = store.read();
+
+    expect(settings.schema_version).toBe(CURRENT_SETTINGS_SCHEMA_VERSION);
+    expect(settings.default_limit).toBe(200_000);
+    expect(settings.limit_bars.find((b) => b.id === 'weekly_design')).toBeUndefined();
+
+    // Persist-Check: die Pipeline hat das migrierte Objekt zurueck auf die
+    // Disk geschrieben — beim naechsten Read springt der Runner sofort an
+    // `if (id <= currentVersion) continue` vorbei.
+    const persisted = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    expect(persisted.schema_version).toBe(CURRENT_SETTINGS_SCHEMA_VERSION);
+    expect(persisted.default_limit).toBe(200_000);
+    expect(persisted.limit_bars.find((b: { id: string }) => b.id === 'weekly_design')).toBeUndefined();
+  });
+
+  // Idempotenz: ein zweiter Read auf einer bereits aktuellen Datei darf die
+  // Datei NICHT neu schreiben (sonst belasten wir jeden App-Start mit einem
+  // rename-Roundtrip).
+  it('read() schreibt nicht neu, wenn schema_version bereits aktuell ist', () => {
+    SettingsStore.initialize(filePath);
+    const mtimeBefore = fs.statSync(filePath).mtimeMs;
+    // Kleiner Mtime-Skew, damit der Vergleich sicher ist (Windows-Filetime
+    // hat ~16ms-Granularitaet).
+    const future = new Date(mtimeBefore + 500);
+    fs.utimesSync(filePath, future, future);
+    const sealedMtime = fs.statSync(filePath).mtimeMs;
+
+    const store = new SettingsStore(filePath);
+    store.read();
+
+    const mtimeAfter = fs.statSync(filePath).mtimeMs;
+    expect(mtimeAfter).toBe(sealedMtime);
   });
 });

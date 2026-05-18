@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Settings-Schema-Versionierung: Pipeline analog SQLite-Runner mit defensiver Drift-Detection pro Feld (B)
+
+**Entscheidung:** `settings.json` traegt ein `schema_version`-Pflichtfeld. Eine versionierte TypeScript-Migrations-Pipeline in `src/main/settings/migrations.ts` laeuft in `SettingsStore.read()` zwischen `JSON.parse` und `AppSettingsSchema.parse`, persistiert das Ergebnis nur, wenn tatsaechlich Migrations gelaufen sind. Jede Migration ist defensiv geschrieben — sie ersetzt einen Wert nur, wenn der exakte alte Default noch unveraendert im Dokument steht; User-Anpassungen bleiben unangetastet.
+
+**Varianten:**
+
+- **A** Strikte versionierte Pipeline, Migration ueberschreibt ohne Drift-Detection. Migration 1→2 setzt einfach den neuen Default ueberall. Simpel, aber buegelt User-Anpassungen (eigene `limit_bars`-Labels, eigene `model_limits`-Werte) weg.
+- **B** Versionierte Pipeline mit defensiver Drift-Detection pro Feld (gewaehlt). Pipeline-Infrastruktur strikt nach Version, Defensivitaet ist Konvention im Schreiben der Migrations. Sicher fuer aktiv gepflegte Settings, etwas mehr Code pro Migration.
+- **C** Kein Versionsfeld — bestehender Default-Merge wird zu Deep-Merge + heuristische Per-Feld-Cleanups im Read-Pfad. Pragmatisch ohne neue Infrastruktur, skaliert aber nicht ueber Trivial-Drifts hinaus (Feldnamen-Umbennenung oder Schachtelung gehen so nicht sauber).
+
+**Grund:** Die Roadmap-Vorgabe „analog zum SQLite-Migrations-Runner" hat C disqualifiziert — ohne Versions-Anker keine Idempotenz-Garantie ueber strukturelle Aenderungen hinweg. A waere bei einem reinen Erst-User-Setup tragbar gewesen, aber TakumiDeck wird als Daily-Driver mit aktiv gepflegten Settings betrieben (eigener Wochen-Reset, eigene `model_limits`, eigene Bar-Anpassungen) — in dem Kontext darf eine Migration keinen User-Wert ungefragt ueberschreiben. B ist die einzige Variante, die beide Eigenschaften zusammen liefert: versionierte Infrastruktur fuer strukturelle Migrations + Bestand-schonende Defensivitaet pro Feld. Memory-Regel „UX-Defaults: konvenient vor traditionell" hat hier konsistent gewirkt — der konveniente Daily-Driver-Pfad ist „User-Wert ueberlebt jeden Migration-Tick", nicht „Migration biegt alles auf Anthropic-Default zurueck".
+
+**Konsequenz:** Jede kuenftige Default-Drift bekommt eine eigene Migration mit naechster `id`, und `CURRENT_SETTINGS_SCHEMA_VERSION` wird hochgezogen. Ein Guard-Test (`tests/main/settings-migrations.test.ts`) prueft die Synchronisation. Migrations sehen das raw geparste JSON *vor* dem Default-Merge — sonst wuerde der Merge fehlende Felder bereits mit dem neuen Default vorbefuellen, und die Drift-Detection koennte „alter Default" nicht von „neuer Default" unterscheiden. Persist-Check ueber `ranIds.length > 0` haelt den Boot leichtgewichtig: wer schon migriert ist, hat keinen `rename`-Roundtrip mehr im Read-Pfad.
+
+**Implementierungsdetail:** Die erste ausgelieferte Migration `defaults_v0_2_x_drift` (id=2) bundelt vier Drifts in einen Schritt — drei aus der Roadmap-Notiz (`limit_bars` Claude-Design-Bar entfernt, `weekly_sonnet`-Label angehoben, `default_limit` 1 M → 200 k) plus `model_limits` pro Modell-Key gleicher Pfad. Die Roadmap-Notiz nennt als dritten Drift „Sensitive-Pattern-Defaults" — in der Praxis war der Settings-Default (`sensitive_file_patterns: string[]`) seit Sprint 8 stets das leere Array; die schuetzenden Patterns (`.env(.*)`, `secrets.*`, `*.key`, `*.pem`) leben hartcodiert in `src/renderer/components/sensitiveFiles.ts` und sind additiv. Kein Drift im persistierten Dokument → bewusst nicht migriert. Defensive Helper (`isPreSprint9ClaudeDesignBar`, `isPreSprint9SonnetBar`) pruefen pro Eintrag alle Default-Keys, sodass ein User-customized-Bar mit gleicher `id` (z.B. abweichender Filter) nicht versehentlich entfernt wird. Migration ist idempotent: doppelter Lauf liefert dasselbe Ergebnis — getestet als eigener Spec.
+
+---
+
 ## Markdown-Editor-Layout: Side-by-Side als Default + prozentuales Sync-Scrolling (B + S1)
 
 **Entscheidung:** Der Markdown-Editor rendert Editor und Preview parallel mit synchronem Scrolling als neuen Daily-Driver-Default. Die alten Phase-1-Modi „Nur Editor" und „Nur Preview" bleiben als Per-Datei-Switch in der Toolbar erreichbar und als Default in den Settings wählbar. Sync-Scroll läuft prozentual und einseitig getrieben — das Pane, in dem der User scrollt, schiebt das andere; keine Heading-Map.

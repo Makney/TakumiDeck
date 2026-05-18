@@ -2,6 +2,7 @@ import type { AppSettings } from '@shared/types';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { CURRENT_SETTINGS_SCHEMA_VERSION } from './migrations';
 
 // Standardwerte laut Architektur Kapitel 4.
 // `workspace_path` bleibt anpassbar pro Maschine — Default zeigt auf <home>/Projekte,
@@ -15,6 +16,10 @@ function pickDefaultWorkspacePath(): string {
 
 export function buildDefaultSettings(): AppSettings {
   return {
+    // Phase-2 Season-25: Schema-Versionsfeld. Frische Anlagen sind per
+    // Definition auf dem aktuellen Stand; die Migrations-Pipeline laeuft
+    // dann beim `read()` nicht (kein Eintrag mit `id > current`).
+    schema_version: CURRENT_SETTINGS_SCHEMA_VERSION,
     workspace_path: pickDefaultWorkspacePath(),
     // Phase-2 Season-18: Default ist `true`, damit der Read-Merge fuer
     // Bestandsuser ohne das Feld den Wizard NICHT triggert. Nur

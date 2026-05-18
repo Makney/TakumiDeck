@@ -34,6 +34,12 @@ export const LimitBarSchema = z.object({
 });
 
 export const AppSettingsSchema = z.object({
+  // Phase-2 Season-25: Schema-Versionsfeld fuer die Settings-Migrations-Pipeline.
+  // `SettingsStore.read()` ruft `runSettingsMigrations()` zwischen JSON-Parse
+  // und zod-Validierung; Bestandsuser ohne das Feld werden implizit als
+  // Version 1 gelesen, die Pipeline schreibt das migrierte Objekt mit
+  // erhoehter Version zurueck auf die Disk.
+  schema_version: z.number().int().positive(),
   workspace_path: z.string(),
   // Phase-2 Season-18: First-Start-Workspace-Wizard. Default-Merge in
   // `SettingsStore.read()` greift `buildDefaultSettings().workspace_wizard_completed=true`,
