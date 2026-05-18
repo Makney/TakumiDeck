@@ -87,16 +87,18 @@ DEV (main) ──► Code-Review der geänderten Dateien ──► Fixes ──�
 
    Erfordert die `gh` CLI (mindestens authentifiziert auf das Repo). Bei Pre-Release-Charakter (Alpha/Beta-Tag, RC-Stand) `--prerelease` ergänzen — sonst läuft das Release als reguläre, publizierte Version.
 
-10. **Windows-Build erzeugen und als Release-Asset anhängen** — sonst hat das `/releases`-Fenster keine herunterladbare `.exe`/`.zip`:
+10. **Windows-Build erzeugen, `latest.yml` generieren, alles als Release-Assets anhängen** — sonst hat das `/releases`-Fenster keine herunterladbare `.exe`/`.zip` und der Auto-Updater im Daily-Driver findet beim Start keine neue Version:
 
     ```bash
     npm run make                                    # Electron-Forge: Squirrel-Setup.exe + win32-zip nach out/make/
+    node scripts/generate-latest-yml.mjs            # schreibt out/make/latest.yml (sha512+size+release-date)
     gh release upload v<MAJOR>.<MINOR>.<PATCH> \
       "out/make/squirrel.windows/x64/{{PROJEKT_NAME}}-<MAJOR>.<MINOR>.<PATCH> Setup.exe" \
-      "out/make/zip/win32/x64/{{PROJEKT_NAME}}-win32-x64-<MAJOR>.<MINOR>.<PATCH>.zip"
+      "out/make/zip/win32/x64/{{PROJEKT_NAME}}-win32-x64-<MAJOR>.<MINOR>.<PATCH>.zip" \
+      "out/make/latest.yml"
     ```
 
-    Die Pfade folgen aus `forge.config.ts` (Maker: `MakerSquirrel` + `MakerZIP(['win32'])`); bei abweichenden Makern entsprechend anpassen. Pre-Check: `npm run lint && npm run typecheck && npm test` muss bereits aus Schritt 8 grün sein — keine extra Test-Runde fürs Packaging.
+    Die Pfade folgen aus `forge.config.ts` (Maker: `MakerSquirrel` + `MakerZIP(['win32'])`); bei abweichenden Makern entsprechend anpassen. `latest.yml` ist das Feed-File, das `electron-updater`'s GitHub-Provider beim App-Start liest — fehlt es, meldet der Updater stumm „keine neue Version", obwohl ein Release ge-pushed wurde. Pre-Check: `npm run lint && npm run typecheck && npm test` muss bereits aus Schritt 8 grün sein — keine extra Test-Runde fürs Packaging.
 
 ---
 

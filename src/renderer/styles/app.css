@@ -4283,6 +4283,16 @@ body,
   color: var(--td-text-dim);
 }
 
+/* Phase-2 Season-26 — Update-Status-Block im About-Tab: Status-Text + Re-Check-
+   Button in einer Zeile, vertikal zentriert, mit erlaubtem Wrap-Verhalten,
+   damit lange Fehler-Messages nicht den Button rausdruecken. */
+.td-settings-updater {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .td-settings-footer {
   display: flex;
   align-items: center;
@@ -4384,6 +4394,38 @@ body,
 .td-titlebar-claude-banner:hover {
   background: rgba(245, 185, 66, 0.2);
   border-color: rgba(245, 185, 66, 0.7);
+}
+
+/* Phase-2 Season-26 — Auto-Update-Banner in der Header-Bar. Analog zum
+   Claude-Health-Banner, aber in Akzent-Farbe (Update = positiv-neutral,
+   keine Warnung). Der 'ready'-Zustand betont, dass der User einen
+   Restart-Klick ausloesen kann. */
+.td-titlebar-updater-banner {
+  background: color-mix(in srgb, var(--td-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--td-accent) 40%, transparent);
+  cursor: pointer;
+  font-family: var(--td-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 2px;
+  color: var(--td-accent);
+  -webkit-app-region: no-drag;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.td-titlebar-updater-banner:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--td-accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--td-accent) 70%, transparent);
+}
+
+.td-titlebar-updater-banner:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.td-titlebar-updater-banner.ready {
+  background: color-mix(in srgb, var(--td-accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--td-accent) 60%, transparent);
 }
 
 /* Sprint 9 — HistoryActionModal: kompaktes Auswahl-Modal nach Klick auf

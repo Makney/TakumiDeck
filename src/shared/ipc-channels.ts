@@ -121,4 +121,16 @@ export const Channels = {
   // Sprint 8 — Health-Check, ob die claude-Binary erreichbar ist. Header-Bar
   // ruft beim Mount + bei PTY-Spawn-Fehlern.
   AppClaudeHealth: 'app:claude-health',
+
+  // Phase-2 Season-26: Auto-Update via electron-updater gegen GitHub-Releases.
+  // Renderer ruft `Check` beim Mount + im Settings-About-Tab; `StartDownload`
+  // nach User-Klick auf den Banner; `QuitAndInstall` nach abgeschlossenem
+  // Download. `GetState` synchronisiert den Banner beim Mount, ohne auf den
+  // naechsten Push-Tick warten zu muessen. Skip-in-Dev: im !app.isPackaged-
+  // Pfad gibt `Check` direkt einen 'no-update'-State zurueck.
+  UpdaterGetState: 'updater:get-state',
+  UpdaterCheck: 'updater:check',
+  UpdaterStartDownload: 'updater:start-download',
+  UpdaterQuitAndInstall: 'updater:quit-and-install',
+  UpdaterStatePush: 'updater:state-push',
 } as const;

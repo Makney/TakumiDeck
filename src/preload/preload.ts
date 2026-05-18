@@ -45,6 +45,8 @@ import type {
   StatsModelsResult,
   StatsOverviewInput,
   StatsOverviewResult,
+  UpdaterState,
+  UpdaterStatePushEvent,
   SessionArchiveInput,
   SessionCloseInput,
   SessionHistoryEntry,
@@ -251,6 +253,25 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.StatsModels, input) as Promise<
         IpcResult<StatsModelsResult>
       >,
+  },
+  // Phase-2 Season-26: Auto-Update via electron-updater. `onStatePush` ist
+  // analog zu sessions.onStatusPush / pty.onData: reichen nur den Payload
+  // ueber die contextBridge, kein IpcRendererEvent.
+  updater: {
+    getState: () =>
+      ipcRenderer.invoke(Channels.UpdaterGetState) as Promise<IpcResult<UpdaterState>>,
+    check: () =>
+      ipcRenderer.invoke(Channels.UpdaterCheck) as Promise<IpcResult<UpdaterState>>,
+    startDownload: () =>
+      ipcRenderer.invoke(Channels.UpdaterStartDownload) as Promise<IpcResult<UpdaterState>>,
+    quitAndInstall: () =>
+      ipcRenderer.invoke(Channels.UpdaterQuitAndInstall) as Promise<IpcResult<null>>,
+    onStatePush: (handler: (event: UpdaterStatePushEvent) => void) => {
+      const wrapped = (_evt: IpcRendererEvent, payload: UpdaterStatePushEvent) =>
+        handler(payload);
+      ipcRenderer.on(Channels.UpdaterStatePush, wrapped);
+      return () => ipcRenderer.removeListener(Channels.UpdaterStatePush, wrapped);
+    },
   },
 };
 

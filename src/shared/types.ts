@@ -914,6 +914,26 @@ export interface UsageContextInput {
   sessionId: string;
 }
 
+// Phase-2 Season-26: Auto-Update-State, der zwischen Main und Renderer
+// fliesst. Discriminated Union nach `kind` — der Banner im Header rendert
+// nur, wenn `kind` in {available, downloading, downloaded, error} liegt.
+// `version`/`releaseDate` kommen aus electron-updater's UpdateInfo; bei
+// 'error' ist `message` der schon abgeschliffene Hinweistext (Stacktrace
+// landet im Logger, nicht im UI).
+export type UpdaterState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'no-update'; checkedAt: number; currentVersion: string }
+  | { kind: 'available'; version: string; releaseDate: string | null }
+  | { kind: 'downloading'; version: string; percent: number }
+  | { kind: 'downloaded'; version: string }
+  | { kind: 'error'; message: string; checkedAt: number }
+  | { kind: 'disabled-dev'; currentVersion: string };
+
+export interface UpdaterStatePushEvent {
+  state: UpdaterState;
+}
+
 // Bridge-API-Shape, die der Renderer über window.api erhält.
 export interface RendererApi {
   settings: {
@@ -1053,6 +1073,17 @@ export interface RendererApi {
     overview: (input: StatsOverviewInput) => Promise<IpcResult<StatsOverviewResult>>;
     heatmap: (input: StatsHeatmapInput) => Promise<IpcResult<StatsHeatmapResult>>;
     models: (input: StatsModelsInput) => Promise<IpcResult<StatsModelsResult>>;
+  };
+  // Phase-2 Season-26: Auto-Update via electron-updater. `getState` ist der
+  // synchrone Mount-Sync (statt nur auf den naechsten Push-Tick zu warten),
+  // `check` triggert den manuellen Re-Check aus dem Settings-About-Tab,
+  // `startDownload` und `quitAndInstall` werden vom Banner gefeuert.
+  updater: {
+    getState: () => Promise<IpcResult<UpdaterState>>;
+    check: () => Promise<IpcResult<UpdaterState>>;
+    startDownload: () => Promise<IpcResult<UpdaterState>>;
+    quitAndInstall: () => Promise<IpcResult<null>>;
+    onStatePush: (handler: (event: UpdaterStatePushEvent) => void) => () => void;
   };
 }
 

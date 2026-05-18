@@ -316,7 +316,7 @@ Versionierte Settings-Migration analog zum SQLite-Migrations-Runner.
 
 ## Bereich: Build & Distribution
 
-### Feature: Auto-Update via electron-updater
+### Feature: Auto-Update via electron-updater ✅
 
 Automatische Updates beim App-Start.
 

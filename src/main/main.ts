@@ -17,6 +17,8 @@ import { registerFsIpc, screenshotsDirFromUserData, templatesDirFromUserData } f
 import { registerGitIpc } from './ipc/git';
 import { registerTemplatesIpc } from './ipc/templates';
 import { registerDocsIpc } from './ipc/docs';
+import { registerUpdaterIpc } from './ipc/updater';
+import { AutoUpdaterWrapper } from './updater/auto-updater';
 import { realGitDriver } from './git/driver';
 import { PtyManager } from './pty/manager';
 import { realPtySpawn } from './pty/spawn';
@@ -277,6 +279,23 @@ void app.whenReady().then(async () => {
       log: logger,
     });
 
+    // Phase-2 Season-26: Auto-Update via electron-updater gegen GitHub-Releases.
+    // Lazy import, weil electron-updater nur im verpackten App-Bundle Sinn macht
+    // (Dev-Modus laedt das Modul trotzdem fuer Konsistenz, der Wrapper geht
+    // direkt in den 'disabled-dev'-Zweig).
+    const { autoUpdater } = await import('electron-updater');
+    const updaterWrapper = new AutoUpdaterWrapper({
+      updater: autoUpdater,
+      isPackaged: app.isPackaged,
+      currentVersion: app.getVersion(),
+      log: logger,
+      push: (state) => {
+        mainWindow?.webContents.send(Channels.UpdaterStatePush, { state });
+      },
+    });
+    updaterWrapper.initialize();
+    registerUpdaterIpc({ wrapper: updaterWrapper });
+
     // Sprint-5-JSONL-Watcher startet die globale Token-Aggregation. Initial-Scan
     // (ignoreInitial:false) zieht historische Sessions in messages/usage_buckets
     // nach; persistierte Byte-Offsets verhindern, dass derselbe Bytes-Bereich beim
@@ -438,6 +457,17 @@ void app.whenReady().then(async () => {
     });
 
     createMainWindow();
+
+    // Phase-2 Season-26: Erst-Check ~5s nach App-Start. Bewusst nicht synchron in
+    // ready-to-show, weil electron-updater einen Network-Call macht und wir den
+    // First-Paint nicht blocken wollen. Im Dev-Mode no-op (Wrapper liefert
+    // 'disabled-dev'), beim Packaged-Build feuert es ein 'checking'-Event und
+    // landet danach in 'available' oder 'no-update'.
+    if (app.isPackaged) {
+      setTimeout(() => {
+        void updaterWrapper.check();
+      }, 5000);
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

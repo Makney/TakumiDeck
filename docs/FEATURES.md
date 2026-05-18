@@ -223,7 +223,7 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
-| `Auto-Update via electron-updater`   | ⛔      | GitHub-Releases als Update-Quelle |
+| `Auto-Update via electron-updater`   | ✅      | 2026-05-18 (Phase-2-Season-26) — App-Start-Check ~5 s nach Boot via `electron-updater` gegen `Makney/TakumiDeck`-Releases. Header-Bar-Banner mit vier Zustaenden (available → Download / downloading → Prozent / downloaded → Jetzt installieren / error → Hint). Download erst nach User-Klick (`autoDownload = false`), Install erst nach zweitem Klick (`autoInstallOnAppQuit = false`). Settings-About-Tab mit Status + „Jetzt nach Update suchen"-Button. Release-Pipeline um `scripts/generate-latest-yml.mjs` Post-Make-Script erweitert (Forge schreibt das Feed-File nicht selbst); `docs/release/VERSIONIERUNG.md` Schritt 10 nachgezogen. Im Dev-Mode disabled (`disabled-dev`-State, kein Network-Call). |
 | `GitHub Actions Build-Pipeline`      | ⛔      | Tag-Push → Windows-Build → Release |
 
 ### Right-Pane-Polish (Phase 2)

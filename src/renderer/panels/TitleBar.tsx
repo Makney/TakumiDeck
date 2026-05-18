@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ProjectRow } from '@shared/types';
+import type { ProjectRow, UpdaterState } from '@shared/types';
 import { useProjectStore } from '../stores/projects';
 import { useSessionStore } from '../stores/sessions';
 import { useUiStore } from '../stores/ui';
 import { displayProjectName } from '../components/displayProjectName';
+import { useUpdaterState } from '../components/useUpdaterState';
 
 // Sprint 8 — Header-Bar (Architektur 6.0, td-titlebar-Klassen aus
 // docs/design/claude-export/styles.css Zeilen 62-118).
@@ -162,6 +163,7 @@ export function TitleBar({ version }: Props) {
             ⚠ claude-Binary nicht gefunden — anpassen
           </button>
         )}
+        <UpdaterBanner />
         {activeProject ? (
           <span className="td-titlebar-meta-item" title="Aktives Projekt">
             <span aria-hidden>▣</span>{' '}
@@ -231,6 +233,108 @@ export function TitleBar({ version }: Props) {
         </button>
       </div>
     </header>
+  );
+}
+
+// Phase-2 Season-26: Auto-Update-Banner analog zum Claude-Health-Banner.
+// Vier sichtbare States; 'idle' / 'checking' / 'no-update' / 'disabled-dev'
+// rendern nichts (Banner wuerde sonst flackernd auf und zu gehen).
+function UpdaterBanner() {
+  const state = useUpdaterState();
+  const [busy, setBusy] = useState(false);
+
+  if (
+    state.kind === 'idle' ||
+    state.kind === 'checking' ||
+    state.kind === 'no-update' ||
+    state.kind === 'disabled-dev'
+  ) {
+    return null;
+  }
+
+  return (
+    <UpdaterBannerBody
+      state={state}
+      busy={busy}
+      onStartDownload={async () => {
+        if (busy) return;
+        setBusy(true);
+        try {
+          await window.api.updater.startDownload();
+        } finally {
+          setBusy(false);
+        }
+      }}
+      onInstall={async () => {
+        if (busy) return;
+        setBusy(true);
+        try {
+          await window.api.updater.quitAndInstall();
+        } finally {
+          setBusy(false);
+        }
+      }}
+    />
+  );
+}
+
+function UpdaterBannerBody({
+  state,
+  busy,
+  onStartDownload,
+  onInstall,
+}: {
+  state: Extract<
+    UpdaterState,
+    { kind: 'available' | 'downloading' | 'downloaded' | 'error' }
+  >;
+  busy: boolean;
+  onStartDownload: () => void;
+  onInstall: () => void;
+}) {
+  if (state.kind === 'available') {
+    return (
+      <button
+        type="button"
+        className="td-titlebar-meta-item td-titlebar-updater-banner"
+        onClick={onStartDownload}
+        disabled={busy}
+        title={`Neue Version v${state.version} verfuegbar — klicken zum Herunterladen`}
+      >
+        📦 Update v{state.version} verfuegbar — Download
+      </button>
+    );
+  }
+  if (state.kind === 'downloading') {
+    return (
+      <span
+        className="td-titlebar-meta-item td-titlebar-updater-banner"
+        title={`Lade Update v${state.version}`}
+      >
+        ⬇ Lade v{state.version} … {state.percent}%
+      </span>
+    );
+  }
+  if (state.kind === 'downloaded') {
+    return (
+      <button
+        type="button"
+        className="td-titlebar-meta-item td-titlebar-updater-banner ready"
+        onClick={onInstall}
+        disabled={busy}
+        title={`Update v${state.version} ist bereit — App neu starten zum Installieren`}
+      >
+        ✅ Update v{state.version} bereit — Jetzt installieren
+      </button>
+    );
+  }
+  return (
+    <span
+      className="td-titlebar-meta-item warning"
+      title={state.message}
+    >
+      ⚠ Update-Fehler
+    </span>
   );
 }
 

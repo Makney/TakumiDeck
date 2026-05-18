@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## latest.yml-Generierung als manuelles Post-Make-Script statt Forge-Publish-Hook (Season 26)
+
+**Bereich:** `scripts/generate-latest-yml.mjs` (Build-Adapter) plus der `gh release upload`-Aufruf in `docs/release/VERSIONIERUNG.md` Schritt 10, der das generierte `out/make/latest.yml` mit hochlaedt. Pure-Logik liegt in `src/main/updater/latest-yml.ts` und ist davon entkoppelt.
+
+**Was:** `electron-updater`'s GitHub-Provider liest beim Check eine `latest.yml`-Datei neben den Release-Assets (sha512 + size + version + releaseDate). Forge schreibt diese Datei nicht selbst — das ist eine electron-builder-Konvention. Wir schliessen die Luecke mit einem Post-Make-Script, das nach `npm run make` laufen muss und das YAML schreibt; der Release-Workflow nimmt es dann via `gh release upload` mit. Wer den Script-Schritt vergisst, pushed eine neue Version, aber der Auto-Updater im Daily-Driver findet sie nicht — `electron-updater` meldet stumm „kein Update", weil das Feed-File auf dem Stand der Vorgaenger-Version bleibt.
+
+**Warum so:** Variante A („electron-updater + bestehende Forge/Squirrel-Pipeline") aus dem Season-26-Variants-Brief verlangt explizit, am Build-Stack nichts zu drehen — der memory-dokumentierte „Forge-Vite + Externals = leeres ASAR"-Workaround sitzt in `forge.config.ts` und hat in Phase 1 einen vollen Sprint-Tag gekostet, ein Wechsel auf electron-builder (Variante B, die das Feed-File automatisch schreibt) wuerde dasselbe Tail-Risiko in der anderen Richtung neu freilegen. Forge selbst hat zwar `PublisherGithub`, der `latest.yml` schreiben *koennte* — aber das wuerde `electron-forge publish` als Release-Pfad voraussetzen statt des aktuellen manuellen `gh release create` + `gh release upload`-Flows. Der manuelle Flow ist mit Absicht so dokumentiert (eigener Memory-Eintrag „Release-Pipeline: gh release + Asset-Upload manuell"), weil der User-Trigger pro Release bewusst einzeln laeuft.
+
+**Risiko:** Mittel. Das Vergessen des Script-Schritts ist symptomlos — kein Build-Fehler, kein UI-Hinweis, kein Test, der das faengt. Erst wenn ein User im Daily-Use beim naechsten Release keinen Update-Banner sieht und manuell „Jetzt nach Update suchen" klickt, wird der Drift sichtbar. Pre-Check-Test-Lauf faengt das nicht ab, weil die Pipeline lokal trocken laeuft. Bei Single-Maintainer-Setup beherrschbar (Doku-Step 10 lesen reicht), bei Verteilung der App auf Mitautoren oder bei spaetem-Nacht-Release wird das Risiko hoeher.
+
+**Aufloesung:** Bei der ersten echten „Update nicht aufgetaucht weil latest.yml vergessen"-Inzidenz: Forge-Publisher als Hook bauen, der nach dem Make-Lauf automatisch `latest.yml` schreibt — entweder via eigenem `PublisherBase`-Subclass oder via Forge-Hook `postMake`. Alternative: GitHub-Actions-Build-Pipeline (naechste Phase-2-Roadmap-Zeile) macht den Schritt sowieso automatisiert. **Trigger:** zweite Inzidenz „Release ohne latest.yml gepushed" *oder* die GitHub-Actions-Build-Pipeline laeuft an. Bis dahin reicht der Doku-Step im `VERSIONIERUNG.md`.
+
+---
+
 ## Spawn-Tracking als TabContainer-lokales State-Paar statt am Tab (v0.2.0 Bugfix)
 
 **Bereich:** `src/renderer/panels/TabContainer.tsx` (`spawnedIds: Set<string>` + `initialPrompts: Map<string,string>`); Cleanup in `handleClose` plus Pure-Helper in `src/renderer/components/spawnTrackingState.ts`.
