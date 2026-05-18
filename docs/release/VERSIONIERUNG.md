@@ -77,28 +77,36 @@ DEV (main) ──► Code-Review der geänderten Dateien ──► Fixes ──�
    git push origin v<MAJOR>.<MINOR>.<PATCH>
    ```
 
-9. **GitHub-Release-Objekt anlegen** — der Tag aus Schritt 8 ist nur unter `/tags` sichtbar, nicht im `/releases`-Bereich. Das Release ist ein separates Objekt mit Title + Body, das aus den Release-Notes gespeist wird:
+9. **CI uebernimmt: Release-Objekt anlegen + Windows-Build + alle Assets uploaden.** Ab Phase 2 Season 27 triggert der Tag-Push aus Schritt 8 den GitHub-Actions-Workflow `.github/workflows/release.yml`. Der Workflow laeuft auf `windows-latest` (ca. 6–10 min) und macht in einem Job:
+   - Pre-Build-Verify-Gates: `package.json.version` muss exakt zum Tag passen (ohne `v`-Prefix), `docs/release/<tag>.md` muss existieren. Schlaegt einer fehl, faellt der Workflow vor dem teuren Build mit Klartext-Hinweis aus.
+   - Pre-Check: `npm run lint && npm run typecheck && npm test` (identisch zum Husky-Pre-Commit-Hook).
+   - `npm run make` (Electron-Forge: Squirrel-Setup.exe + win32-zip nach `out/make/`).
+   - `node scripts/generate-latest-yml.mjs` schreibt `out/make/latest.yml` (sha512 + size + release-date — von `electron-updater`'s GitHub-Provider beim App-Start gelesen).
+   - Always-Artifact-Upload des kompletten `out/make/`-Verzeichnisses (7 Tage Retention, auch bei spaeterem Step-Failure ueber die Action-Run-Seite herunterladbar).
+   - Idempotenter `gh release create` (uebersprungen, wenn das Release-Objekt schon existiert); Prerelease-Flag wird automatisch aus dem Tag-Suffix abgeleitet (`-alpha`/`-beta`/`-rc`) — bei diesen Tags laeuft das Release als Pre-Release, sonst regulaer.
+   - `gh release upload --clobber` der drei Assets (Setup.exe + win32-zip + latest.yml).
 
-   ```bash
-   gh release create v<MAJOR>.<MINOR>.<PATCH> \
-     --title "{{PROJEKT_NAME}} v<MAJOR>.<MINOR>.<PATCH> - <Titel aus Release-Notes>" \
-     --notes-file docs/release/v<MAJOR>.<MINOR>.<PATCH>.md
-   ```
+   **Was du machst:** Tab im Browser zu `https://github.com/Makney/TakumiDeck/actions` oeffnen, Run auswaehlen, warten. Bei Failure: Step-Log lesen, Issue fixen, Tag re-pushen (Workflow startet neu, `--clobber` und Release-Skip-bei-existiert machen Re-Runs sicher).
 
-   Erfordert die `gh` CLI (mindestens authentifiziert auf das Repo). Bei Pre-Release-Charakter (Alpha/Beta-Tag, RC-Stand) `--prerelease` ergänzen — sonst läuft das Release als reguläre, publizierte Version.
+   *Voraussetzung in `permissions:`:* der Default-`GITHUB_TOKEN` braucht `contents: write` (im Workflow gesetzt). Keine zusaetzliche Secret-Konfiguration noetig.
 
-10. **Windows-Build erzeugen, `latest.yml` generieren, alles als Release-Assets anhängen** — sonst hat das `/releases`-Fenster keine herunterladbare `.exe`/`.zip` und der Auto-Updater im Daily-Driver findet beim Start keine neue Version:
+10. **Manueller Fallback** (nur wenn die CI ausfaellt oder das Repo offline released wird). Identisch zum alten Pre-Season-27-Pfad: Release-Objekt von Hand anlegen, lokal bauen, Assets uploaden:
 
     ```bash
+    gh release create v<MAJOR>.<MINOR>.<PATCH> \
+      --title "{{PROJEKT_NAME}} v<MAJOR>.<MINOR>.<PATCH> - <Titel aus Release-Notes>" \
+      --notes-file docs/release/v<MAJOR>.<MINOR>.<PATCH>.md
+    # Bei Pre-Release-Tag (-alpha/-beta/-rc): --prerelease ergaenzen.
+
     npm run make                                    # Electron-Forge: Squirrel-Setup.exe + win32-zip nach out/make/
-    node scripts/generate-latest-yml.mjs            # schreibt out/make/latest.yml (sha512+size+release-date)
+    node scripts/generate-latest-yml.mjs            # schreibt out/make/latest.yml
     gh release upload v<MAJOR>.<MINOR>.<PATCH> \
       "out/make/squirrel.windows/x64/{{PROJEKT_NAME}}-<MAJOR>.<MINOR>.<PATCH> Setup.exe" \
       "out/make/zip/win32/x64/{{PROJEKT_NAME}}-win32-x64-<MAJOR>.<MINOR>.<PATCH>.zip" \
       "out/make/latest.yml"
     ```
 
-    Die Pfade folgen aus `forge.config.ts` (Maker: `MakerSquirrel` + `MakerZIP(['win32'])`); bei abweichenden Makern entsprechend anpassen. `latest.yml` ist das Feed-File, das `electron-updater`'s GitHub-Provider beim App-Start liest — fehlt es, meldet der Updater stumm „keine neue Version", obwohl ein Release ge-pushed wurde. Pre-Check: `npm run lint && npm run typecheck && npm test` muss bereits aus Schritt 8 grün sein — keine extra Test-Runde fürs Packaging.
+    Die Pfade folgen aus `forge.config.ts` (Maker: `MakerSquirrel` + `MakerZIP(['win32'])`). `latest.yml` ist das Feed-File, das `electron-updater`'s GitHub-Provider beim App-Start liest — fehlt es, meldet der Updater stumm „keine neue Version", obwohl ein Release ge-pushed wurde. Pre-Check: `npm run lint && npm run typecheck && npm test` muss bereits aus Schritt 8 grün sein — keine extra Test-Runde fürs Packaging.
 
 ---
 
