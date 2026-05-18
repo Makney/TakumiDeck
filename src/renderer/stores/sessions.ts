@@ -28,6 +28,12 @@ export interface SessionTab {
   notesDraft: string;
   // Server-bestätigter Stand (z.B. nach Resume neu geladen aus DB).
   notesSaved: string;
+  // Phase-2 Season-28: True, sobald die PTY ein BEL (\a) abgesetzt hat,
+  // während der Tab inaktiv war. Die Tab-Pille zeigt dann einen Pulse-
+  // Marker, bis der User den Tab aktiviert — dann automatisch gelöscht
+  // (siehe TabContainer.setActive). Damit erfährt der User, dass ein
+  // Hintergrund-Tab Aufmerksamkeit will (Claude-Permission, Build fertig).
+  hasBell: boolean;
 }
 
 export interface AddTabInput {
@@ -60,6 +66,10 @@ interface SessionStoreState {
   setModel: (sessionId: string, model: string) => void;
   setNotesDraft: (sessionId: string, notes: string) => void;
   setNotesSaved: (sessionId: string, notes: string) => void;
+  // Phase-2 Season-28: Bell-Marker setzen oder löschen. setBell(true) wird vom
+  // onBell-Handler im TerminalTab gerufen (nur für inaktive Tabs); clearBell
+  // läuft beim Tab-Aktivieren.
+  setBell: (sessionId: string, hasBell: boolean) => void;
 }
 
 // Sprint-4-Selector: liefert die Tabs eines Projekts in Insert-Reihenfolge.
@@ -121,6 +131,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       status: 'running',
       notesDraft: input.initialNotes ?? '',
       notesSaved: input.initialNotes ?? '',
+      hasBell: false,
     };
     set((s) => ({
       tabs: [...s.tabs, tab],
@@ -145,7 +156,15 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       return;
     }
     if (!get().tabs.some((t) => t.sessionId === sessionId)) return;
-    set({ activeId: sessionId });
+    // Phase-2 Season-28: Bell-Marker des neu aktivierten Tabs löschen — der User
+    // schaut jetzt hin, also keine Aufmerksamkeit mehr nötig. Andere Tabs
+    // behalten ihren Marker, bis sie selbst aktiviert werden.
+    set((s) => ({
+      activeId: sessionId,
+      tabs: s.tabs.map((t) =>
+        t.sessionId === sessionId && t.hasBell ? { ...t, hasBell: false } : t,
+      ),
+    }));
   },
 
   nextTab: (projectId) => {
@@ -192,5 +211,17 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
         t.sessionId === sessionId ? { ...t, notesSaved: notes } : t,
       ),
     }));
+  },
+
+  setBell: (sessionId, hasBell) => {
+    set((s) => {
+      const target = s.tabs.find((t) => t.sessionId === sessionId);
+      if (!target || target.hasBell === hasBell) return s;
+      return {
+        tabs: s.tabs.map((t) =>
+          t.sessionId === sessionId ? { ...t, hasBell } : t,
+        ),
+      };
+    });
   },
 }));

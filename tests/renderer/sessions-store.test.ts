@@ -199,3 +199,54 @@ it('crypto.randomUUID ist im Test-Environment verfügbar', () => {
   expect(typeof crypto.randomUUID).toBe('function');
   vi.useRealTimers();
 });
+
+// Phase-2 Season-28: Bell-Marker fuer inaktive Tabs mit PTY-BEL-Output.
+describe('useSessionStore Bell-Marker', () => {
+  it('setBell(true) markiert nur den passenden Tab', () => {
+    const a = useSessionStore.getState().addTab(baseInput);
+    const b = useSessionStore.getState().addTab(baseInput);
+    useSessionStore.getState().setBell(b.sessionId, true);
+    const tabs = useSessionStore.getState().tabs;
+    expect(tabs.find((t) => t.sessionId === a.sessionId)?.hasBell).toBe(false);
+    expect(tabs.find((t) => t.sessionId === b.sessionId)?.hasBell).toBe(true);
+  });
+
+  it('setBell ist idempotent — gleicher Wert produziert keinen neuen State', () => {
+    const a = useSessionStore.getState().addTab(baseInput);
+    const before = useSessionStore.getState().tabs;
+    useSessionStore.getState().setBell(a.sessionId, false);
+    const after = useSessionStore.getState().tabs;
+    // Referenz-Gleichheit als Beleg, dass Zustand kein Re-Render triggert.
+    expect(after).toBe(before);
+  });
+
+  it('setActive loescht den Bell-Marker des aktivierten Tabs automatisch', () => {
+    const a = useSessionStore.getState().addTab(baseInput);
+    const b = useSessionStore.getState().addTab(baseInput);
+    useSessionStore.getState().setActive(a.sessionId);
+    useSessionStore.getState().setBell(b.sessionId, true);
+    expect(
+      useSessionStore.getState().tabs.find((t) => t.sessionId === b.sessionId)?.hasBell,
+    ).toBe(true);
+    useSessionStore.getState().setActive(b.sessionId);
+    expect(
+      useSessionStore.getState().tabs.find((t) => t.sessionId === b.sessionId)?.hasBell,
+    ).toBe(false);
+  });
+
+  it('setActive laesst Bell-Marker anderer Tabs in Ruhe', () => {
+    const a = useSessionStore.getState().addTab(baseInput);
+    const b = useSessionStore.getState().addTab(baseInput);
+    useSessionStore.getState().setBell(a.sessionId, true);
+    useSessionStore.getState().setBell(b.sessionId, true);
+    useSessionStore.getState().setActive(b.sessionId);
+    expect(
+      useSessionStore.getState().tabs.find((t) => t.sessionId === a.sessionId)?.hasBell,
+    ).toBe(true);
+  });
+
+  it('neuer Tab startet mit hasBell=false', () => {
+    const a = useSessionStore.getState().addTab(baseInput);
+    expect(a.hasBell).toBe(false);
+  });
+});

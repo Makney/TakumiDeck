@@ -635,6 +635,156 @@ body,
   font-size: 12px;
 }
 
+/* Phase-2 Season-28: Mini-Suchbar oben im Terminal. Floating absolute, damit
+   sie kein vertikales Layout-Shift macht und das Terminal beim Oeffnen nicht
+   re-fittet (waere visueller Sprung mitten im Output). */
+.td-terminal-search {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: rgba(13, 15, 14, 0.92);
+  border: 1px solid var(--td-line-2);
+  border-radius: 4px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+.td-terminal-search-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 3px 6px;
+  background: var(--td-bg, #0d0f0e);
+  border: 1px solid var(--td-line-1);
+  border-radius: 3px;
+  color: var(--td-text, #d3d6cf);
+  font-family: var(--td-mono);
+  font-size: 12px;
+  outline: none;
+}
+
+.td-terminal-search-input:focus {
+  border-color: var(--td-green, #4ade80);
+}
+
+.td-terminal-search-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--td-text-2, #9aa39a);
+  font-family: var(--td-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.td-terminal-search-btn:hover {
+  background: var(--td-line-2);
+  color: var(--td-text, #d3d6cf);
+}
+
+/* Phase-2 Season-28: Floating "↓"-Button rechts unten, wenn der User aus dem
+   Live-Output-Bereich rausgescrollt ist. Disktret, mit kleinem Akzent-Ring,
+   damit er nicht ueber Output-Text liegt aber auffaellt. */
+.td-terminal-scroll-to-bottom {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  z-index: 4;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(13, 15, 14, 0.85);
+  border: 1px solid var(--td-green, #4ade80);
+  border-radius: 50%;
+  color: var(--td-green, #4ade80);
+  font-family: var(--td-mono);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.td-terminal-scroll-to-bottom:hover {
+  background: var(--td-green, #4ade80);
+  color: var(--td-bg, #0d0f0e);
+}
+
+/* Phase-2 Season-28: Rechtsklick-Kontextmenue. Position kommt per inline-style
+   vom React-Component; das CSS clampt das Menue ans Viewport ueber max-width/
+   right-Cap. Sehr schmales Schatten-Token konsistent mit der Search-Bar. */
+.td-terminal-context-menu {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: rgba(13, 15, 14, 0.96);
+  border: 1px solid var(--td-line-2);
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  min-width: 200px;
+  font-family: var(--td-mono);
+  font-size: 12px;
+}
+
+.td-terminal-context-menu li {
+  margin: 0;
+}
+
+.td-terminal-context-menu button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--td-text, #d3d6cf);
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.td-terminal-context-menu button:hover {
+  background: var(--td-line-2);
+}
+
+.td-shortcut-hint {
+  margin-left: 14px;
+  color: var(--td-text-2, #9aa39a);
+  font-size: 11px;
+}
+
+/* Phase-2 Season-28: Tab-Pulse, wenn die PTY ein BEL abgesetzt hat waehrend
+   der Tab inaktiv war. Box-shadow als Akzent-Aura, damit die Tab-Geometrie
+   nicht springt (kein border-Toggle). Animation laeuft, solange has-bell gilt;
+   sessions-Store loescht den Marker beim setActive automatisch. */
+.td-tab.has-bell {
+  animation: td-tab-bell-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes td-tab-bell-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.35);
+  }
+}
+
 /* Tab-Container Layout: Tab-Bar (28px) + Stack der Tabs (1fr) + optionaler Notes-Footer.
    Sprint 9 — Container-Query-Anker: ermöglicht der Action-Bar, sich bei
    schmalen Mid-Spalten zweizeilig zu falten (Pillen oben, ctx + Status unten),

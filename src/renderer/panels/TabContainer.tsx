@@ -124,6 +124,11 @@ export function TabContainer({ settings }: Props) {
   // Globale Keyboard-Shortcuts: Ctrl+N neue Session, Ctrl+T Templates, Ctrl+Tab /
   // Ctrl+Shift+Tab Wechsel. Tab-Navigation ist auf das aktive Projekt beschränkt
   // (siehe Sprint-4-Filter).
+  //
+  // Phase-2 Season-28: Ctrl+1..9 springt direkt zum n-ten Tab im aktiven Projekt
+  // — wie in Windows Terminal / VS Code. Ctrl+9 ist konventionell der letzte Tab
+  // (statt der neunte), Ctrl+1..8 sind direkter Index 1..8. Wir koennten beide
+  // Konventionen unterstuetzen, halten es aber simpel: 1..9 sind Indizes 1..9.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!e.ctrlKey) return;
@@ -143,11 +148,32 @@ export function TabContainer({ settings }: Props) {
         if (!activeProjectId) return;
         if (e.shiftKey) prevTab(activeProjectId);
         else nextTab(activeProjectId);
+      } else if (e.key >= '1' && e.key <= '9' && !e.shiftKey && !e.altKey) {
+        // Ctrl+Digit nur konsumieren, wenn ein Projekt aktiv ist und der Index
+        // existiert; sonst Default-Verhalten (z.B. Chrome-Tab-Switch wird im
+        // Renderer-Prozess ohnehin geblockt, aber andere Bindings koennten
+        // existieren).
+        if (!activeProjectId) return;
+        const index = parseInt(e.key, 10) - 1;
+        const list = useSessionStore.getState().tabs.filter(
+          (t) => t.projectId === activeProjectId,
+        );
+        const target = list[index];
+        if (!target) return;
+        e.preventDefault();
+        setActive(target.sessionId);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [nextTab, prevTab, activeProjectId, setShowNewSessionModal, setShowTemplatesModal]);
+  }, [
+    nextTab,
+    prevTab,
+    activeProjectId,
+    setActive,
+    setShowNewSessionModal,
+    setShowTemplatesModal,
+  ]);
 
   const handleClose = useCallback(
     async (sessionId: string) => {
@@ -260,6 +286,10 @@ export function TabContainer({ settings }: Props) {
           title: t.title,
           status: t.status,
           isActive: t.sessionId === activeId,
+          // Phase-2 Season-28: Bell-Marker, wenn die PTY ein BEL abgesetzt hat
+          // waehrend der Tab inaktiv war. Wird beim setActive automatisch
+          // wieder geloescht (siehe sessions-Store.setActive).
+          hasBell: t.hasBell,
         }))}
         canAdd={canAddSession}
         onSelect={setActive}
@@ -367,7 +397,15 @@ export function TabContainer({ settings }: Props) {
 }
 
 interface TabBarProps {
-  tabs: Array<{ sessionId: string; title: string; status: SessionStatus; isActive: boolean }>;
+  tabs: Array<{
+    sessionId: string;
+    title: string;
+    status: SessionStatus;
+    isActive: boolean;
+    // Phase-2 Season-28: True, wenn die PTY ein BEL abgesetzt hat waehrend der
+    // Tab inaktiv war. Triggert eine Pulse-Animation auf der Tab-Pille.
+    hasBell: boolean;
+  }>;
   canAdd: boolean;
   onSelect: (sessionId: string) => void;
   onClose: (sessionId: string) => void;
@@ -381,7 +419,7 @@ function TabBar({ tabs, canAdd, onSelect, onClose, onResume, onAdd }: TabBarProp
       {tabs.map((tab) => (
         <div
           key={tab.sessionId}
-          className={`td-tab ${tab.isActive ? 'active' : ''}`}
+          className={`td-tab ${tab.isActive ? 'active' : ''}${tab.hasBell ? ' has-bell' : ''}`}
           onClick={() => onSelect(tab.sessionId)}
         >
           <StatusDot status={tab.status} />
