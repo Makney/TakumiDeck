@@ -24,6 +24,40 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Terminal-Renderer: WebGL primaer mit Canvas-Fallback (A)
+
+**Entscheidung:** xterm-Renderer auf `@xterm/addon-webgl@0.19.0` mit `loadRendererAddonWithFallback`-Helper umgestellt, der zwei Fallback-Pfade kennt: (1) try/catch um den WebglAddon-Konstruktor (Treiber-Failure oder WebGL2 nicht verfuegbar), (2) `onContextLoss`-Handler (GPU-Reset zur Laufzeit, z.B. nach Treiber-Update). Beide Pfade laden `CanvasAddon` nach. Console-Erfolgs-Log `[TerminalTab] Renderer: WebGL` plus Fallback-Logs fuer DevTools-Diagnostic.
+
+**Varianten:**
+
+- **A** WebGL als primaerer Renderer mit Canvas-Fallback (gewaehlt). xterm-empfohlener Pfad fuer 2024+, nutzt GPU-Glyph-Atlas.
+- **B** Bei Canvas-Renderer bleiben und TUI-Poll + Smooth-Scroll als alleinige Optimierungen. Keine neue Dependency, aber GPU-Bottleneck bleibt.
+- **C** Komplett-Wechsel auf eine alternative Terminal-Library (z.B. Hyper-Terminal-React-Komponenten). Architektur-Bruch.
+
+**Grund:** Der User-Report „Scrollen stockt mit mehreren Seasons parallel" zeigt klassische Canvas-2D-Limitierung: bei N Tabs mit aktiven Bell-Animationen + Cursor-Blink + Buffer-Updates wird die CPU-Composite-Pipeline zum Bottleneck. WebGL nutzt den GPU-Glyph-Cache und skaliert linear mit Tab-Anzahl. B als alleiniger Pfad waere ein Half-Fix gewesen — die User-Diagnose war eindeutig Wheel-Stocken, nicht Permission-Latency. C ist Over-Reach: keine Library-Schmerzen mit xterm in Phase 1/2 dokumentiert, der Aufwand waere mehrere Seasons. Der Fallback-Pfad in A faengt Treiber-Edge-Cases ab, ohne die Default-Erfahrung zu kompromittieren — Console-Log gibt im Daily-Use ein Diagnostic-Signal, falls WebGL stumm faellt.
+
+**Konsequenz:** Neue Runtime-Dependency `@xterm/addon-webgl@^0.19.0`. Renderer-Wahl ist ab jetzt zur Laufzeit beobachtbar (Console-Log), sollte beim ersten Daily-Use-Tab in DevTools verifiziert werden — falls der Fallback unbemerkt greift, sind Rest-Stocken-Reports kein xterm-Tuning-Problem, sondern eine Treiber-Geschichte. CanvasAddon bleibt als Runtime-Dependency erhalten (auch wenn im Erfolgs-Pfad nicht aktiv), damit der Fallback ohne weitere Installation greift.
+
+**Implementierungsdetail:** Helper `loadRendererAddonWithFallback(terminal)` als Modul-level-Funktion (nicht inline pro Tab-Mount), damit sie nicht pro Mount neu allokiert wird. `try { new WebglAddon() ... } catch` faengt sowohl Konstruktor-Wuerfe als auch syncrone Init-Failures. `webgl.onContextLoss(() => { webgl.dispose(); terminal.loadAddon(new CanvasAddon()); })` registriert den Laufzeit-Fallback; Canvas-Addon-Load wird in zweiter try/catch geschuetzt, falls auch der Fallback schief geht (logt aber Warning weiter, nicht throw — der Tab bliebe sonst leer ohne Renderer). Erfolgs-Log `console.info('[TerminalTab] Renderer: WebGL')` einmal pro Tab-Mount; bei mehreren parallelen Tabs gibt's also N Log-Eintraege, was die Tab-Anzahl in DevTools sichtbar macht.
+
+---
+
+## Smooth-Scroll im Terminal: 0 (Instant) statt animierter Wheel-Easing
+
+**Entscheidung:** `smoothScrollDuration: 0` im xterm-Konstruktor — Wheel-Events triggern Instant-Jumps, keine Easing-Animation. Klassisches Terminal-Verhalten analog Windows Terminal, iTerm und alacritty.
+
+**Varianten:**
+
+- **A** 0 ms / aus (gewaehlt). Wheel = Instant-Jump.
+- **B** 125 ms Easing (initial gewaehlt, dann zurueckgenommen). Easing-Animation pro Wheel-Tick — addiert subjektive Latenz statt sie zu reduzieren.
+- **C** Konfigurierbar in Settings (`terminal_smooth_scroll_ms`). User waehlt sich seinen Wert.
+
+**Grund:** B war ein Anfangsfehler unter der Annahme „Smooth-Scroll mildert Stocken durch sanftere Animation". Tatsaechlich macht jede Wheel-Tick-Easing-Animation das Scrollen SUBJEKTIV langsamer, weil der Output sich nicht synchron mit dem Mausrad bewegt. User-Feedback nach erstem Smoke-Test war eindeutig: „ist jetzt smooth aber ruckelt noch ein wenig". Wechsel auf A loeste den verbleibenden Stocken-Eindruck. C wurde nicht gebraucht — die klassische Terminal-Konvention (Windows Terminal, iTerm) ist Instant; wenn jemand spaeter explizit Smooth-Scroll will, ist das ein additives Settings-Feld in einer eigenen Folge-Season.
+
+**Konsequenz:** xterm-Wheel-Events verhalten sich identisch zu Bash/Zsh/PowerShell in Windows Terminal. Keine User-Konfiguration noetig. Bei spaeterem expliziten User-Wunsch („ich haette gerne Smooth-Scroll wieder") ist das ein Schalter im Settings-Modal „Terminal"-Tab, der den Wert ueber `terminal.options.smoothScrollDuration` live setzen kann.
+
+---
+
 ## GitHub-Actions-Release-Pipeline: Full-Pipeline mit Release-Objekt-Create + Build + Upload in einem Lauf (B)
 
 **Entscheidung:** Release-CI laeuft als ein GitHub-Actions-Workflow auf `push.tags: ['v*']`, der das Release-Objekt mit anlegt (idempotent), den Windows-Build erzeugt und alle Assets (Setup.exe + win32-zip + latest.yml) ans Release haengt. Damit ersetzt der Workflow komplett die Schritte 9 + 10 aus `docs/release/VERSIONIERUNG.md`; vor dem Tag-Push bleiben nur noch Version-Bump, Release-Notes-Datei committen und der Tag selbst. Single-Job `build-and-release` auf `windows-latest`, kein Matrix-Build, kein `workflow_dispatch`-Backup-Trigger.

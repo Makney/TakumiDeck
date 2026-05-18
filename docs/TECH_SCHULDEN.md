@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Per-Tab-Font-Zoom nicht persistiert, nur Session-lokal (Season 28)
+
+**Bereich:** `src/renderer/panels/TerminalTab.tsx` (`fontSizeOverride`-useState) + `src/renderer/components/terminalFontZoom.ts`. Settings-Feld `terminal_font_size` bleibt globale Default-Quelle.
+
+**Was:** Ctrl+Mausrad zoomt die Schriftgroesse pro Tab zwischen 8 und 32 px, aber der Override lebt nur in einem React-useState. Beim Tab-Close oder App-Restart ist der Wert weg. Settings-Hot-Update (User aendert `terminal_font_size` im Modal) setzt den Override explizit zurueck — Settings gewinnen, sobald der User sie anfasst.
+
+**Warum so:** Persistierung-Frage hatte drei sinnvolle Optionen (global im Settings ueberschreiben · per-Project in CLAUDE.md · per-Tab via Sessions-Tabelle), keine davon eindeutig richtig fuer Phase 2. Im Daily-Use ist „Quick-Zoom fuer dieses eine Pair-Coding-Beispiel" der haeufige Pfad — der Ziel-Wert haftet nicht, der User skippt die naechste Session wieder zu seiner Standard-Groesse. Die Settings-Default-Variante wuerde bei jedem Wheel-Tick eine Settings-Persist-Round-Trip ausloesen, was UX-seitig laggy ist. Eine Schema-Erweiterung (`sessions.font_size_override`) waere ein eigener Migrations-Pass — Phase-3-Material, falls Persistierung sich als echter Bedarf herausstellt.
+
+**Risiko:** Niedrig. Im Worst-Case zoomt der User pro Tab-Start neu — der Mausrad-Aufwand ist klein (5-10 Wheel-Ticks bis zur Wunsch-Groesse). Settings-Modal-Aenderung zieht weiterhin alle neuen Tabs sauber mit. Pattern-Risiko: wer in Settings die globale Groesse aendert, denkt vielleicht dass das auch fuer aktive gezoomte Tabs gilt — der explizite Reset des Overrides bei Settings-Aenderung adressiert das, aber der Lerneffekt fehlt im UI.
+
+**Aufloesung:** Bei der ersten echten User-Inzidenz „mein Zoom haelt nicht". Drei Aufholpfade: (a) Global-Override im `AppSettings`-Schema (debounced auf 500 ms wie der Schrift-Setter heute) — billigster, schreibt die letzte Wheel-Position als neuen Default; (b) Per-Project in CLAUDE.md-Frontmatter (`workbench.terminal_font_size_override`) — passt zum Per-Project-Pattern aus Sprint 4; (c) Per-Session in der `sessions`-Tabelle plus Migration — fragil, weil die Tab-Identitaet beim Resume rekonstruiert wird. (a) ist der pragmatische Default.
+
+---
+
 ## latest.yml-Generierung als manuelles Post-Make-Script statt Forge-Publish-Hook (Season 26) ✅ 2026-05-18 (Season 27)
 
 **Aufgeloest durch:** Die GitHub-Actions-Build-Pipeline (`.github/workflows/release.yml`, Season 27) ruft `node scripts/generate-latest-yml.mjs` zwischen `npm run make` und `gh release upload` automatisch auf. Damit ist der ursprueglich genannte zweite Aufloesungs-Trigger („die GitHub-Actions-Build-Pipeline laeuft an") erfuellt — der Aufruf kann beim Release nicht mehr vergessen werden, weil der Workflow ihn pflicht-orchestriert. Der zugrunde liegende Code (`scripts/generate-latest-yml.mjs` als Build-Adapter + `src/main/updater/latest-yml.ts` als Pure-Logik) bleibt unveraendert; nur die Ausfuehrung wandert vom Maintainer-Disziplin-Step in den CI-Workflow. Lokales Release ohne CI bleibt theoretisch moeglich (User kann `npm run make && node scripts/generate-latest-yml.mjs && gh release upload ...` weiterhin von Hand fahren), ist aber nicht mehr der Default-Pfad — die Doku in `docs/release/VERSIONIERUNG.md` wird auf den CI-Pfad umgestellt, sobald der erste echte Tag-Push (voraussichtlich v0.2.2) den Workflow validiert hat. Originaltext der Schuld bleibt zur Nachvollziehbarkeit erhalten:

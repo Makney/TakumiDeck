@@ -65,6 +65,35 @@ Einmaliger Migrations-Pass für resume-tote Sessions mit mehrdeutigem encodeCwd.
 
 **Trigger:** Wenn der User vor dem Sprint-6-Resume-Hotfix mehrfach im selben Projekt Sessions ohne JSONL-Antwort gespawnt hat. Edge-Case ist eng — 3+ Sessions im selben cwd ohne erste claude-Antwort.
 
+### Feature: Terminal-Session ohne Claude
+
+Neue Session-Art, die statt der claude-Binary direkt eine PowerShell spawnt — fuer Quick-Shells, ad-hoc-Befehle, Git-Operationen ohne unnoetigen Claude-Spawn.
+
+- Neuer Session-Type `'terminal'` in `SessionType`-Enum + zod-`SessionTypeSchema` (zwei Stellen, TypeScript fängt die Call-Sites)
+- Im `NewSessionModal` als 6. Button in der bestehenden Reihe — gleicher visueller Stil wie die anderen Arten, ohne separaten "Ohne Agent"-Block
+- Spawn-Branch im Main (`src/main/ipc/pty.ts` Zeile ~176): wenn `input.type === 'terminal'` dann `pwsh.exe` aus PATH bevorzugen, Fallback auf `powershell.exe` (Win11-Default, immer vorhanden); kein `--session-id`/`--model`-Flag, weil die Shell die nicht kennt
+- Skip-Pfade fuer den terminal-Typ: Season-Counter (`projects.allocateSeasonNumber`), JSONL-Polling-Ring-Attach (kein JSONL), Pre-Spawn-Check via `claude_binary_path` (stattdessen Shell-Resolution), TUI-Pattern-Match in `TerminalTab.tsx` (greift ohnehin nicht — kein esc-to-interrupt, kein Permission-Prompt), Modell-Dropdown im Modal, On-Demand-Kontext-Block im Modal
+- Title bleibt Pflichtfeld (Konvention mit den anderen Arten — Tab-Pille braucht Bezeichnung)
+- Resume + Verlauf bleiben unveraendert: Terminal-Sessions landen im selben `sessions`-Schema, Resume spawnt die Shell neu im gespeicherten `cwd`
+- `current_model`/`claude_session_id` werden bei terminal-Typ auf `null` gesetzt
+- `HistoryPane`-`TYPE_LABELS` ergaenzen, damit Verlauf-Filter den neuen Typ kennt
+
+Aufwand-Schaetzung: ~150 Zeilen über 6 Dateien, plus 3-5 targeted Tests fuer den Spawn-Branch (pwsh-Fallback, Skip-Pfade).
+
+**Trigger:** Akuter User-Wunsch aus Daily-Use: oft soll der naechste Tab keinen Claude-Spawn ausloesen (Token-Verbrauch sinnlos fuer `git status`, `npm run lint`, `ls`, schnelle PowerShell-Snippets). Heute muss man dafuer ein externes Windows-Terminal-Fenster oeffnen, was aus dem TakumiDeck-Workflow herausreisst.
+
+### Feature: Terminal-Buffer-Persistierung ueber Resume
+
+Wiederherstellung des xterm-Buffers nach `session:resume`, damit die Resume-Session optisch nicht „leer" startet.
+
+- Heute laeuft Resume nur PTY-seitig: der claude-Prozess wird mit der gespeicherten Session-UUID neu gespawnt, aber der xterm-Buffer (Output-Verlauf, Permission-Antworten, frueherer Plan) ist beim Tab-Mount leer
+- `@xterm/addon-serialize` ist bereits geladen — der naechste Schritt waere `serialize.serialize()` beim Tab-Close-Pfad und ein Persist in `sessions.terminal_buffer_serialized` (oder eine eigene Tabelle, falls das Volumen kritisch wird)
+- Beim Resume vor `pty.create` den Buffer mit `terminal.write(serialized)` zurueckspielen; dabei `\x1b[2J\x1b[H` nicht doppelt schreiben (Renderer-Bell-Sound bei wiedergesendetem `\a` unterdruecken)
+- Offene Fragen vor Implementierung: (1) maximale Buffer-Groesse pro Session (5000 Zeilen × 200 Zeichen ≈ 1 MB pro Session-Snapshot — bei 50 archivierten Sessions wird das spuerbar), (2) Persistenz-Trigger (immer beim Tab-Close, debounced beim onData, oder erst bei session:close)
+- Aufloesungs-Kriterium fuer Variante A vs. B vs. C beim Implementieren: Volumen-Messung anhand der eigenen Daily-Driver-Sessions; falls 1 MB pro Session nicht akzeptabel ist, Snapshot-Last-N-Zeilen statt Voll-Buffer
+
+**Trigger:** Sobald das erste Mal ein langer Plan oder Code-Diff-Output verloren ging, weil ein Resume den Buffer reset hat. Phase-2 Season 28 hat den `SerializeAddon` zwar geladen, aber nur fuer Buffer-Snapshots des TUI-Pattern-Match — die Persistenz bleibt offen.
+
 ---
 
 ## Bereich: Screenshots
