@@ -19,12 +19,14 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { statSync } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { join, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(new URL('..', import.meta.url).pathname);
-// Auf Windows liefert URL.pathname einen fuehrenden Slash vor C:\ — den
-// schneiden wir ab, damit join() den Pfad sauber zusammensetzt.
-const projectRoot = process.platform === 'win32' && ROOT.startsWith('/') ? ROOT.slice(1) : ROOT;
+// fileURLToPath haendelt Windows-file:///D:/...-URLs korrekt (liefert
+// "D:\\..."). Der frueherer manuelle Path-Munge-Pfad (resolve(URL.pathname) +
+// slice(1)) hat lokal zufaellig funktioniert, ist aber auf dem GitHub-Actions-
+// Runner an einem doppelten Drive-Letter zerbrochen (D:\D:\a\...).
+const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 
 const pkgJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'));
 const version = pkgJson.version;
