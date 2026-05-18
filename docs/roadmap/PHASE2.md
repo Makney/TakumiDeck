@@ -326,7 +326,7 @@ Automatische Updates beim App-Start.
 
 **Trigger:** Wenn TakumiDeck an Freunde verteilt wird — bis dahin reichen manuelle Builds.
 
-### Feature: GitHub Actions Build-Pipeline
+### Feature: GitHub Actions Build-Pipeline ✅
 
 CI für Releases.
 

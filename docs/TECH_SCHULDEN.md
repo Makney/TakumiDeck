@@ -30,7 +30,13 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## latest.yml-Generierung als manuelles Post-Make-Script statt Forge-Publish-Hook (Season 26)
+## latest.yml-Generierung als manuelles Post-Make-Script statt Forge-Publish-Hook (Season 26) ✅ 2026-05-18 (Season 27)
+
+**Aufgeloest durch:** Die GitHub-Actions-Build-Pipeline (`.github/workflows/release.yml`, Season 27) ruft `node scripts/generate-latest-yml.mjs` zwischen `npm run make` und `gh release upload` automatisch auf. Damit ist der ursprueglich genannte zweite Aufloesungs-Trigger („die GitHub-Actions-Build-Pipeline laeuft an") erfuellt — der Aufruf kann beim Release nicht mehr vergessen werden, weil der Workflow ihn pflicht-orchestriert. Der zugrunde liegende Code (`scripts/generate-latest-yml.mjs` als Build-Adapter + `src/main/updater/latest-yml.ts` als Pure-Logik) bleibt unveraendert; nur die Ausfuehrung wandert vom Maintainer-Disziplin-Step in den CI-Workflow. Lokales Release ohne CI bleibt theoretisch moeglich (User kann `npm run make && node scripts/generate-latest-yml.mjs && gh release upload ...` weiterhin von Hand fahren), ist aber nicht mehr der Default-Pfad — die Doku in `docs/release/VERSIONIERUNG.md` wird auf den CI-Pfad umgestellt, sobald der erste echte Tag-Push (voraussichtlich v0.2.2) den Workflow validiert hat. Originaltext der Schuld bleibt zur Nachvollziehbarkeit erhalten:
+
+---
+
+**Original-Schuld (vor Aufloesung):**
 
 **Bereich:** `scripts/generate-latest-yml.mjs` (Build-Adapter) plus der `gh release upload`-Aufruf in `docs/release/VERSIONIERUNG.md` Schritt 10, der das generierte `out/make/latest.yml` mit hochlaedt. Pure-Logik liegt in `src/main/updater/latest-yml.ts` und ist davon entkoppelt.
 
