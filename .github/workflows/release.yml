@@ -1,0 +1,175 @@
+# Phase-2 Season-26: Automatischer Windows-Build + GitHub-Release bei Tag-Push.
+#
+# Trigger: jeder Tag-Push, der dem Schema `v*` folgt (Konvention aus
+# docs/release/VERSIONIERUNG.md). Workflow ersetzt die manuellen Schritte 9 + 10
+# aus VERSIONIERUNG.md (gh release create + npm run make + generate-latest-yml +
+# drei gh release upload).
+#
+# Vorbedingungen, die der Workflow vor dem Build hart prueft:
+#   1. package.json.version entspricht dem Tag (ohne fuehrendes "v")
+#   2. docs/release/<tag>.md existiert
+# Beide Pruefungen failen fast — kein verschwendeter Build-Roundtrip, wenn etwas
+# vor dem Tag-Push vergessen wurde.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# gh release create + upload schreiben via GITHUB_TOKEN — Default-Token hat
+# `contents: read`, fuer Release-Manipulation brauchen wir `write`.
+permissions:
+  contents: write
+
+# Verhindert parallele Laeufe auf denselben Tag (kein Race auf Asset-Upload).
+# cancel-in-progress: false, damit ein zweiter Push den ersten nicht abwuergt.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Windows-Build + GitHub-Release
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        # Node 24 ist die dokumentierte Dev-Umgebung (siehe Memory-Doku
+        # dev-environment.md). cache: 'npm' beschleunigt Re-Runs ohne dass
+        # wir manuell auf package-lock.json hashen muessen.
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Cache Electron binary
+        # Electron-Binary (~150 MiB) wird sonst bei jedem Run frisch geladen.
+        # Cache-Key haengt am package-lock.json, weil dort die Electron-Version
+        # festgenagelt ist — Bump triggert automatisch Cache-Miss.
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify package.json version matches tag
+        # Schutz gegen versehentliches Tag-Push ohne vorherigen Version-Bump.
+        # Tag "v0.2.2" => erwartet package.json.version === "0.2.2".
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $expected = $tag -replace '^v', ''
+          $pkg = Get-Content package.json | ConvertFrom-Json
+          if ($pkg.version -ne $expected) {
+            Write-Error "Version-Mismatch: Tag=$tag erwartet package.json.version=$expected, gefunden=$($pkg.version). Vor dem Tag-Push package.json + RELEASES.md + CLAUDE.md auf die neue Version bumpen (siehe docs/release/VERSIONIERUNG.md Schritt 7)."
+            exit 1
+          }
+          Write-Host "[verify] package.json.version=$($pkg.version) entspricht Tag $tag"
+
+      - name: Verify release notes file exists
+        # docs/release/<tag>.md ist die Notes-Quelle fuer das GitHub-Release-Objekt.
+        # Fehlt sie, scheitert spaeter der Create-Step — wir fail-fast vor dem Build.
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notesFile = "docs/release/$tag.md"
+          if (-not (Test-Path $notesFile)) {
+            Write-Error "Release-Notes-Datei fehlt: $notesFile — vor dem Tag-Push committen (siehe docs/release/VERSIONIERUNG.md Schritt 6)."
+            exit 1
+          }
+          Write-Host "[verify] Release-Notes vorhanden: $notesFile"
+
+      - name: Pre-Check (lint + typecheck + tests)
+        # Pflicht-Pre-Check entspricht Schritt 8 aus VERSIONIERUNG.md.
+        # Nicht ueberspringbar — CI ist die Sicherheitsschicht, wenn der User
+        # lokal vergessen hat zu pruefen.
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Build Windows installer + portable zip
+        # Forge produziert:
+        #   out/make/squirrel.windows/x64/TakumiDeck-<version> Setup.exe
+        #   out/make/zip/win32/x64/TakumiDeck-win32-x64-<version>.zip
+        # Native-Module (better-sqlite3, @lydell/node-pty) werden ueber Forges
+        # rebuildConfig automatisch fuer Electron 41 ABI gebaut.
+        run: npm run make
+
+      - name: Generate latest.yml feed for electron-updater
+        # electron-updater liest beim App-Start latest.yml aus dem Release —
+        # Forge schreibt die Datei nicht (electron-builder-Konvention).
+        # Script ist der duenne Build-Adapter um src/main/updater/latest-yml.ts.
+        run: node scripts/generate-latest-yml.mjs
+
+      - name: Upload build artifacts (always, for debugging)
+        # Artefakt-Upload laeuft auch bei Failure (if: always()) — wenn der
+        # Release-Upload spaeter scheitert oder ein Asset-Pfad-Mismatch auftritt,
+        # kann der User den Build trotzdem aus der Action-Run-Seite ziehen.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.ref_name }}
+          path: |
+            out/make/squirrel.windows/x64/*
+            out/make/zip/win32/x64/*
+            out/make/latest.yml
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Create GitHub Release if missing
+        # Idempotent: existiert das Release bereits (z.B. weil der User es lokal
+        # angelegt hat oder ein vorheriger Run halb durchlief), wird der Create
+        # uebersprungen. Prerelease-Flag wird aus Tag-Suffix abgeleitet.
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notesFile = "docs/release/$tag.md"
+          $isPrerelease = $tag -match '-(alpha|beta|rc)'
+          gh release view $tag --json url 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "[release] $tag existiert bereits — Create-Step uebersprungen."
+          } else {
+            $title = "TakumiDeck $tag"
+            $createArgs = @('release', 'create', $tag, '--title', $title, '--notes-file', $notesFile)
+            if ($isPrerelease) {
+              $createArgs += '--prerelease'
+              Write-Host "[release] Erstelle Pre-Release: $tag"
+            } else {
+              Write-Host "[release] Erstelle Release: $tag"
+            }
+            gh @createArgs
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Upload release assets
+        # --clobber ueberschreibt bestehende Assets — erlaubt Re-Runs nach
+        # halbem Upload-Lauf ohne manuelles Aufraeumen.
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          $setup = "out/make/squirrel.windows/x64/TakumiDeck-$version Setup.exe"
+          $zip = "out/make/zip/win32/x64/TakumiDeck-win32-x64-$version.zip"
+          $yml = "out/make/latest.yml"
+          foreach ($path in @($setup, $zip, $yml)) {
+            if (-not (Test-Path $path)) {
+              Write-Error "Asset fehlt: $path"
+              exit 1
+            }
+          }
+          Write-Host "[upload] $tag <- 3 Assets (Setup.exe + zip + latest.yml)"
+          gh release upload $tag $setup $zip $yml --clobber
