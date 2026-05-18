@@ -1,29 +1,31 @@
 ---
 source: docs/CHANGELOG.md
-source_hash: d68cfc3fe96d48ec4b751b87eee9f4d22dff151d1114a38fa9774dc588291a6e
-summarized_at: 2026-05-17T13:33:29Z
+source_hash: 22ecaa8a2dcc5ea0524fa664213c2a0bcf83072214ee3999468ed1f297a71e6e
+summarized_at: 2026-05-18T19:06:20Z
 ---
 
-# CHANGELOG-Kompaktfassung
+# CHANGELOG — Kompaktfassung
 
-Verlauf abgeschlossener Sessions, neuster zuerst. Jeder Eintrag listet Nutzer-Mehrwert + gewaehlte Variante, ohne Datei-Listen (uebernimmt git).
+Chronologisches Aenderungsprotokoll abgeschlossener Sessions, neuster zuerst. Pro Eintrag: Datum · Versions-Marker · Season/Sprint · Titel; darunter „Was jetzt geht" (Nutzer-Mehrwert) + „Architektur-Notiz" (Variantenwahl, Begruendung, Implementierungs-Anker). Keine Datei-Listen — Git liefert das.
 
-## Aktuelle Aktivitaet (Phase 2, v0.2.0)
+## Aktueller Stand (2026-05-18, v0.2.1)
 
-- **Doku- und Release-Workflow:** Templates aus Vorlage ins Repo eingespielt, `docs/release/`-Block angelegt, CLAUDE.md-Frontmatter um `current_version` und vier Trigger-Phrasen (`fix`/`release_artifacts`/`tag_push`/`release`) erweitert.
-- **Season 21–23 (Docs-Sync-Kette):** sechste Session-Art „Docs-Sync" startet Komprimierungs-Prompts mit SHA-256-Stale-Check (`source_hash` im Frontmatter). NewSessionModal bekommt zweiten Block „Kontext laden" fuer On-Demand-Files. Templates deklarieren Tokens im YAML-Frontmatter (`auto`/`input`-Discriminator) — unbekannte Tokens bleiben Literal, kein Warnblock mehr.
-- **Stats- und Token-Polish (Season 12–20):** acht Stats-Cards mit Scope/Range-Toggle, GitHub-Heatmap (Quartile, eigener 30W/52W-Toggle), Modelle-View mit Cache-Hit-Spalte, Easter-Egg-Werk-Vergleich, konfigurierbares Top-N pro Auto-Variable.
-- **Reset-Schedule und Session-Block (Season 16):** Wochen-Bars rechnen ab letztem Reset statt rolling; 5h-Bar laeuft als echter Anthropic-Session-Block (User-Trigger nach Live-Test).
-- **Boot-Robustheit (Season 15/17/18):** JSONL-Polling-Ring + UUID-Pfad-Mapping, Boot-One-Shot-Backfill mit MetaKv-Flag, Screenshot-Retention, First-Start-Workspace-Wizard.
+- **CI-Bugfix `generate-latest-yml.mjs`:** `fileURLToPath` statt `URL.pathname` + `.slice(1)` — letzteres crasht auf GitHub-Actions-Windows-Runnern mit doppeltem Drive-Letter (`D:\D:\a\...`). Season-27-Pipeline real validiert (Round 2 gruen, alle 17 Steps, 3 Assets korrekt hochgeladen). `VERSIONIERUNG.md` Schritte 9+10 zu einem CI-Step zusammengefasst, manueller Fallback dokumentiert.
+- **Season 28 — Terminal-Polish:** 14 Hebel gebuendelt (WebGL-Renderer mit Canvas-Fallback, TUI-Poll-Pause fuer inaktive Tabs, `smoothScrollDuration:0`, Scrollback 5000, Strg+Shift+F/L, Scroll-to-Bottom-Button, Bell-Pulse via `terminal.onBell`+`SessionTab.hasBell`, Strg+1..9, Strg+Mausrad-Zoom 8..32px, Rechtsklick-Kontextmenue, Doppelklick-Pfade mit `:42:5`). User-Trigger nach Daily-Use-Smoke-Test „Scrollen stockt".
+- **Season 27 — GitHub-Actions-Pipeline:** Variante B (Full-Pipeline). Tag-Push `v*` triggert Build+Release+Upload in einem Lauf, Pre-Build-Verify-Gates fangen Version-Drift und fehlende Notes-Datei vor dem teuren Make-Step.
+- **Season 26 — Auto-Update via electron-updater:** Variante A (Forge/Squirrel bleiben + Post-Make-`latest.yml`-Script). Header-Banner mit 4 States, Download+Install jeweils nach User-Klick, Dev-Mode `disabled-dev`.
+- **Season 25 — Settings-Schema-Versionierung:** Variante B (Pipeline + defensive Drift-Detection pro Feld). Migration 1→2 raeumt vier Default-Drifts (Claude-Design-Bar, Sonnet-Label, `default_limit`, `model_limits`) nur bei exaktem alten Default — User-Anpassungen ueberleben.
 
 ## Wiederkehrende Muster
 
-- **Variants vor Code:** Jeder nicht-triviale Sprint praesentiert A/B/C mit Effort-Tabelle; User-Empfehlungen werden fast immer 1:1 uebernommen.
-- **Driver-Injection:** Repos und Pure-Helper (Retention, Streak, Heatmap, Resolver) sind testbar ohne Electron/SQLite — InMemory-Driver parallel zu Sqlite-Driver.
-- **Pure-Logik in `src/shared/`:** Status, Format, Prompts wandern in eigene Module mit eigenen Tests; UI bleibt JSX-Layer.
-- **Migrationen sparsam:** Schema-Drift wird oft als „Backward-Compat-Summe + neue Spalten" geloest (siehe `tokens_in` + Cache-Anteile), nicht als Drop-and-Rebuild.
-- **Side-Effect-Guards:** StrictMode-Doppel-Mount durch `useRef`-Guards in jedem IPC-feuernden Effect.
+- **Variants vor Code:** jede nicht-triviale Season praesentiert A/B/C mit Aufwand-Tabelle + Empfehlung; User entscheidet.
+- **Pure-Helper + duenner Adapter:** Logik in `src/shared/*.ts` oder `src/renderer/components/*.ts`, IPC/UI als Adapter — Tests laufen ohne Electron/DOM/SQLite.
+- **Backward-Compat ueber Default-Merge:** Schema-Erweiterungen migrieren Bestandsuser beim ersten Read; Migrations sehen raw JSON vor dem Default-Merge.
+- **Targeted-Tests pro Season** (CLAUDE.md-Regel): Suite waechst monoton, Test-Count am Ende jeder Architektur-Notiz dokumentiert (zuletzt 918/918 gruen).
+- **Memory-Notes als Pattern-Anker:** Lehren aus einer Season landen oft als Memory-Eintrag fuer Folge-Seasons (Scope-Cut, fileURLToPath, UX-Defaults, StrictMode-Side-Effect-Guard, Zustand-Selector-Stable-Ref).
+- **Hotfix-Surface minimal halten:** strukturell sauberere Variante wird als TECH_SCHULDEN-Trigger hinterlegt, nicht im Hotfix mitgezogen.
 
-## Phase 1 (v0.1) abgeschlossen 2026-05-12
+## Phasen-Ueberblick
 
-Foundation → Sessions → Workspace → Token-Dashboard → Templates/Season-Tracker → Editor+Git → App-Chrome → Polish → Pre-Release-QA → Code-Review-Pass. Electron 33→41 Security-Bump + Vite 5→6, CSP doppelt verankert, default-deny Permission-Handler mit Clipboard-Whitelist.
+- **Phase 1 (Sprint 1–9, v0.1, abgeschlossen 2026-05-12):** Foundation · Sessions · Workspace · Token-Dashboard · Templates · Season-Tracker · Editor+Git · App-Chrome · Right-Pane · Polish · Pre-Release-QA (E33→41 + Vite 5→6 Security-Bump).
+- **Phase 2 (v0.2.x, laufend):** Volle State-Detection · Screenshot-DnD+Retention · Trigger-Pillen · Erweiterte Template-Vars · Eigene Session-Art · UUID-basiertes Session-Mapping · cwd-Backfill · Projekt-Entfernen · Kontext-Soft-Warning · Modell-Filter · Reset-Schedule · 5h-Session-Block · Stats-Cards+Heatmap+Modelle-View · Easter-Egg · Workspace-Wizard · Schema-aware Templates · Docs-Sync+Kontext-Checkbox · Markdown-Side-by-Side · Settings-Schema-Versionierung · electron-updater · GitHub-Actions-CI · Terminal-Polish.
