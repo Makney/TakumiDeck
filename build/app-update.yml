@@ -1,0 +1,15 @@
+# electron-updater liest diese Datei aus <resourcesPath>/app-update.yml.
+# electron-forge generiert sie NICHT (das ist electron-builder-Konvention) —
+# wir packen sie deshalb explizit via packagerConfig.extraResource in forge.config.ts.
+#
+# Owner/Repo muessen mit den Konstanten in src/main/updater/auto-updater.ts
+# uebereinstimmen, der Wrapper ueberschreibt sie zur Laufzeit ohnehin via
+# setFeedURL — die Werte hier sind der Fallback, wenn der Wrapper aus
+# irgendeinem Grund nicht initialisiert (Belt-and-Braces).
+#
+# updaterCacheDirName entkoppelt das Cache-Verzeichnis vom App-Namen, damit
+# Umbenennungen den Update-Cache nicht invalidieren.
+provider: github
+owner: Makney
+repo: TakumiDeck
+updaterCacheDirName: takumi-deck-updater

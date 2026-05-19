@@ -37,7 +37,10 @@ env/
 # Node / Frontend (falls zutreffend)
 node_modules/
 dist/
-build/
+# build/ enthaelt statische Build-Resourcen (z.B. app-update.yml fuer electron-updater);
+# Forge-Output landet in out/ + .vite/, daher nur tatsaechlichen Build-Muell ignorieren.
+build/*
+!build/app-update.yml
 
 # Package-/Build-Artefakte
 *.egg-info/

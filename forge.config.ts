@@ -76,6 +76,11 @@ const config: ForgeConfig = {
     asar: true,
     name: 'TakumiDeck',
     appBundleId: 'dev.takumideck.app',
+    // electron-updater liest <resourcesPath>/app-update.yml beim Download-Pfad
+    // (AppUpdater.js getOrCreateDownloadHelper -> updaterCacheDirName; NsisUpdater
+    // -> publisherName). Forge erzeugt die Datei NICHT (electron-builder-Konvention) —
+    // wir packen sie deshalb explizit als extraResource. Pfad relativ zum Repo-Root.
+    extraResource: ['./build/app-update.yml'],
     // Eigener Ignore-Filter ueberschreibt den Default des Vite-Plugins (der ALLES
     // ausser /.vite ausschliesst — siehe @electron-forge/plugin-vite VitePlugin.js
     // Z.124-131). Wir lassen /.vite + /package.json + node_modules-Eintraege durch,
