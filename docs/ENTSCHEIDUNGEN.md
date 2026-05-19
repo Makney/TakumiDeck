@@ -24,6 +24,22 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## 5h-Block-Anker: messages.ts statt usage_buckets oder eigene Anker-Tabelle (A)
+
+**Entscheidung:** Der minutenpraezise Anker fuer den session_block-Resolver kommt aus der bestehenden `messages`-Tabelle (`ts INTEGER NOT NULL`, indexed). Eine neue Repo-Methode `MessageRepository.timestampsInRange` liefert sortierte ms-Zeitstempel im Lookback-Fenster; der Resolver iteriert sie mit derselben Crossing-Logik wie vorher die Buckets.
+
+**Varianten:**
+
+- **A** Anker aus `messages.ts` (gewaehlt). Eine Source of Truth, keine Migration, nutzt vorhandenen Index.
+- **B** Eigene `session_blocks`-Tabelle, vom JSONL-Watcher gepflegt. Block-Start-Event triggert Insert eines Anker-Rows, Resolver liest O(1) den juengsten aktiven Anker.
+- **C** Pro Session `first_token_ts`-Spalte. Verworfen.
+
+**Grund:** A nutzt Daten, die bereits in jeder Token-Zeile minutenpraezise persistiert sind. Token-Summe bleibt weiterhin bucket-basiert (Stunden-Granularitaet ist fuer den `sumTokens`-Pfad korrekt und schnell) — nur die Anker-Erkennung wechselt auf ms-Praezision. B haette eine zweite Source of Truth zur `messages`-Tabelle eingefuehrt: der Watcher muesste die Block-Erkennungs-Logik tragen, und bei Watcher-Repair/Reconciliation droht Drift zwischen den beiden Tabellen. C scheitert am Fakt, dass ein 5h-Block typischerweise mehrere parallele Sessions abdeckt — session-lokaler Anker ist konzeptuell falsch fuer ein globales Limit.
+
+**Konsequenz:** Die Token-Summe behaelt eine kleine, nicht-eliminierbare Stunden-Drift im Anker-Bucket (ein Token-Event 13:50 + Anker 14:00 zaehlt zur 13:00-Stunden-Summe mit, obwohl es vor dem Anker liegt). Akzeptabel — typisch <1 % Drift, fuer den Display-Zweck der Bar irrelevant. `ResolveWindowDeps.messages` ist `optional`, damit Alt-Tests ohne Messages-Dep weiterhin den (alten) Bucket-Anker-Fallback nutzen. Production hat immer Minuten-Praezision, weil der IPC-Handler `messages` durchreicht. Erweiterungspfad fuer spaeter, falls die Stunden-Drift in Edge-Cases doch stoert: `MessageRepository.sumTokensInRange(fromMs, toMs, modelLike)` als neue Methode auf `messages` direkt — kostet einen zweiten Datenpfad, lohnt sich aber erst, wenn das Drift-Verhalten tatsaechlich gemeldet wird.
+
+---
+
 ## Multi-Tab-Diff: Pillen-Toggle in der bestehenden Pane (A)
 
 **Entscheidung:** Die drei Diff-Modi „Working Tree / Staged / Session" leben als Pillen-Toggle oben in der `td-diff-head`-Zeile derselben Diff-Pane. Ein State-Wechsel pickt die passende File-Liste und die passenden original/doc-Quellen fuer `unifiedMergeView` — kein zusaetzlicher Tab in der Datei-Tab-Reihe, kein Stacked-Layout, kein Mode-Drop-Down.

@@ -46,6 +46,7 @@ export function registerUsageIpc(deps: {
       }
       const result = resolveWindow(bar, {
         usage,
+        messages,
         settings: cfg,
         now: input.asOf ? () => input.asOf as number : undefined,
       });

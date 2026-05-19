@@ -30,6 +30,17 @@ export interface MessageDbDriver {
   // Query liefert die Aggregate fuer mehrere Sessions, gruppiert nach session_id.
   // Vermeidet den N+1-Aufruf beim History-Listing. Leeres Array → leere Map.
   aggregateModelsForSessions(sessionIds: string[]): Map<string, SessionModelAggregateEntry[]>;
+  // Sortierte ms-Zeitstempel im Range [fromMs, toMs] (beide inklusiv), optional
+  // gefiltert auf Modell-Pattern. Wird vom session_block-Resolver gebraucht, um
+  // den 5h-Block-Anker minutenpraezise statt stundengerundet zu setzen.
+  timestampsInRange(input: TimestampsRangeQuery): number[];
+}
+
+export interface TimestampsRangeQuery {
+  fromMs: number;
+  toMs: number;
+  // SQL-LIKE-Pattern; null = keine Modell-Einschraenkung.
+  modelLike: string | null;
 }
 
 export interface LastUsageRow {
@@ -64,6 +75,10 @@ export class MessageRepository {
   aggregateModelsForSessions(sessionIds: string[]): Map<string, SessionModelAggregateEntry[]> {
     return this.driver.aggregateModelsForSessions(sessionIds);
   }
+
+  timestampsInRange(input: TimestampsRangeQuery): number[] {
+    return this.driver.timestampsInRange(input);
+  }
 }
 
 // --- SQLite-Driver --------------------------------------------------
@@ -84,6 +99,11 @@ export class SqliteMessageDriver implements MessageDbDriver {
     number,
     Database.Statement<unknown[], { session_id: string; model: string; count: number }>
   >();
+  private readonly tsRangeAllStmt: Database.Statement<[number, number], { ts: number }>;
+  private readonly tsRangeFilterStmt: Database.Statement<
+    [number, number, string],
+    { ts: number }
+  >;
 
   constructor(private readonly db: Database.Database) {
     this.insertStmt = db.prepare(
@@ -112,6 +132,12 @@ export class SqliteMessageDriver implements MessageDbDriver {
        WHERE session_id = ? AND model IS NOT NULL
        GROUP BY model
        ORDER BY count DESC, model ASC`,
+    );
+    this.tsRangeAllStmt = db.prepare<[number, number], { ts: number }>(
+      `SELECT ts FROM messages WHERE ts BETWEEN ? AND ? ORDER BY ts ASC`,
+    );
+    this.tsRangeFilterStmt = db.prepare<[number, number, string], { ts: number }>(
+      `SELECT ts FROM messages WHERE ts BETWEEN ? AND ? AND model LIKE ? ORDER BY ts ASC`,
     );
   }
 
@@ -176,6 +202,13 @@ export class SqliteMessageDriver implements MessageDbDriver {
       }
     }
     return out;
+  }
+
+  timestampsInRange(input: TimestampsRangeQuery): number[] {
+    const rows = input.modelLike
+      ? this.tsRangeFilterStmt.all(input.fromMs, input.toMs, input.modelLike)
+      : this.tsRangeAllStmt.all(input.fromMs, input.toMs);
+    return rows.map((r) => r.ts);
   }
 }
 
@@ -263,10 +296,35 @@ export class InMemoryMessageDriver implements MessageDbDriver {
     return out;
   }
 
+  timestampsInRange(input: TimestampsRangeQuery): number[] {
+    const out: number[] = [];
+    for (const r of this.rows) {
+      if (r.ts < input.fromMs || r.ts > input.toMs) continue;
+      if (input.modelLike) {
+        const model = r.model ?? '';
+        if (!matchesLike(model, input.modelLike)) continue;
+      }
+      out.push(r.ts);
+    }
+    out.sort((a, b) => a - b);
+    return out;
+  }
+
   // Test-Helper: alle Inserts.
   all(): MessageInsert[] {
     return this.rows.map((r) => ({ ...r }));
   }
+}
+
+// Identische SQL-LIKE-Semantik wie der usage-Driver (case-insensitiv, `%`/`_`).
+function matchesLike(value: string, pattern: string): boolean {
+  let body = '';
+  for (const c of pattern) {
+    if (c === '%') body += '.*';
+    else if (c === '_') body += '.';
+    else body += c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${body}$`, 'i').test(value);
 }
 
 // Sortier-Helfer: count DESC, model ASC — gleiche Tie-Break-Regel wie der

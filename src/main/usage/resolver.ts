@@ -7,6 +7,7 @@ import type {
 import type { UsageRepository } from '../db/repos/usage';
 import type { MessageRepository } from '../db/repos/messages';
 import { hourBucket, percentileP90 } from '../db/repos/usage';
+import { resolveBarFilter } from './filters';
 import { computeResetWindowStart } from './reset-schedule';
 
 // Window/Context-Resolver (Sprint 5).
@@ -25,6 +26,11 @@ const P90_MIN_BUCKETS = 24;
 export interface ResolveWindowDeps {
   usage: UsageRepository;
   settings: AppSettings;
+  // Optional: gibt es nur fuer den session_block-Pfad. Bei gesetztem messages
+  // wird der 5h-Block-Anker minutenpraezise aus dem ersten Message-ts gezogen
+  // statt aus dem stundengerundeten Bucket-Anker. Ohne messages faellt der
+  // Resolver auf den (alten) Bucket-Anker zurueck — Stunden-Praezision.
+  messages?: MessageRepository;
   // Default = Date.now. Tests injizieren eine Fixed-Clock.
   now?: () => number;
 }
@@ -111,10 +117,15 @@ function resolveAggregationMode(bar: LimitBar): 'rolling' | 'session_block' {
   return bar.window_hours <= 6 ? 'session_block' : 'rolling';
 }
 
-// Findet den Anker des aktuellen Session-Blocks: alter Bucket = neuer Block
-// startet, sobald `now - bucket_ts >= window_hours`. Iteriert chronologisch
-// ueber die Buckets ab `lookback`, springt bei jedem Window-End-Crossing
-// auf ein neues Window. Letzter aktiver Block ist der, dessen End > now.
+// Findet den Anker des aktuellen Session-Blocks. Bevorzugt minutenpraezise
+// Anker aus messages.ts (Anthropic-Realitaet: das 5h-Limit startet beim
+// ersten Token, nicht zur naechsten vollen Stunde). Fallback auf Bucket-
+// Anker (Stunden-Praezision), wenn deps.messages fehlt — z.B. in Alt-Tests.
+//
+// Iteriert chronologisch ueber Token-Events ab `lookback`, springt bei
+// jedem Window-End-Crossing (event_ts >= blockStartMs + windowMs) auf ein
+// neues Window. Letzter Anker ist gewinnt; gilt nur als „aktiv", wenn
+// sein End > now.
 export function computeSessionBlock(
   bar: LimitBar,
   deps: ResolveWindowDeps,
@@ -125,26 +136,19 @@ export function computeSessionBlock(
   // aktiv ist, ist er hoechstens window_hours alt. Pufferzone fuer den
   // Bucket-Grenzfall (now liegt am Anfang einer Stunde) ist ein Bucket.
   const lookbackMs = 2 * windowMs;
-  const lookbackBucket = hourBucket(now - lookbackMs);
   const currentBucket = hourBucket(now);
-  const buckets = deps.usage.bucketRange({
-    fromBucket: lookbackBucket,
-    toBucket: currentBucket,
-    filter: bar.filter,
-    customPattern: bar.model_pattern,
-  });
 
-  if (buckets.length === 0) {
+  const anchors = collectBlockAnchors(bar, deps, now, lookbackMs);
+
+  if (anchors.length === 0) {
     // Kein Token im Lookback-Fenster → kein aktives Block.
     return { fromBucket: currentBucket + 1, windowStartAt: null, windowEndAt: null };
   }
 
-  // Bucket-Anker in epoch-ms (Stunden-Start).
-  let blockStartMs = buckets[0]!.bucket * 3_600_000;
-  for (const b of buckets) {
-    const ts = b.bucket * 3_600_000;
+  let blockStartMs = anchors[0]!;
+  for (const ts of anchors) {
     if (ts >= blockStartMs + windowMs) {
-      // Bucket liegt nach dem aktuellen Block-Ende → neuer Block.
+      // Anker liegt nach dem aktuellen Block-Ende → neuer Block.
       blockStartMs = ts;
     }
   }
@@ -158,6 +162,35 @@ export function computeSessionBlock(
     windowStartAt: blockStartMs,
     windowEndAt: blockEndMs,
   };
+}
+
+// Sammelt die fuer die Block-Erkennung relevanten Token-Event-Zeitstempel
+// im Lookback-Fenster. Bevorzugt minutenpraezise messages.ts; faellt auf
+// Stunden-Buckets zurueck, wenn deps.messages nicht uebergeben wurde.
+function collectBlockAnchors(
+  bar: LimitBar,
+  deps: ResolveWindowDeps,
+  now: number,
+  lookbackMs: number,
+): number[] {
+  if (deps.messages) {
+    const def = resolveBarFilter(bar.filter, bar.model_pattern);
+    return deps.messages.timestampsInRange({
+      fromMs: now - lookbackMs,
+      toMs: now,
+      modelLike: def.sqlLike,
+    });
+  }
+  // Defensive: Stunden-Praezision ueber usage_buckets (Alt-Pfad).
+  const lookbackBucket = hourBucket(now - lookbackMs);
+  const currentBucket = hourBucket(now);
+  const buckets = deps.usage.bucketRange({
+    fromBucket: lookbackBucket,
+    toBucket: currentBucket,
+    filter: bar.filter,
+    customPattern: bar.model_pattern,
+  });
+  return buckets.map((b) => b.bucket * 3_600_000);
 }
 
 // Naechster Reset-Zeitpunkt nach `now` aus einem wochentlichen Schedule.

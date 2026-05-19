@@ -5,9 +5,36 @@ import {
   InMemoryUsageDriver,
   hourBucket,
 } from '../../src/main/db/repos/usage';
+import {
+  MessageRepository,
+  InMemoryMessageDriver,
+} from '../../src/main/db/repos/messages';
 import { resolveWindow } from '../../src/main/usage/resolver';
-import type { LimitBar } from '@shared/types';
+import type { LimitBar, MessageInsert } from '@shared/types';
 import { buildTestSettings as buildSettings } from '../_helpers/settings-fixture';
+
+// Test-Helper: erzeugt ein MessageRepository mit einer assistant-Message pro
+// uebergebenem (ts, model)-Tupel. Vereinfacht die Fixture-Wartung im
+// session_block-Pfad, weil dort nur die ts + Modell-Info zaehlt.
+function buildMessages(events: Array<{ ts: number; model: string }>): MessageRepository {
+  const repo = new MessageRepository(new InMemoryMessageDriver());
+  for (const ev of events) {
+    const row: MessageInsert = {
+      session_id: 'test-session',
+      project_id: null,
+      role: 'assistant',
+      content: '',
+      tokens_in: 0,
+      tokens_out: 0,
+      tokens_cache_creation: 0,
+      tokens_cache_read: 0,
+      ts: ev.ts,
+      model: ev.model,
+    };
+    repo.insert(row);
+  }
+  return repo;
+}
 
 // Phase 2 Season Flacsh — Reset-Schedule-Aggregation.
 //
@@ -174,7 +201,7 @@ describe('resolveWindow im session_block-Modus (5h-Block)', () => {
     };
   }
 
-  it('Window startet beim ersten Bucket, summiert bis +5 h', () => {
+  it('Window startet beim ersten Token, summiert bis +5 h', () => {
     // Erstes Token um 10:00, zweites um 12:00, jetzt 13:00.
     const tenAm = new Date(2026, 4, 14, 10, 0, 0, 0).getTime();
     const twelvePm = new Date(2026, 4, 14, 12, 0, 0, 0).getTime();
@@ -182,36 +209,46 @@ describe('resolveWindow im session_block-Modus (5h-Block)', () => {
     const repo = new UsageRepository(new InMemoryUsageDriver());
     repo.upsertBucket({ bucket_start: hourBucket(tenAm), model: 'claude-opus-4-7', tokens: 1000 });
     repo.upsertBucket({ bucket_start: hourBucket(twelvePm), model: 'claude-opus-4-7', tokens: 1000 });
+    const messages = buildMessages([
+      { ts: tenAm, model: 'claude-opus-4-7' },
+      { ts: twelvePm, model: 'claude-opus-4-7' },
+    ]);
 
     const result = resolveWindow(make5hSessionBar(), {
       usage: repo,
+      messages,
       settings: buildSettings(),
       now: () => onePm,
     });
 
     expect(result.tokens).toBe(2000);
-    expect(result.windowStartAt).toBe(hourBucket(tenAm) * 3_600_000);
-    expect(result.windowEndAt).toBe(hourBucket(tenAm) * 3_600_000 + FIVE_H_MS);
+    expect(result.windowStartAt).toBe(tenAm);
+    expect(result.windowEndAt).toBe(tenAm + FIVE_H_MS);
   });
 
-  it('nach Block-Ende: neuer Block startet bei naechstem Bucket', () => {
-    // Block 1: 10:00 (1k), endet 15:00. Block 2 startet bei 15:30 → 16:00-Bucket.
+  it('nach Block-Ende: neuer Block startet beim naechsten Token', () => {
+    // Block 1: 10:00 (1k), endet 15:00. Block 2 startet bei 16:00.
     const tenAm = new Date(2026, 4, 14, 10, 0, 0, 0).getTime();
     const fourPm = new Date(2026, 4, 14, 16, 0, 0, 0).getTime();
     const fivePm = new Date(2026, 4, 14, 17, 0, 0, 0).getTime();
     const repo = new UsageRepository(new InMemoryUsageDriver());
     repo.upsertBucket({ bucket_start: hourBucket(tenAm), model: 'claude-opus-4-7', tokens: 9999 });
     repo.upsertBucket({ bucket_start: hourBucket(fourPm), model: 'claude-opus-4-7', tokens: 100 });
+    const messages = buildMessages([
+      { ts: tenAm, model: 'claude-opus-4-7' },
+      { ts: fourPm, model: 'claude-opus-4-7' },
+    ]);
 
     const result = resolveWindow(make5hSessionBar(), {
       usage: repo,
+      messages,
       settings: buildSettings(),
       now: () => fivePm,
     });
 
     // Nur der neue Block zaehlt — der 10:00-Block ist abgelaufen.
     expect(result.tokens).toBe(100);
-    expect(result.windowStartAt).toBe(hourBucket(fourPm) * 3_600_000);
+    expect(result.windowStartAt).toBe(fourPm);
   });
 
   it('letzter Block abgelaufen + kein neuer Token → tokens=0, kein Window', () => {
@@ -220,9 +257,11 @@ describe('resolveWindow im session_block-Modus (5h-Block)', () => {
     const fourPm = new Date(2026, 4, 14, 16, 0, 0, 0).getTime();
     const repo = new UsageRepository(new InMemoryUsageDriver());
     repo.upsertBucket({ bucket_start: hourBucket(tenAm), model: 'claude-opus-4-7', tokens: 5000 });
+    const messages = buildMessages([{ ts: tenAm, model: 'claude-opus-4-7' }]);
 
     const result = resolveWindow(make5hSessionBar(), {
       usage: repo,
+      messages,
       settings: buildSettings(),
       now: () => fourPm,
     });
@@ -246,9 +285,11 @@ describe('resolveWindow im session_block-Modus (5h-Block)', () => {
     const onePm = new Date(2026, 4, 14, 13, 0, 0, 0).getTime();
     const repo = new UsageRepository(new InMemoryUsageDriver());
     repo.upsertBucket({ bucket_start: hourBucket(tenAm), model: 'claude-opus-4-7', tokens: 100 });
+    const messages = buildMessages([{ ts: tenAm, model: 'claude-opus-4-7' }]);
 
     const result = resolveWindow(bar, {
       usage: repo,
+      messages,
       settings: buildSettings(),
       now: () => onePm,
     });
@@ -276,5 +317,74 @@ describe('resolveWindow im session_block-Modus (5h-Block)', () => {
 
     expect(result.windowStartAt).toBeNull();
     expect(result.windowEndAt).toBeNull();
+  });
+
+  // Bugfix 2026-05-19: Anker hing am Stunden-Bucket statt am echten Message-ts.
+  // Erste Nachricht um 5:34 endete sichtbar um 10:00 statt 10:34.
+  it('Anker minutenpraezise: Start 5:34 → Ende 10:34 (Bugfix 5h-Fenster)', () => {
+    const fiveThirtyFour = new Date(2026, 4, 14, 5, 34, 0, 0).getTime();
+    const sixAm = new Date(2026, 4, 14, 6, 0, 0, 0).getTime();
+    const repo = new UsageRepository(new InMemoryUsageDriver());
+    repo.upsertBucket({ bucket_start: hourBucket(fiveThirtyFour), model: 'claude-opus-4-7', tokens: 500 });
+    const messages = buildMessages([{ ts: fiveThirtyFour, model: 'claude-opus-4-7' }]);
+
+    const result = resolveWindow(make5hSessionBar(), {
+      usage: repo,
+      messages,
+      settings: buildSettings(),
+      now: () => sixAm,
+    });
+
+    expect(result.windowStartAt).toBe(fiveThirtyFour);
+    expect(result.windowEndAt).toBe(fiveThirtyFour + FIVE_H_MS);
+    // 5:34 + 5h = 10:34, ausdruecklich NICHT 10:00.
+    expect(result.windowEndAt).toBe(new Date(2026, 4, 14, 10, 34, 0, 0).getTime());
+  });
+
+  it('Block-Transition minutenpraezise: msg 5:34 + msg 10:50 → Anker 10:50', () => {
+    // 5:34-Block laeuft bis 10:34. Token um 10:50 (nach Block-Ende) → neuer
+    // Block, der bis 15:50 laeuft.
+    const fiveThirtyFour = new Date(2026, 4, 14, 5, 34, 0, 0).getTime();
+    const tenFifty = new Date(2026, 4, 14, 10, 50, 0, 0).getTime();
+    const elevenAm = new Date(2026, 4, 14, 11, 0, 0, 0).getTime();
+    const repo = new UsageRepository(new InMemoryUsageDriver());
+    repo.upsertBucket({ bucket_start: hourBucket(fiveThirtyFour), model: 'claude-opus-4-7', tokens: 5000 });
+    repo.upsertBucket({ bucket_start: hourBucket(tenFifty), model: 'claude-opus-4-7', tokens: 200 });
+    const messages = buildMessages([
+      { ts: fiveThirtyFour, model: 'claude-opus-4-7' },
+      { ts: tenFifty, model: 'claude-opus-4-7' },
+    ]);
+
+    const result = resolveWindow(make5hSessionBar(), {
+      usage: repo,
+      messages,
+      settings: buildSettings(),
+      now: () => elevenAm,
+    });
+
+    expect(result.windowStartAt).toBe(tenFifty);
+    expect(result.windowEndAt).toBe(tenFifty + FIVE_H_MS);
+    expect(result.windowEndAt).toBe(new Date(2026, 4, 14, 15, 50, 0, 0).getTime());
+  });
+
+  it('Bucket-Fallback ohne messages-Dep: Stunden-Praezision (defensiv)', () => {
+    // Wenn deps.messages nicht uebergeben wird (Alt-Test-Pfad), faellt der
+    // Resolver auf den stundengerundeten Bucket-Anker zurueck. Bestaetigt,
+    // dass der Fallback funktioniert und das alte Verhalten reproduziert.
+    const fiveThirtyFour = new Date(2026, 4, 14, 5, 34, 0, 0).getTime();
+    const sixAm = new Date(2026, 4, 14, 6, 0, 0, 0).getTime();
+    const fiveAm = new Date(2026, 4, 14, 5, 0, 0, 0).getTime();
+    const repo = new UsageRepository(new InMemoryUsageDriver());
+    repo.upsertBucket({ bucket_start: hourBucket(fiveThirtyFour), model: 'claude-opus-4-7', tokens: 500 });
+
+    const result = resolveWindow(make5hSessionBar(), {
+      usage: repo,
+      // KEIN messages → Bucket-Fallback aktiv.
+      settings: buildSettings(),
+      now: () => sixAm,
+    });
+
+    expect(result.windowStartAt).toBe(fiveAm);
+    expect(result.windowEndAt).toBe(fiveAm + FIVE_H_MS);
   });
 });

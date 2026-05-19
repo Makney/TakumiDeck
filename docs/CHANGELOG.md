@@ -17,6 +17,19 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-19 — v0.2.1 — Bugfix: 5h-Session-Block-Anker rundete auf volle Stunde statt minutenpraezisem Erste-Token-ts
+
+### Was jetzt geht
+
+- **Das 5h-Fenster zaehlt jetzt echte fuenf Stunden ab dem ersten Token, nicht bis zur naechsten vollen Stunde +5.** Vorher: erste Nachricht 5:34 → Footer zeigte Ende 10:00 (also nur 4h 26min Restzeit). Jetzt: 5:34 → Ende 10:34, sauber fuenf Stunden. Die Anzeige im Reset-Footer der 5h-Bar entspricht damit der Anthropic-Realitaet — kein „die Bar springt vor der eigentlichen Limit-Grenze auf null"-Effekt mehr.
+- **Aenderung greift ohne Restart-Migration.** Der Fix nutzt die schon bestehende `messages`-Tabelle, in der jede Token-Zeile minutenpraezise mit `ts INTEGER` persistiert ist. Backfill nicht noetig — der naechste IPC-`usage:window`-Aufruf liefert den korrekten Anker.
+
+### Architektur-Notiz
+
+Root Cause sass in `src/main/usage/resolver.ts:118` (`computeSessionBlock`): `blockStartMs = buckets[0].bucket * 3_600_000` rechnete den Stunden-Bucket-Index zurueck in ms — das ergibt immer den Stundenanfang, niemals die Minute des ersten Tokens. Der ganze session_block-Pfad zog seinen Anker aus `usage_buckets`, das by-design stundengranular ist (PRIMARY KEY `(bucket_start, model)`). Fuer Token-Summen ist Stunden-Praezision korrekt, fuer den 5h-Block-Anker nicht. Fix: `ResolveWindowDeps` bekommt ein optionales `messages: MessageRepository`-Feld; der session_block-Pfad zieht den Anker via neuer Repo-Methode `MessageRepository.timestampsInRange(fromMs, toMs, modelLike)` aus `messages.ts` (Index `idx_messages_session_ts` und `idx_messages_project_ts` decken die ts-Range-Query). Crossing-Logik (`ts >= blockStartMs + windowMs → neuer Anker`) bleibt identisch, lebt nur jetzt auf ms- statt Stunden-Granularitaet. Token-Summe nutzt weiter `usage.sumTokens(fromBucket, toBucket)` mit `fromBucket = hourBucket(blockStartMs)` — Bucket-Aggregation bleibt schnell, die fehlende Minuten-Praezision im sum betrifft hoechstens den Anker-Bucket (typisch <1% Drift). IPC-Handler `src/main/ipc/usage.ts` reicht `messages` durch — Production hat damit immer Minuten-Praezision. Defensive Fallback auf den alten Bucket-Anker, wenn `messages` nicht uebergeben wird (Alt-Tests ohne Migration). 7 Tests im session_block-Block: 4 existierende mit Message-Fixtures nachgezogen + 3 neue (Bugfix-Szenario 5:34→10:34, Block-Transition 5:34+10:50→Anker 10:50, Bucket-Fallback-Defensive). Suite-Lauf der angrenzenden Driver-Tests (reset-schedule, usage-aggregation, session-history, messages-model, state-detection, reconciliation): 92/92 gruen, typecheck + lint sauber.
+
+---
+
 ## 2026-05-18 — v0.2.1 — Phase 2 Season 29: Multi-Tab-Diff (Working / Staged / Session · Always-visible Diff · Auto-Refresh)
 
 ### Was jetzt geht
