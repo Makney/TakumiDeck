@@ -440,7 +440,7 @@ function SettingsModal({ onClose }) {
                   </div>
                 </div>
                 <div className="td-field"><label>Workspace-Pfad</label>
-                  <input defaultValue="C:\Users\Sebastian\Projects" /></div>
+                  <input defaultValue="C:\Users\u\Projects" /></div>
                 <button className="td-action-btn">📂 Open Data Folder</button>
               </>
             )}
@@ -480,7 +480,7 @@ function SettingsModal({ onClose }) {
             {tab === "Workspace" && (
               <div style={{ fontSize: 12 }}>
                 <div className="td-field"><label>Workspace-Ordner</label>
-                  <input defaultValue="C:\Users\Sebastian\Projects" /></div>
+                  <input defaultValue="C:\Users\u\Projects" /></div>
                 <div style={{ color: "var(--td-text-dim)", marginBottom: 6 }}>Manuell hinzugefügte Projekte:</div>
                 {D.projects.map((p) => (
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--td-line)" }}>

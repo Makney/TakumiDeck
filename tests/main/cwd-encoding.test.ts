@@ -9,13 +9,13 @@ import {
 // claude-code-Encoded-cwd-Konvention (Sprint 5).
 // Realbeispiele aus ~/.claude/projects:
 //   `D:\Projekte\TakumiDeck`               → `D--Projekte-TakumiDeck`
-//   `C:\Users\makne\Desktop\TanaLib`       → `C--Users-makne-Desktop-TanaLib`
+//   `C:\Users\u\Desktop\TanaLib`           → `C--Users-u-Desktop-TanaLib`
 
 describe('encodeCwd', () => {
   it('encoded Windows-Pfade über Doppelpunkt + Backslash', () => {
     expect(encodeCwd('D:\\Projekte\\TakumiDeck')).toBe('D--Projekte-TakumiDeck');
-    expect(encodeCwd('C:\\Users\\makne\\Desktop\\TanaLib')).toBe(
-      'C--Users-makne-Desktop-TanaLib',
+    expect(encodeCwd('C:\\Users\\u\\Desktop\\TanaLib')).toBe(
+      'C--Users-u-Desktop-TanaLib',
     );
   });
 
@@ -30,7 +30,7 @@ describe('encodeCwd', () => {
 
 describe('encodedCwdFromJsonlPath', () => {
   it('extrahiert den Eltern-Ordner-Namen', () => {
-    const filePath = 'C:\\Users\\makne\\.claude\\projects\\D--Projekte-TakumiDeck\\abc.jsonl';
+    const filePath = 'C:\\Users\\u\\.claude\\projects\\D--Projekte-TakumiDeck\\abc.jsonl';
     expect(encodedCwdFromJsonlPath(filePath)).toBe('D--Projekte-TakumiDeck');
   });
 
@@ -44,13 +44,13 @@ describe('encodedCwdFromJsonlPath', () => {
 describe('expectedJsonlPath — Phase-2 Season-15', () => {
   it('baut den deterministischen claude-Code-Pfad zusammen', () => {
     const result = expectedJsonlPath(
-      'C:\\Users\\makne\\.claude\\projects',
+      'C:\\Users\\u\\.claude\\projects',
       'D:\\Projekte\\TakumiDeck',
       '11111111-2222-3333-4444-555555555555',
     );
     expect(result).toBe(
       path.normalize(
-        'C:\\Users\\makne\\.claude\\projects\\D--Projekte-TakumiDeck\\11111111-2222-3333-4444-555555555555.jsonl',
+        'C:\\Users\\u\\.claude\\projects\\D--Projekte-TakumiDeck\\11111111-2222-3333-4444-555555555555.jsonl',
       ),
     );
   });

@@ -3,7 +3,7 @@
 // claude-code legt JSONLs unter ~/.claude/projects/<encoded-cwd>/<sid>.jsonl ab.
 // `<encoded-cwd>` entsteht aus dem absoluten Pfad durch Ersetzung aller Pfad-
 // Trennzeichen und Laufwerks-Doppelpunkte durch ein einfaches `-`. Beispiele:
-//   `C:\Users\makne\Desktop\TanaLib`  → `C--Users-makne-Desktop-TanaLib`
+//   `C:\Users\u\Desktop\TanaLib`      → `C--Users-u-Desktop-TanaLib`
 //   `D:\Projekte\TakumiDeck`          → `D--Projekte-TakumiDeck`
 //   `/home/foo/bar`                   → `-home-foo-bar`
 //

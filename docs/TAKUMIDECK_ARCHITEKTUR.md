@@ -349,7 +349,7 @@ Frontend-Rendering: pures CSS-Grid (7 Zeilen × 30 Spalten) mit color-mix-Stufen
 
 ```json
 {
-  "workspace_path": "C:\\Users\\Sebastian\\Projects",
+  "workspace_path": "C:\\Users\\u\\Projects",
   "default_model": "claude-sonnet-4-6",
 
   "model_limits": {
