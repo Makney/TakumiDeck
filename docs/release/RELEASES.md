@@ -4,7 +4,7 @@ Liste **aller veröffentlichten Versionen** von TakumiDeck. Quelle der Wahrheit 
 
 Schema und Ablauf → [VERSIONIERUNG.md](./VERSIONIERUNG.md)
 
-Aktuelle Release-Version: **`0.3.0`** *(siehe auch `workbench.current_version` in [CLAUDE.md](../../CLAUDE.md))*
+Aktuelle Release-Version: **`0.3.1`** *(siehe auch `workbench.current_version` in [CLAUDE.md](../../CLAUDE.md))*
 
 ---
 
@@ -14,7 +14,7 @@ Welche Versionen als Nächstes anstehen — wird beim Erreichen umbenannt (von �
 
 | Version  | Geplanter Inhalt                                              | Phase   | Status |
 | -------- | ------------------------------------------------------------- | ------- | ------ |
-| `0.3.1`  | Phase-2-Patch — Aufholen der `OFFEN_<BEREICH>.md`-Einträge aus dem v0.3.0-Release-Review (u.a. `messages(ts)`-Index für den 5h-Block-Hot-Path) + SUMMARIES-Resync nach Season 29 | Phase 2 | ⛔      |
+| `0.3.2`  | Phase-2-Patch — Aufholen der `OFFEN_<BEREICH>.md`-Einträge aus den v0.3.0- und v0.3.1-Release-Reviews (u.a. `messages(ts)`-Index für den 5h-Block-Hot-Path) + SUMMARIES-Resync nach Season 29 | Phase 2 | ⛔      |
 | `1.0.0`  | Phase 2 abgeschlossen — alle Phase-2-Roadmap-Features ✅      | Phase 2 | ⛔      |
 
 ---
@@ -25,6 +25,7 @@ Tabelle aller veröffentlichten Versionen, **neueste zuerst**. Jeder Eintrag ver
 
 | Version | Datum      | Typ      | Phase   | Notes                                                          |
 | ------- | ---------- | -------- | ------- | -------------------------------------------------------------- |
+| `0.3.1` | 2026-05-19 | Hotfix   | Phase 2 | [Release Notes](./v0.3.1.md)                                   |
 | `0.3.0` | 2026-05-19 | Minor    | Phase 2 | [Release Notes](./v0.3.0.md)                                   |
 | `0.2.1` | 2026-05-17 | Hotfix   | Phase 2 | [Release Notes](./v0.2.1.md)                                   |
 | `0.2.0` | 2026-05-17 | Minor    | Phase 2 | [Release Notes](./v0.2.0.md)                                   |

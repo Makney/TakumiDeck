@@ -17,7 +17,7 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
-## 2026-05-19 — v0.3.0 — Bugfix: Renderer-Crash beim Schliessen aktiver Sessions (WebGL-Dispose-Race + fehlende ErrorBoundary)
+## 2026-05-19 — v0.3.1 — Bugfix: Renderer-Crash beim Schliessen aktiver Sessions (WebGL-Dispose-Race + fehlende ErrorBoundary)
 
 ### Was jetzt geht
 

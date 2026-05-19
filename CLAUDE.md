@@ -3,7 +3,7 @@ workbench:
   project_name: TakumiDeck
   default_model: claude-opus-4-7
   current_phase_file: docs/roadmap/PHASE2.md
-  current_version: "0.3.0"
+  current_version: "0.3.1"
   trigger_phrases:
     docs_update: "ist korrekt umgesetzt"
     commit: "commit"

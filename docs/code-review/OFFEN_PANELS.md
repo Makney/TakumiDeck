@@ -97,3 +97,58 @@ Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (Terminal-Polish + Multi-Ta
 - **Beschreibung:** `SerializeAddon` wird im Init-Effect geladen, aber kein Ref/Handle gehalten und nirgendwo gerufen. Bewusste Vorbereitung für die in Phase 2 / Roadmap geparkte Terminal-Buffer-Persistierung-Karte (siehe `docs/roadmap/PHASE2.md`). Kostet einen Konstruktor-Aufruf pro Tab-Mount.
 - **Begründung:** Belassen, weil das Loaden im SEASON_LOG dokumentiert ist und das Lazy-Load-Pattern beim Implementieren der Buffer-Persistierung den Setup-Aufwand einspart. Ein Inline-Code-Kommentar („// Buffer-Persistierung-Roadmap, siehe PHASE2") wäre hilfreich für den nächsten Touch.
 - **Trigger:** wenn die Buffer-Persistierung-Karte aus Phase 2 implementiert wird — dann den Addon-Handle nutzen und den Kommentar entfernen.
+
+---
+
+## Release-Review v0.3.1 (2026-05-19)
+
+Befunde aus dem Release-Review von v0.3.0 → v0.3.1 (Hotfix Renderer-Crash beim Schließen aktiver Sessions + Auto-Update-404 + Klarnamen-Cleanup), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### Context-Loss-Canvas-Fallback schluckt Load-Fehler stillschweigend
+
+- `src/renderer/panels/TerminalTab.tsx:1053-1070` (Context-Loss-Handler in `loadRendererAddonWithFallback`) · Kategorie: **Warnung**
+- **Beschreibung:** Beim WebGL-Context-Loss ruft der Handler erst `onAddonReplaced(null)` und versucht dann `new CanvasAddon()` + `terminal.loadAddon(canvas)`. Wirft der `loadAddon`-Call (z.B. weil das Terminal im selben Tick disposed wird), schluckt der innere `catch (canvasErr)` stillschweigend ohne ein zweites `onAddonReplaced(...)` zu rufen. Die Ref im TerminalTab bleibt dann dauerhaft `null` — der Cleanup-Pfad ist davon korrekt (No-op bei null), aber der Renderer verliert die Möglichkeit, im laufenden Tab noch zu rendern.
+- **Begründung:** Sehr seltener Treiber-Reset-während-Tab-Unmount-Pfad. Cleanup ist sicher (Hauptzweck des v0.3.1-Fix). Eine Recovery-Verbesserung wäre ein zweiter Canvas-Versuch oder ein Fail-Fast in den ErrorBoundary-Fallback — beides nicht heute nötig.
+- **Trigger:** wenn Context-Loss-Treiber-Resets in Telemetrie/Bug-Reports häufiger auftauchen — dann Recovery-Pfad robuster machen.
+
+### Init-RAF-Cleanup: Schutz hängt am Guard im RAF-Callback statt synchronem Vornullen
+
+- `src/renderer/panels/TerminalTab.tsx:292-304` (Init-RAF-Schedule) + `:543-581` (Cleanup) · Kategorie: **Verbesserung**
+- **Beschreibung:** Schließt der User den Tab im 16-ms-Fenster zwischen RAF-Schedule und RAF-Fire, läuft Cleanup zuerst (`cancelAnimationFrame(initRafHandle)`). Heute korrekt, weil im RAF-Callback der Guard `if (terminalRef.current !== terminal) return` aktiv ist und `terminalRef.current` am Ende des Cleanups auf null gesetzt wird. Fällt der Guard jemals weg oder wird die Cleanup-Reihenfolge umgebaut, könnte das RAF-Callback `rendererAddonRef.current` setzen, nachdem das Cleanup bereits gelaufen ist.
+- **Begründung:** Synchrones Vornullen von `terminalRef.current` direkt nach `cancelAnimationFrame(initRafHandle)` wäre robuster, weil der Schutz dann nicht an einer Reihenfolge-Annahme hängt. Heute keine konkrete Lücke.
+- **Trigger:** wenn die Cleanup-Reihenfolge in einem Refactor angefasst wird oder der Guard im RAF-Callback gestrichen wird — dann das synchrone Vornullen einziehen.
+
+### Test-Lücke: dispose-twice + onAddonReplaced-Vertrag in `safe-dispose.test.ts`
+
+- `tests/renderer/safe-dispose.test.ts` · Kategorie: **Verbesserung**
+- **Beschreibung:** Die fünf Tests decken die im Commit erwähnten Verträge (Addon-Normal-Dispose, null-No-op, Addon-Exception-Schluck mit Label, Terminal-Normal-Dispose, Terminal-Exception-Schluck mit Label). Es fehlen Tests für (a) dispose-twice-No-op (Aufrufer disposed zweimal nach Refactor-Versehen — sollte stumm laufen), (b) Non-Error-Thrown wie `throw 'string'` / `throw null` (durch catch-all eh abgedeckt, aber als Vertrags-Anker hilfreich), (c) die `onAddonReplaced`-Callback-Semantik (Context-Loss-Tausch nullt die Ref korrekt).
+- **Begründung:** Die Verhaltens-Verträge sind durch das catch-all eh abgedeckt; die Sentinel-Eigenschaft „Ref nach Context-Loss korrekt nachgezogen" hängt aber nur am Code-Review, nicht an einem Test.
+- **Trigger:** wenn der `onAddonReplaced`-Pfad oder die `safeDispose`-Helper in einem Refactor angefasst werden — dann die fehlenden Test-Anker mit einziehen.
+
+### Bestätigung: `attachCustomKeyEventHandler`-stale-`searchVisible` aus v0.3.0-Block weiter offen
+
+- `src/renderer/panels/TerminalTab.tsx:209-233` (Closure aus dem v0.3.0-Block, hier nur Bestätigung) · Kategorie: **Verbesserung-Doku**
+- **Beschreibung:** Der v0.3.1-Hotfix hat den im v0.3.0-Release-Review gemeldeten stale-`searchVisible`-Closure nicht angefasst — konsistent mit dem reinen Bugfix-Scope (Renderer-Crash + Auto-Update-404 + Klarnamen-Cleanup). Der Eintrag aus dem v0.3.0-Block bleibt unverändert gültig.
+- **Begründung:** Im v0.3.0-Block dokumentiert, kein neuer Befund. Eintrag hier nur als Audit-Spur, dass die v0.3.1-Reviewer-Runde die Lücke aktiv gegengeprüft hat.
+- **Trigger:** siehe v0.3.0-Block-Eintrag.
+
+### ErrorBoundary sitzt innerhalb `<StrictMode>` (Stilanmerkung)
+
+- `src/renderer/main.tsx:15-21` · Kategorie: **Verbesserung-Doku** (Stilanmerkung)
+- **Beschreibung:** Die ErrorBoundary wickelt `<App>` innerhalb `<StrictMode>`. Im Dev-Build rendert StrictMode Komponenten und Effects doppelt — wirft ein Effect-Cleanup eine sync-Exception, wird die Boundary im Dev-Lauf mehrfach getriggert. Kein Defekt (Fallback ist idempotent, `getDerivedStateFromError` ist pure), aber React-Doku empfiehlt die Boundary außerhalb von `<StrictMode>`, damit Boundary-Render-Fehler nicht selbst vom StrictMode-Doppellauf betroffen sind.
+- **Begründung:** Heute ohne sichtbaren Defekt, reine Stilanmerkung.
+- **Trigger:** wenn eine zukünftige Boundary-Erweiterung Side-Effects im Boundary-Render-Pfad einführt — dann Boundary nach außen ziehen.
+
+### ErrorBoundary fängt keine async Promise-Rejects (React-Vertrag)
+
+- `src/renderer/components/ErrorBoundary.tsx:30-34` (`componentDidCatch`) · Kategorie: **Verbesserung-Doku** (bewusste Designwahl)
+- **Beschreibung:** Die ErrorBoundary fängt nur sync-Throws aus Render und Effect-Cleanup. Async-Promise-Rejects aus Effects laufen an der Boundary vorbei und landen als Unhandled-Rejection in der DevTools-Konsole. Das ist React-API-Vertrag, kein Code-Defekt. Der aktuelle Bug (sync-Throw aus Effect-Cleanup) ist durch v0.3.1 abgedeckt; async-Rejects bleiben ein Loch, das aber kein neuer Defekt ist.
+- **Begründung:** React-API-Vertrag. Eine ergänzende Lösung wäre ein globaler `window.addEventListener('unhandledrejection', ...)`-Handler, der eine ähnliche Reload-Surface zeigt — separate Mini-Season-Karte.
+- **Trigger:** wenn ein async-Reject-Crash in Production beobachtet wird, der heute stumm landet — dann globalen Unhandled-Rejection-Handler ergänzen.
+
+### `handleReload` verliert Dirty-Editor-Tab-State stillschweigend
+
+- `src/renderer/components/ErrorBoundary.tsx:36-40` · Kategorie: **Verbesserung**
+- **Beschreibung:** `window.location.reload()` reloaded den Renderer komplett und verwirft dabei alle Dirty-Editor-Tabs (uncommittete Bearbeitungen im EditorPane). Der Main-Prozess (PTYs, DB-Connections, Watcher) bleibt sauber, weil nur der Renderer-Tree neu lädt — aber Editor-Dirty-State lebt nur im Renderer.
+- **Begründung:** Heute akzeptabler Trade-off, weil der Reload-Button ein Notausgang im Fallback ist und nicht der Hauptpfad. Eine Warn-Confirm vor dem Reload („Du hast nicht gespeicherte Änderungen, fortfahren?") wäre der saubere Pfad.
+- **Trigger:** wenn ein User in Praxis durch den ErrorBoundary-Fallback eine längere Edit-Session verliert — dann Dirty-Check-Confirm einbauen.
