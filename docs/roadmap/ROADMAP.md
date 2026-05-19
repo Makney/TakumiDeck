@@ -1,6 +1,6 @@
 # Roadmap – Übersicht
 
-TakumiDeck wird in **3 Phasen** entwickelt, die jeweils in einem Versions-Milestone münden.
+TakumiDeck wird in **4 Phasen** entwickelt, die jeweils in einem Versions-Milestone münden. Phase 4 ist ein Sammelort für Gray-Area-Features ohne Versionsplan.
 
 Features haben **keine feste Reihenfolge** innerhalb einer Phase – jede Implementierung findet in einer eigenen Season statt. Ausnahme: Features mit Abhängigkeiten sind als **Feature-Blöcke** markiert (Reihenfolge muss eingehalten werden).
 
@@ -9,6 +9,7 @@ Features haben **keine feste Reihenfolge** innerhalb einer Phase – jede Implem
 | [Phase 1](./PHASE1.md)             | MVP — lauffähige Multi-Session-Workbench      | v0.1      | ✅      |
 | [Phase 2](./PHASE2.md)             | Komfort und Stabilisierung                    | v1.0      | 🟡      |
 | [Phase 3](./PHASE3.md)             | Power-Features und Erweiterungen              | —         | ⛔      |
+| [Phase 4](./PHASE4.md)             | Experimentelles und Gray-Area (Opt-In)        | —         | ⛔      |
 
 Abgeschlossene Features → [CHANGELOG.md](../CHANGELOG.md)
 

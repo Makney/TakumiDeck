@@ -136,6 +136,64 @@ Erweitert die Phase-2-Docs-Sync.
 
 ---
 
+## Bereich: Quota-Awareness
+
+**Feature-Block** — drei Features in fester Reihenfolge. Jedes Feature liefert für sich einen brauchbaren Zustand und passt in eine eigene Season.
+
+**Hintergrund:** Heute berechnet TakumiDeck die 5h-Block-Last selbst aus JSONL-Timestamps und Token-Counts. Das driftet vom dem ab, was Claude Codes UI-Bar zeigt, weil Server-Cache-Multiplier und Tool-Use-Kosten nicht sichtbar sind. Anthropic liefert die echten Werte (5h, 7d) offiziell via Statusline-stdin in `rate_limits.five_hour.{used_percentage, resets_at}` und `rate_limits.seven_day.{...}`. Dieser Block hebt diesen Kanal in TakumiDeck und macht ihn parallel zur Eigen-Schätzung sichtbar.
+
+**Nicht in diesem Block:** das `overage`-Feld und Pro-Request-Token-Historie. Beide sind nur via lokalem Proxy zu bekommen und stehen aus TOS-Gründen in [Phase 4](./PHASE4.md) geparkt.
+
+---
+
+### Feature: Statusline-Hook liefert Anthropic-Werte in die DB
+
+Ende-zu-Ende-Pfad vom Claude-Code-PTY-Child bis in eine SQLite-Tabelle, plus einfache Anzeige der 5h-Werte im StatsPane (ersetzt zunächst die lokale Linie, sobald ein Snapshot vorliegt).
+
+- TakumiDeck bringt ein Mini-Statusline-Script (`td-statusline.mjs`, zero npm-Deps, Node-stdlib only) mit, das aus dem stdin-JSON von Claude Code den `rate_limits`-Block liest. Das Script schreibt einen JSON-Snapshot pro Claude-Session in einen TakumiDeck-eigenen Ordner unter `%APPDATA%\TakumiDeck\quota-snapshots\` und druckt nebenbei eine sinnvolle Statusline-Zeile.
+- Beim PTY-Spawn setzt TakumiDeck eine Env-Variable mit dem Zielordner und konfiguriert für die gespawnte Claude-Code-Instanz die Statusline so, dass sie auf das mitgelieferte Script zeigt — ohne die globale User-Statusline in `~/.claude/settings.json` anzufassen. Der exakte Mechanismus (Env-Variable wie `CLAUDE_CONFIG_DIR`, isoliertes Scratch-Settings-Verzeichnis, oder Projekt-lokale Settings) ist zu Beginn dieser Season einmal manuell zu verifizieren.
+- Neue Migration `0010_quota_snapshots.sql` mit Tabelle `quota_snapshots`: eine Zeile pro Claude-Session, Upsert, keine Historie in V1.
+- Ein chokidar-Watcher im Main-Prozess liest die Snapshot-Files, joint die Claude-Session-ID mit der TakumiDeck-Session-ID (existierendes Pattern aus Sprint 3) und schreibt via Repo in die neue Tabelle.
+- StatsPane zeigt den 5h-Wert aus dem Snapshot, sobald einer eingetroffen ist. Pre-Bootstrap-Fenster (vor erster Antwort) und Non-Pro-Subscribers: Panel bleibt auf der bestehenden lokalen Schätzung, kein leerer Slot.
+- Kein Settings-Toggle in diesem Schritt — Feature ist immer an.
+
+**Trigger:** Wenn der Drift zwischen TakumiDecks Eigen-Schätzung und dem, was Claude Codes UI-Bar zeigt, im Daily-Use spürbar wird. Wahrscheinlich nach längeren Sessions mit viel Tool-Use, weil dort der Server-Cache-Multiplier am stärksten wirkt.
+
+**Vorabklärung:** Mechanismus für Per-Session-Statusline-Override (siehe oben). Bevor die Season startet, muss das einmal manuell verifiziert sein.
+
+---
+
+### Feature: Augmentierung statt Ersatz — zwei Linien plus 7d-Limit
+
+Der StatsPane zeigt die Anthropic-Wahrheit und die TakumiDeck-Schätzung parallel nebeneinander, plus 7d-Limit als zweite Zeile, plus Reset-Zeit als Tooltip.
+
+- Zweite Mini-Linie unter der primären 5h-Bar mit Label „lokal" für die JSONL-Eigen-Schätzung und „API" für den Anthropic-Wert. Wenn nur einer verfügbar ist, wird nur dieser gezeigt.
+- 7d-Limit als neue Zeile unter dem 5h-Block, sichtbar sobald der Snapshot Daten liefert. TakumiDeck hatte bisher keine 7d-Anzeige.
+- Tooltip pro Linie: „Reset um HH:MM" aus dem `resets_at`-Feld (lokalisiert) und „Datenstand vor Xs" aus dem Snapshot-Timestamp.
+- Staleness-Regel: Snapshots älter als 60 s gelten als nicht da; UI fällt für die „API"-Linie still auf die lokale Schätzung zurück. Übernimmt die Reddit-Empfehlung von jake_that_dude und verhindert, dass ein abgestürztes Script veraltete Werte als Wahrheit zeigt.
+- Visuelles Vokabular bleibt im bestehenden Token-System (`--td-accent`, `--td-line`, `--td-panel`); keine neuen Design-Tokens.
+
+**Voraussetzung:** Statusline-Hook-Feature oben.
+
+**Trigger:** Sobald Feature 1 stabil läuft. Dieses Feature macht die Daten aus Feature 1 erst richtig sichtbar.
+
+---
+
+### Feature: Settings-Toggle und Aufräumen
+
+Letztes Polish-Feature des Blocks: User-Kontrolle und Operations-Hygiene.
+
+- Settings-Schalter „Statusline-Hook für Anthropic-Werte aktiv" mit Default `on`. Wenn aus, läuft TakumiDeck weiter ausschließlich auf der lokalen Schätzung und der StatsPane zeigt nur die „lokal"-Linie. Schema-Migration defensiv pro Feld (existierendes Pattern aus v0.3.0).
+- Cleanup-Hook beim PTY-Exit: das Snapshot-File der beendeten Session wird gelöscht. Idempotent.
+- Boot-Sweep: beim App-Start räumt TakumiDeck verwaiste Snapshot-Files aus dem Ordner (z.B. nach einem App-Crash), bevor der Watcher startet.
+- Behandlung einer vom User selbst gepflegten globalen Statusline: in diesem Feature noch keine Wrapping-Logik — TakumiDeck-gespawnte Sessions überschreiben die User-Statusline. Wrapping (Original-Script als Sub-Aufruf einbinden, dessen stdout durchreichen) ist als spätere Erweiterung denkbar, sobald jemand mit eigener Statusline TakumiDeck wirklich nutzt.
+
+**Voraussetzung:** Beide Features oben.
+
+**Trigger:** Sobald Feature 2 läuft. Kann eigenständig gezogen werden und blockiert nicht andere Phase-3-Features.
+
+---
+
 ## Bereich: Plattform
 
 ### Feature: macOS-Support
