@@ -17,7 +17,7 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
-## 2026-05-19 — v0.2.1 — Bugfix: 5h-Session-Block-Anker rundete auf volle Stunde statt minutenpraezisem Erste-Token-ts
+## 2026-05-19 — v0.3.0 — Bugfix: 5h-Session-Block-Anker rundete auf volle Stunde statt minutenpraezisem Erste-Token-ts
 
 ### Was jetzt geht
 
@@ -30,7 +30,7 @@ Root Cause sass in `src/main/usage/resolver.ts:118` (`computeSessionBlock`): `bl
 
 ---
 
-## 2026-05-18 — v0.2.1 — Phase 2 Season 29: Multi-Tab-Diff (Working / Staged / Session · Always-visible Diff · Auto-Refresh)
+## 2026-05-18 — v0.3.0 — Phase 2 Season 29: Multi-Tab-Diff (Working / Staged / Session · Always-visible Diff · Auto-Refresh)
 
 ### Was jetzt geht
 
@@ -44,7 +44,7 @@ Drei Achsen-Entscheidungen mit klarer Empfehlung im Variants-Brief, alle in eine
 
 ---
 
-## 2026-05-18 — v0.2.1 — Bugfix: generate-latest-yml.mjs Windows-Pfad-Crash auf CI-Runner + Smoke-Test-Validierung Season-27-Pipeline
+## 2026-05-18 — v0.3.0 — Bugfix: generate-latest-yml.mjs Windows-Pfad-Crash auf CI-Runner + Smoke-Test-Validierung Season-27-Pipeline
 
 ### Was jetzt geht
 
@@ -58,7 +58,7 @@ Der eigentliche Bug saß in den drei Zeilen zwischen Z. 24–27 des Scripts — 
 
 ---
 
-## 2026-05-18 — v0.2.1 — Phase 2 Season 28: Terminal-Polish (WebGL · Such-Bar · Bell-Pulse · 11 weitere Hebel)
+## 2026-05-18 — v0.3.0 — Phase 2 Season 28: Terminal-Polish (WebGL · Such-Bar · Bell-Pulse · 11 weitere Hebel)
 
 ### Was jetzt geht
 
@@ -79,7 +79,7 @@ Drei vorgestellte Pfade fuer das primaere Scroll-Stocken-Problem: **A** WebGL-Re
 
 ---
 
-## 2026-05-18 — v0.2.1 — Phase 2 Season 27: GitHub Actions Build-Pipeline fuer Tag-Push-Releases
+## 2026-05-18 — v0.3.0 — Phase 2 Season 27: GitHub Actions Build-Pipeline fuer Tag-Push-Releases
 
 ### Was jetzt geht
 
@@ -94,7 +94,7 @@ Variante **B** aus drei vorgestellten Pfaden (A Build-und-Upload-Only mit weiter
 
 ---
 
-## 2026-05-18 — v0.2.1 — Phase 2 Season 26: Auto-Update via electron-updater
+## 2026-05-18 — v0.3.0 — Phase 2 Season 26: Auto-Update via electron-updater
 
 ### Was jetzt geht
 
@@ -109,7 +109,7 @@ Variante **A** aus drei vorgestellten Pfaden (A `electron-updater` + bestehende 
 
 ---
 
-## 2026-05-18 — v0.2.1 — Phase 2 Season 25: Settings-Schema-Versionierung mit Migrations-Pipeline
+## 2026-05-18 — v0.3.0 — Phase 2 Season 25: Settings-Schema-Versionierung mit Migrations-Pipeline
 
 ### Was jetzt geht
 

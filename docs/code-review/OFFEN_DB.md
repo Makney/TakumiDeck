@@ -327,3 +327,35 @@ Callbacks (wie aktuell), aber: wenn das Interface jemals einen Wert braucht
   Separat planen.
 - **K-3, K-5, K-6** — reine Stil-Findings, nicht prioritär.
 - **P-2** — Awareness-Hinweis, kein Fix nötig.
+
+---
+
+## Release-Review v0.3.0 (2026-05-19)
+
+Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (Migration 0009 `sessions.start_commit_sha` + neue `messages.timestampsInRange`-Methode für den 5h-Session-Block-Anker), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### P-3 – Kein Index auf `messages(ts)` für `timestampsInRange`-Hot-Path
+
+**Datei:** `src/main/db/repos/messages.ts:136-141` (Statements) ↔ `src/main/db/migrations/0001_init.sql:51` + `0002_jsonl_offsets.sql:24` (vorhandene Indizes) – **NEU**
+
+Die in v0.3.0 hinzugekommenen Prepared-Statements `tsRangeAllStmt` / `tsRangeFilterStmt` filtern `WHERE ts BETWEEN ? AND ?`, optional plus `model LIKE ?`. Die einzigen `messages`-Indizes sind aber `(session_id, ts)` und `(project_id, ts)` — beide haben `ts` nicht als Leading-Column und können einen reinen `ts`-Range nicht effizient bedienen. SQLite fällt damit auf einen Full-Table-Scan zurück. `collectBlockAnchors` in `usage/resolver.ts:170` ruft die Methode pro `resolveWindow` / `usage:resolve`-Call, d.h. effektiv pro UI-Refresh der Limit-Bars — bei wachsender messages-Tabelle wird der 5h-Bar spürbar langsamer.
+
+Der v0.3.0-Commit-Text behauptet zwar, der vorhandene `idx_messages_session_ts`/`idx_messages_project_ts` decke ts-Range-Queries ab — das stimmt nur für *kombinierte* WHERE-Klauseln, nicht für die hier ausgeführte plain-ts-Range-Query.
+
+→ Fix-Vorschlag: Mini-Migration 0010 mit `CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(ts)`. Alternativ `(ts, model)` falls Modell-Filter dominieren. Trigger: wenn eine User-Beobachtung „5h-Bar lädt langsam" auftaucht, oder beim nächsten Touch am Resolver-Pfad.
+
+### S-6 – `timestampsInRange` JSDoc dokumentiert nicht die globale Aggregation
+
+**Datei:** `src/main/db/repos/messages.ts:33-37` – **NEU**
+
+Die Query summiert global über `messages` (kein Projekt-/Session-Scope). Für das aktuelle Feature (globaler 5h-Block der Anthropic-Quota) ist das die korrekte Anzeige — aber der Methoden-Name suggeriert keine Scope-Einschränkung und es gibt kein Dokumentations-Anker im JSDoc Zeile 33-37, der diese Absicht festhält. Bei späterer Wiederverwendung (z.B. Per-Projekt-Burn-Rate) leicht zu übersehen.
+
+→ JSDoc um den expliziten „global über alle Sessions/Projekte"-Hinweis ergänzen. Beim nächsten Touch am Repo mitnehmen.
+
+### K-7 – `setStartCommitSha`-Fehler werden im PTY-Caller in generische „revParse fehlgeschlagen"-Log-Message gepackt
+
+**Datei:** `src/main/db/repos/sessions.ts:552-555` ↔ Caller `src/main/ipc/pty.ts:214-227` – **NEU (Stil-Drift)**
+
+Der PTY-Caller wrapt den fire-and-forget Baseline-SHA-Capture in einem `.catch()`, der sowohl `revParse`-Fehler als auch DB-Fehler in einem generischen Log-Eintrag zusammenfasst („revParse für Baseline-SHA fehlgeschlagen"). Wenn `setStartCommitSha` (z.B. wegen DB-Lock) wirft, ist die Fehler-Quelle aus dem Log nicht erkennbar. Der Driver selbst hat keinen try/catch — das ist konsistent mit anderen Driver-Methoden, aber die irreführende Log-Message bleibt.
+
+→ Im PTY-Handler den `.then()` separat fangen oder die Log-Message neutral formulieren („Baseline-SHA-Setzen fehlgeschlagen"). Keine Verhaltensänderung, nur Diagnose-Klarheit.

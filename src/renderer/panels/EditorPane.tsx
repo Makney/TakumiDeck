@@ -113,12 +113,23 @@ export function EditorPane({ settings }: EditorPaneProps) {
   // Phase-2 Season-29: Auto-Open des Diff-Tabs beim Projekt-Wechsel, sofern
   // das Projekt ein Git-Repo ist. User-Beschwerde: „aktuell muss ich es
   // immer erst anklicken" — der Diff-Tab soll fuer Git-Projekte by default
-  // sichtbar sein. Idempotent (openDiffTab fokussiert nur, wenn der Tab
-  // schon existiert).
+  // sichtbar sein.
+  //
+  // Sentinel-Ref pro projectId: einmal pro Projekt-Visite triggern, damit
+  // das Schliessen des Tabs den Auto-Open NICHT erneut ausloest. Hintergrund:
+  // useGitStatus resettet hasGit auf true sobald enabled=false (Tab zu) wird,
+  // wodurch die alten dep-getriggerten Effects in einer Endlosschleife immer
+  // wieder aufmachten — der x-Button war damit effektiv tot.
+  const autoOpenedForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) {
+      autoOpenedForRef.current = null;
+      return;
+    }
+    if (autoOpenedForRef.current === projectId) return;
     if (!hasGit) return;
     if (diffTabOpen) return;
+    autoOpenedForRef.current = projectId;
     openDiffTab(projectId);
   }, [projectId, hasGit, diffTabOpen, openDiffTab]);
 

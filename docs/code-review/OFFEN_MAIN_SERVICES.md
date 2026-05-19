@@ -106,3 +106,37 @@ Befunde aus dem Release-Review von v0.1.2 → v0.2.0, die bewusst nicht release-
 - **Beschreibung:** Season-23-Templates haben YAML-Frontmatter (`variables:`-Map) am Datei-Anfang plus einen `## Vorlage`-Heading mit Code-Fence. `extractTemplateBody` findet den `## Vorlage`-Block und gibt nur dessen Fence-Inhalt zurück — das Frontmatter landet *nicht* im Prompt. Wenn ein User aber ein Template *mit* Frontmatter und *ohne* `## Vorlage`-Heading anlegt, fällt der Extraktor auf „voller Content" zurück (Fallback-Path bei Zeile 76) und der YAML-Block fließt in den Prompt mit. Alle in v0.2.0 ausgelieferten Templates (BUG_REPORT/CODE_REVIEW_START/PROJEKT_KICKOFF/RELEASE_START/SEASON_PROMPT plus `createTemplateStub`-Output) haben beides, also nicht in der Praxis exponiert.
 - **Begründung:** Fix wäre einzeilig (vor dem Heading-Match einen `stripFrontmatter`-Call aus `src/shared/docs-sync.ts` einbauen — der Helper existiert seit Season 22). Aber: der Body-Extraktor lebt im Renderer und `docs-sync.ts` im Shared-Layer, der Import ist neutral. Bewusst aus Season-23-Scope rausgehalten, damit der Frontmatter-Schema-Pfad fokussiert bleibt.
 - **Trigger:** beim nächsten Touch von `templateBody.ts` oder wenn ein User-Template ohne `## Vorlage`-Heading auftaucht und der YAML-Block im Prompt landet — dann `stripFrontmatter` vor dem Heading-Scan einsetzen.
+
+---
+
+## Release-Review v0.3.0 (2026-05-19)
+
+Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (Auto-Update-Pipeline + ProjectFilesWatcher + 5h-Session-Block-Bugfix), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### `electron-updater`-Listener-Stapel bei `setFeedURL`-Fehler
+
+- `src/main/updater/auto-updater.ts:78-83` · Kategorie: **Bug** (latent)
+- **Beschreibung:** Wenn `setFeedURL` wirft, kippt der Wrapper auf `error` und kehrt aus `initialize()` zurück — aber `initialized` wurde schon auf `true` gesetzt (Zeile 59). Ein späteres erneutes `initialize()` (theoretisch möglich, da der Pfad öffentlich ist) macht no-op, obwohl keine `on()`-Listener registriert wurden → keine Update-Events werden je gemeldet, Banner bleibt stumm.
+- **Begründung:** `initialize()` wird aktuell nur einmal in `main.ts:314` gerufen — kein heutiger Defekt. Saubere Fix-Variante: `initialized=true` erst nach erfolgreichem Listener-Setup setzen, oder den `error`-State ohne `initialized=true` melden.
+- **Trigger:** wenn das Updater-Setup jemals einen zweiten Trigger-Pfad bekommt (z.B. „User klickt Re-Check nach Netzwerk-Wiederherstellung") — dann den Init-Guard vor dem Listener-Setup justieren.
+
+### `project-watcher.ts`-Kommentar verspricht `depth=5`, Code setzt `depth=8`
+
+- `src/main/fs/project-watcher.ts:106-107` · Kategorie: **Verbesserung-Doku**
+- **Beschreibung:** Der Inline-Kommentar sagt „Tiefen-Limit analog zum fs:list-tree-Scanner (default 5)", der konkrete `depth`-Wert ist aber `8`. Irreführend für den nächsten Wartungs-Touch.
+- **Begründung:** Wert oder Kommentar angleichen reicht — keine Verhaltensänderung. Heute kein UX-Defekt.
+- **Trigger:** nächste Änderung am Watcher (z.B. wenn die Skip-Liste erweitert wird).
+
+### `changedFilesAgainst` schluckt `git.status()`-Fehler ohne Log
+
+- `src/main/git/driver.ts:205-211` · Kategorie: **Verbesserung**
+- **Beschreibung:** Catch-Block leer, kein Log. Der bewusste Fallback ist okay (Diff-Liste reicht), aber bei wiederkehrenden Status-Fehlern (z.B. Lock-File-Conflict) fliegt der Hinweis unsichtbar weg. Der `diff`-Catch oben (Zeile 169, 186) ist ebenfalls stumm, dort aber explizit als „mapping bleibt leer" begründet.
+- **Begründung:** Optional einen `log.warn` einsetzen, sobald der Driver einen Logger bekommt. Aktuell keine Logger-Injection im Git-Driver — eine eigene kleine Mini-Season-Aufgabe.
+- **Trigger:** wenn ein User-Report „Diff-Liste ist plötzlich leer trotz lokaler Changes" auftaucht — dann den Logger-Hook einziehen und die zwei Catches loggen lassen.
+
+### chokidar `ignored`-Predicate ohne Stat-Argument
+
+- `src/main/fs/project-watcher.ts:110` · Kategorie: **Verbesserung**
+- **Beschreibung:** `ignored: (p) => isSkippedPath(p, projectPath)` läuft auf **jeden** Pfad inkl. Files. `isSkippedPath` segmentiert den Relativpfad und prüft die `PROJECT_WATCH_SKIP_DIRS`-Set. Korrekt, aber bei tiefen Trees (Projekte mit vielen Dateien außerhalb der Skip-Dirs) wird die Funktion sehr oft aufgerufen. `path.relative` + `split` pro Aufruf ist nicht trivial.
+- **Begründung:** Da `ignoreInitial: true` gesetzt ist, betrifft das nur Live-Events nach Boot — also faktisch egal. Kein Bug; reine Performance-Beobachtung.
+- **Trigger:** wenn ein User „Initial-Scan / Watcher dauert lange auf großem Repo" meldet — dann auf einen pre-segmentierten Skip-Check umstellen (z.B. nur Top-Level-Segment vergleichen).

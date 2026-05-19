@@ -80,3 +80,37 @@ Befunde aus dem Release-Review von v0.1.2 → v0.2.0, die bewusst nicht release-
 - **Beschreibung:** Season-21 hat dem `pty:exit`-Handler einen zusätzlichen `Channels.SessionStatusPush`-Send hinzugefügt, damit eine im Hintergrund auf `completed`/`interrupted`/`error` gewanderte Session sofort im Verlauf-Panel erscheint. Der State-Detection-Loop sendet denselben Channel für `running`/`idle`/`waiting`/`permission-prompt`. Die Events tragen keine Sequenz-ID, eine ungünstige Reihenfolge (Loop-Tick zwischen `pty:exit`-DB-Write und `SessionStatusPush`-Receive im Renderer) könnte einen kurzen Status-Flicker erzeugen.
 - **Begründung:** Renderer-Seite filtert defensiv (`HistoryPane.tsx:198`: `if (existing.status === event.status) return prev` und vergleichbare Stelle im Store). Ein Echo führt zu einer No-Op statt einem falschen Status. Praktisch im Daily-Use nicht beobachtbar. Korrelations-IDs einzuführen wäre ein eigenständiger Refactor mit Schema-Erweiterung (`SessionStatusPushEvent` um `seq` oder `source`-Feld).
 - **Trigger:** wenn ein User-Report „Status flackert kurz nach Session-Ende" auftaucht oder die State-Detection-Loop um eine weitere Status-Quelle erweitert wird (dritter Sender macht die Reihenfolgen-Annahme brüchig).
+
+---
+
+## Release-Review v0.3.0 (2026-05-19)
+
+Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (vier neue Channels: `fs:set-watched-project`, `fs:changed`, `git:show-staged`, `git:session-diff` + Updater-IPC), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### `git:session-diff` kollabiert `has_git=0` und `baseline=null` in identischen Empty-State
+
+- `src/main/ipc/git.ts:174` · Kategorie: **Verbesserung**
+- **Beschreibung:** Der Handler behandelt zwei semantisch unterschiedliche Fälle (Projekt ist kein Git-Repo vs. Baseline-Capture beim Spawn fehlgeschlagen, weil `revParse` zum PTY-Spawn-Zeitpunkt nicht durchkam) als ein einziges `hasBaseline:false`-Result. `git:status` liefert demgegenüber bei `has_git=0` ein explizites `NOT_A_GIT_REPO`, was den Renderer eine andere Diagnose anzeigen ließe („Kein Git-Repo" vs. „Baseline fehlt"). Im aktuellen Renderer-Pfad zeigt der DiffViewer in beiden Fällen denselben Empty-State, daher kein UX-Regression.
+- **Begründung:** Beim nächsten Touch ein `hasGit:boolean`-Feld neben `hasBaseline` ergänzen, damit der Renderer beide Fälle differenzieren kann. Heute reiner Stil-Drift.
+- **Trigger:** wenn der DiffViewer eine differenzierte Empty-State-Botschaft bekommt (z.B. „Kein Git-Repo — Session-Diff nicht verfügbar" vs. „Baseline-SHA fehlt — Tab muss neu gespawnt werden").
+
+### `git:show-staged` ohne lexikalischen Path-Traversal-Filter (Stil-Drift zu fs:*-Handlern)
+
+- `src/main/ipc/git.ts:135-157`, Driver `src/main/git/driver.ts:150-160` · Kategorie: **Verbesserung**
+- **Beschreibung:** Der `relPath` aus `GitShowStagedInputSchema` fließt unkontrolliert in `git.show([':<relPath>'])`. Im Gegensatz zu `fs:read`/`fs:write` (wo `resolveValidatedProjectPath` Anti-Traversal macht) verlässt sich der Pfad hier auf gits Tree-relative Semantik: `git show :../../etc/passwd` schlägt mit Git-Error fehl, weil git Pfade außerhalb des Trees ablehnt. Damit ist die Klasse `Renderer-Pfad-Escape` zwar unkritisch für den Inhalt — aber konsistent mit dem bestehenden Muster wäre ein Lexikal-Check vor dem Driver-Aufruf. Bestehende `git:show`/`git:diff` haben dieselbe Eigenschaft seit v0.1, also keine Regression.
+- **Begründung:** Optionalen `resolveProjectRelative`-Lexikal-Check in `resolveGitProject` aufnehmen, der `relPath` zusätzlich validiert. Heute keine Sicherheits-Lücke, nur Konvention-Bruch.
+- **Trigger:** sobald jemals ein git-Channel User-Pfade an Befehle weiterreicht, die *nicht* tree-internal interpretieren (z.B. ein hypothetisches `git:archive-file` mit absolutem Output-Pfad) — dann zentralen Lexikal-Check ziehen.
+
+### `pty:create` setzt `start_commit_sha` race-frei via WHERE-IS-NULL, Kommentar fehlt
+
+- `src/main/ipc/pty.ts:212-213` · Kategorie: **Verbesserung-Doku**
+- **Beschreibung:** Das fire-and-forget `gitDriver.revParse(...).then(...).catch(...)` kann nach Session-Archive/Close auflaufen. `setStartCommitSha` hat `WHERE start_commit_sha IS NULL` (siehe Driver `src/main/db/repos/sessions.ts:552-555`) und ist deshalb idempotent + race-frei. Der Handler-Kommentar in `pty.ts:212-213` erwähnt aber nur die Spawn-Wahl, nicht die Race-Behandlung — beim nächsten Touch würde jemand eventuell einen `lifecycle.isShuttingDown()`-Check ergänzen wollen, der bei Bestandscode nicht nötig ist.
+- **Begründung:** Inline-Kommentar um „WHERE-Klausel-Idempotenz schützt vor Session-Archive-Race" ergänzen. Kein Code-Fix nötig.
+- **Trigger:** nächste Änderung am PTY-Spawn-Pfad (z.B. bei der in Phase 2 geparkten Terminal-Session-ohne-Claude-Karte) — dann den Kommentar mit-anziehen.
+
+### `fs:set-watched-project` log-frei, andere fs:*-Handler loggen Ergebnis-Bilanz
+
+- `src/main/ipc/fs.ts:278-309` · Kategorie: **Stil**
+- **Beschreibung:** Kein `log.info`-Eintrag bei Watcher-Wechsel/Stop. `fs:list-templates` und `fs:clear-screenshots` loggen ihre Ergebnis-Bilanz; der ProjectFilesWatcher loggt zwar selbst `[project-watcher] ready/gestoppt`, aber der IPC-Eintrittspunkt bleibt im Main-Log unsichtbar (z.B. bei stillem Fail-Path Renderer-Race vs Watcher-Setup).
+- **Begründung:** Später ein `log.info('[fs:set-watched-project] projectId=...')` ergänzen — reine Diagnose-Konsistenz.
+- **Trigger:** wenn ein User-Report „Auto-Refresh feuert nicht trotz aktivem Projekt" auftaucht — dann den Einstiegs-Log zur Diagnose nutzen.

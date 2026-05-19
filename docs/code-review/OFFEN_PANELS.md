@@ -70,3 +70,30 @@ Befunde aus dem Release-Review von v0.2.0 → v0.2.1 (Hotfix Resume-UNIQUE-Const
 - **Beschreibung:** Ändert der User den `markdown_editor_layout`-Default im Settings-Modal, während ein Markdown-Tab offen ist, bekommt die offene Editor-Instanz den neuen Default NICHT — `initialLayout` ist nur State-Init beim Mount. Erst beim Schließen + Neu-Öffnen einer Datei wirkt der neue Wert.
 - **Begründung:** Konsistent mit dem dokumentierten Verhalten („nur den Startwert beim Mount"). Keine Datenverlust-Gefahr, reines UX-Detail. Eine Live-Reaktion wäre ein Effekt in `MarkdownEditor` mit `[initialLayout]` als Dep, der `setLayout(initialLayout)` setzt — würde aber die tab-lokale Switch-Entscheidung des Users überschreiben, sobald er das Settings-Modal öffnet/schließt. Reine Designwahl, kein Bug.
 - **Trigger:** wenn der UX-Pfad „User stellt Default um, wundert sich, dass offene Tabs nicht mit umschalten" empirisch wehtut — dann Per-Default-Live-Refresh mit klarer Semantik (nur Tabs ohne lokalen Switch?) als eigene Mini-Season.
+
+---
+
+## Release-Review v0.3.0 (2026-05-19)
+
+Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (Terminal-Polish + Multi-Tab-Diff + Auto-Update + Session-Block-Bugfix), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden. Der einzige release-blockierende Befund (Auto-Open-Loop des Diff-Tabs in `EditorPane.tsx:118-123`) wurde vor dem Tag gefixt — siehe `docs/CHANGELOG.md` v0.3.0.
+
+### `attachCustomKeyEventHandler` capturet stale `searchVisible` als Closure-Snapshot
+
+- `src/renderer/panels/TerminalTab.tsx:209-233` (Closure in der `[sessionId]`-useEffect ab Zeile 153) · Kategorie: **Bug** (latent)
+- **Beschreibung:** Der CustomKeyEventHandler wird einmal pro Tab-Mount gebunden und captured `searchVisible` als `false`. Der Escape-Branch in Zeile 224-231 (`if (... searchVisible)`) feuert deshalb nie. Heute irrelevant, weil der Such-Input ein eigenes `onKeyDown` an Zeile 876-885 hat und beim Anzeigen den Fokus zieht — Escape-Verhalten läuft über den Input-Pfad. Sobald der Fokus aus dem Such-Input wandert (z.B. wenn künftige Pfeil-Buttons der Search-Bar Tab-Fokus bekommen) und der User Escape im Terminal-Bereich drückt, wäre die Lücke aktiv.
+- **Begründung:** Saubere Fix-Variante wäre `searchVisible` als `useRef` spiegeln (analog zu `isActiveRef`) und in der Handler-Funktion `searchVisibleRef.current` lesen — gleicher Trick wie bei `isActiveRef`. Heute kein sichtbarer Defekt.
+- **Trigger:** wenn die Search-Bar um Tab-fokussierbare Elemente erweitert wird (z.B. „nächster Treffer"-Button) — dann die Ref-Spiegelung nachziehen.
+
+### `fs.setWatchedProject`-useEffect ohne Cleanup-Return
+
+- `src/renderer/panels/EditorPane.tsx:109-111` · Kategorie: **Verbesserung**
+- **Beschreibung:** Der Effect setzt das aktive Projekt beim Datei-Watcher im Main, hat aber kein Cleanup-Return, das beim Unmount `setWatchedProject({ projectId: null })` ruft. In der Praxis vom `before-quit`-Pfad im Main abgefangen (Watcher wird beim App-Quit gestoppt), kein Live-Problem.
+- **Begründung:** Wird zur echten Lücke, sobald EditorPane jemals dynamisch ent-mountet (z.B. wenn ein zukünftiger Refactor den Editor in ein modales Panel verschiebt). Heute ist EditorPane permanent gemountet, solange die App lebt.
+- **Trigger:** wenn EditorPane unmount-fähig wird (Layout-Refactor) — dann Cleanup-Return ergänzen.
+
+### `SerializeAddon` geladen aber ungenutzt
+
+- `src/renderer/panels/TerminalTab.tsx:259` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** `SerializeAddon` wird im Init-Effect geladen, aber kein Ref/Handle gehalten und nirgendwo gerufen. Bewusste Vorbereitung für die in Phase 2 / Roadmap geparkte Terminal-Buffer-Persistierung-Karte (siehe `docs/roadmap/PHASE2.md`). Kostet einen Konstruktor-Aufruf pro Tab-Mount.
+- **Begründung:** Belassen, weil das Loaden im SEASON_LOG dokumentiert ist und das Lazy-Load-Pattern beim Implementieren der Buffer-Persistierung den Setup-Aufwand einspart. Ein Inline-Code-Kommentar („// Buffer-Persistierung-Roadmap, siehe PHASE2") wäre hilfreich für den nächsten Touch.
+- **Trigger:** wenn die Buffer-Persistierung-Karte aus Phase 2 implementiert wird — dann den Addon-Handle nutzen und den Kommentar entfernen.

@@ -82,3 +82,23 @@ Die in der Build-Bereichs-Sitzung mitgelaufenen Fallow-Hypothesen sind im Code b
 - **MakerZIP nur `win32`.** Kein darwin-/linux-ZIP-Artefakt mehr aus dem Make-Output, das ohnehin nicht testbar wäre (CLAUDE.md-Target ist Win11).
 - **`appBundleId` gesetzt.** `dev.takumideck.app` — Architektur-1-Naming-Lücke geschlossen.
 - **`.fallowrc.json` im Repo.** Fallow-Config persistiert, MCP-Integration kann die Codebase-Intelligence direkt abfragen ohne Zwischen-Export.
+
+---
+
+## Release-Review v0.3.0 (2026-05-19)
+
+Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (CI-Workflow `.github/workflows/release.yml` + `scripts/generate-latest-yml.mjs` + `electron-updater`/`@xterm/addon-webgl`-Erstaufnahme), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden. Der Pre-Build-Verify-Gate-Fail bei `package.json.version != tag` wurde durch den regulären v0.3.0-Phase-4-Bump aufgelöst.
+
+### Asset-Pfad-Konstanten zwischen Workflow und Generator-Skript dupliziert
+
+- `.github/workflows/release.yml:165-167` ↔ `scripts/generate-latest-yml.mjs:41,48` · Kategorie: **Verbesserung**
+- **Beschreibung:** Beide Stellen kennen unabhängig den Pfad `out/make/squirrel.windows/x64/TakumiDeck-<version> Setup.exe`. Das Script hat einen defensiven Fallback (Z51-72) auf eine einzige `* Setup.exe`-Datei im Ordner; der Workflow-Upload-Step (Z168-172) failt hingegen hart, wenn der erwartete Name nicht stimmt. Keine Inkonsistenz im aktuellen Forge-Output (verifiziert durch Season-27-Live-Test), aber doppelt gepflegte Konstanten.
+- **Begründung:** Aktuell akzeptabel, weil Forge den Naming-Default seit Season 27 nicht geändert hat. Vereinheitlichung wäre möglich (z.B. Script gibt Pfad als JSON auf stdout aus, Workflow konsumiert), aber separater Refactor-Schritt ohne sichtbaren Nutzen heute.
+- **Trigger:** wenn Forge in Zukunft den Naming-Default ändert (z.B. nach `@electron-forge/maker-squirrel@8`-Bump) — dann Workflow und Script auf eine Source-of-Truth zusammenführen.
+
+### Neue Runtime-Dependencies in v0.3.0 ohne Major-Bump-Risiko, aber Erst-Aufnahme
+
+- `package.json:40,46` · Kategorie: **Verbesserung-Doku**
+- **Beschreibung:** Zwei neue Runtime-Deps seit v0.2.1: `@xterm/addon-webgl@^0.19.0` (Terminal-Polish Season 28, WebGL-Renderer mit Canvas-Fallback) und `electron-updater@^6.8.3` (Auto-Update Season 25/26). Beide sind Erst-Aufnahmen, kein Major-Bump-Risiko in dieser Version. In den Release-Notes `docs/release/v0.3.0.md` als neue Runtime-Deps benannt; hier als Anker, falls bei einer späteren Audit-Welle die Frage „wann kamen diese Deps?" auftaucht.
+- **Begründung:** Reine Doku-Notiz für künftige Review-Pässe — keine Aktion erforderlich.
+- **Trigger:** bei einem Major-Bump beider Deps (z.B. `electron-updater@7.x`) — dann diese Notiz als Anker für die Bump-Bewertung nutzen.

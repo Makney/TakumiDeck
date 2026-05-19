@@ -37,3 +37,23 @@ Bereich-Shared-Review nach Sprint 9. Die behobenen Punkte (B-1 tote Channels, W-
 - **Beschreibung:** `err()` returnt entweder `{ ok: false, error }` oder `{ ok: false, error, code }`, je nachdem, ob `code` übergeben wurde. Für TypeScript ist das identisch (`code?: string` deckt beides), aber bei JSON-Serialisierung über IPC unterscheidet sich das Wire-Format leicht (Property fehlt vs. `code: undefined`).
 - **Begründung:** Aktuell rein kosmetisch — Renderer prüft `result.code` nur, wenn es relevant ist; beide Shapes liefern `undefined`. Vereinheitlichung wäre eine Zeile, lohnt aber den separaten Commit nicht.
 - **Trigger:** wenn ein Konsument anfängt, `'code' in result`-Checks zu machen (statt `result.code !== undefined`).
+
+---
+
+## Release-Review v0.3.0 (2026-05-19)
+
+Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (neue Channels `fs:set-watched-project`, `fs:changed`, `git:show-staged`, `git:session-diff`, plus die vier `updater:*`-Channels), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### `GitSessionDiffInputSchema.sessionId` ist `min(1)`, andere session-Schemas verlangen `uuid()`
+
+- `src/shared/schemas.ts:423-425` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** `GitSessionDiffInputSchema` validiert `sessionId` als `z.string().min(1)`, während die meisten anderen session-bezogenen Schemas (`SessionCloseInputSchema`, `SessionResumeInputSchema`, `PtyWriteInputSchema` u.a.) `z.string().uuid()` verlangen. Precedent existiert in `TemplatesAllocateSeasonForSessionInputSchema` (ebenfalls `min(1)`), der Main resolved die ID anschließend gegen die DB → kein Sicherheitsrisiko, nur Stil-Drift.
+- **Begründung:** Bei Gelegenheit auf `uuid()` heben oder das `min(1)`-Muster bewusst als Konvention festhalten. Heute kein Defekt.
+- **Trigger:** nächstes Shared-Review oder wenn ein dritter Schema-Eintrag mit `min(1)` statt `uuid()` auftaucht — dann eine bewusste Konvention setzen.
+
+### `FsSetWatchedProjectInputSchema` ↔ Channel-Kommentar: undefined vs. null als Stop-Signal
+
+- `src/shared/ipc-channels.ts:113-115` ↔ `src/shared/schemas.ts:385-387` · Kategorie: **Verbesserung-Doku**
+- **Beschreibung:** Der Kommentar in `ipc-channels.ts:114` sagt „null stoppt den Watcher". Schema und Type fordern aber explizit `projectId: string | null` als Pflichtfeld — `undefined` oder fehlendes Feld würden bei der zod-Parse failen. Das ist beabsichtigt (eindeutiger Vertrag), und der Renderer setzt das Feld auch immer. Kleine Doku-Inkonsistenz, falls jemand annimmt, `null` und „nicht-gesetzt" wären äquivalent.
+- **Begründung:** Bei der nächsten Doku-Politur klarstellen, dass `projectId` als Pflichtfeld mit `null` als Stop-Signal gilt.
+- **Trigger:** nächste Änderung am `fs:set-watched-project`-Vertrag oder Doku-Review der Channels-Datei.
