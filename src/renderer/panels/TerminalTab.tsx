@@ -23,6 +23,11 @@ import {
 } from '../components/terminalDropHandler';
 import { clampFontSize, nextZoomFontSize } from '../components/terminalFontZoom';
 import { quotePathIfNeeded } from '../components/pathQuoting';
+import {
+  safeDisposeAddon,
+  safeDisposeTerminal,
+  type DisposableLike,
+} from '../components/safeDispose';
 import { useProjectStore } from '../stores/projects';
 import { useSessionStore } from '../stores/sessions';
 
@@ -99,6 +104,13 @@ export function TerminalTab({
   // sitzt im Render-Tree dieses Components, ruft aber direkt addon.findNext/
   // findPrevious — kein State-Sync ueber die Renderer-Grenze noetig.
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  // Bugfix 2026-05-19: Renderer-Addon-Ref (WebGL oder Canvas-Fallback). Wird
+  // beim Tab-Close VOR `terminal.dispose()` separat disposed, weil
+  // @xterm/addon-webgl@0.19.0 im internen dispose-Pfad eine TypeError wirft
+  // wenn der GL-Renderer noch nicht voll initialisiert ist (Shader-Compile
+  // ist async). Ohne den fruehen Dispose mit try/catch bubblte die Exception
+  // aus dem React-Effect-Cleanup und riss den Render-Tree mit.
+  const rendererAddonRef = useRef<DisposableLike | null>(null);
   // Phase-2 Season-28: TUI-Poll-Kontrolle. Der isActive-Effect ruft pause/start,
   // die Implementierungen leben aber im Init-Effect (Closure ueber lastPushedState
   // usw.). Ref ist der einfachste Weg ueber die Effect-Grenze ohne Re-Bindings.
@@ -283,7 +295,11 @@ export function TerminalTab({
       // gelaufen sein (StrictMode-Double-Mount oder Tab-Close in <16ms).
       if (terminalRef.current !== terminal) return;
       terminal.open(container);
-      loadRendererAddonWithFallback(terminal);
+      rendererAddonRef.current = loadRendererAddonWithFallback(terminal, (next) => {
+        // Context-Loss-Pfad hat den Renderer ausgetauscht — Ref nachziehen,
+        // damit der Cleanup spaeter den richtigen Addon disposed.
+        rendererAddonRef.current = next;
+      });
       safeFit(fit);
     });
 
@@ -552,7 +568,14 @@ export function TerminalTab({
       offExit();
       ro.disconnect();
       window.removeEventListener('resize', scheduleFit);
-      terminal.dispose();
+      // Bugfix 2026-05-19: Renderer-Addon zuerst und separat disposen mit
+      // try/catch (@xterm/addon-webgl@0.19.0 wirft beim Dispose vor voller
+      // Init). terminal.dispose() ist ebenfalls in try/catch gewickelt als
+      // Defense-in-Depth — sollte kuenftig ein anderer Addon-Pfad wackeln,
+      // reisst er den Renderer-Tree nicht mit.
+      safeDisposeAddon(rendererAddonRef.current, 'renderer-addon');
+      rendererAddonRef.current = null;
+      safeDisposeTerminal(terminal, 'xterm');
       terminalRef.current = null;
       fitRef.current = null;
     };
@@ -1013,14 +1036,31 @@ function safeFit(fit: FitAddon | null): void {
 //   2. Laufzeit-Context-Loss (Treiber-Reset/GPU-Crash) → onContextLoss
 //      disposed das Addon und laedt Canvas nach. xterm rendert dann bis
 //      zur naechsten App-Session weiter ueber Canvas.
-function loadRendererAddonWithFallback(terminal: Terminal): void {
+//
+// Bugfix 2026-05-19: Rueckgabe ist der aktuell aktive Addon (WebGL oder
+// Canvas-Fallback). Caller (TerminalTab) haelt ihn in einer Ref, um beim
+// Cleanup vor `terminal.dispose()` separat zu disposen — der WebGL-Dispose-
+// Pfad wirft sonst eine TypeError, wenn der GL-Renderer beim Schliessen
+// noch nicht voll initialisiert war. Bei Context-Loss-Tausch meldet der
+// Callback `onAddonReplaced` den neuen Addon nach, damit die Ref aktuell
+// bleibt.
+function loadRendererAddonWithFallback(
+  terminal: Terminal,
+  onAddonReplaced: (next: WebglAddon | CanvasAddon | null) => void,
+): WebglAddon | CanvasAddon | null {
   try {
     const webgl = new WebglAddon();
     webgl.onContextLoss(() => {
       console.warn('[TerminalTab] WebGL Context-Loss, weiche auf CanvasAddon aus');
-      webgl.dispose();
+      safeDisposeAddon(webgl, 'webgl-context-loss');
+      // Ref auf null setzen, bis der Canvas-Fallback erfolgreich geladen ist —
+      // ansonsten zeigt sie auf den disposed Addon und Cleanup wuerde ihn
+      // erneut disposen (Idempotenz erforderlich).
+      onAddonReplaced(null);
       try {
-        terminal.loadAddon(new CanvasAddon());
+        const canvas = new CanvasAddon();
+        terminal.loadAddon(canvas);
+        onAddonReplaced(canvas);
       } catch (canvasErr) {
         console.warn(
           '[TerminalTab] CanvasAddon-Fallback nach WebGL-Context-Loss fehlgeschlagen',
@@ -1032,13 +1072,24 @@ function loadRendererAddonWithFallback(terminal: Terminal): void {
     // Erfolg-Log: User kann in den DevTools schnell pruefen, welcher Renderer
     // aktiv ist. Bei mehreren parallelen Tabs einmal pro Tab.
     console.info('[TerminalTab] Renderer: WebGL');
+    return webgl;
   } catch (err) {
     console.warn(
       '[TerminalTab] WebglAddon nicht ladbar, weiche auf CanvasAddon aus',
       err,
     );
-    terminal.loadAddon(new CanvasAddon());
-    console.info('[TerminalTab] Renderer: Canvas (Fallback)');
+    try {
+      const canvas = new CanvasAddon();
+      terminal.loadAddon(canvas);
+      console.info('[TerminalTab] Renderer: Canvas (Fallback)');
+      return canvas;
+    } catch (canvasErr) {
+      console.warn(
+        '[TerminalTab] CanvasAddon-Initial-Fallback fehlgeschlagen',
+        canvasErr,
+      );
+      return null;
+    }
   }
 }
 

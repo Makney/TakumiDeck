@@ -54,6 +54,46 @@ body,
   letter-spacing: 0.04em;
 }
 
+/* ErrorBoundary-Fallback (Bugfix 2026-05-19). Reusst .td-bootstrap, fuegt
+   einen Reload-Button und einen Lead-Absatz hinzu. */
+.td-error-boundary-lead {
+  margin: 0;
+  color: var(--td-text);
+  font-size: 13px;
+  max-width: 640px;
+}
+
+.td-error-boundary-detail {
+  width: 100%;
+  margin: 0;
+  padding: 12px;
+  background: var(--td-panel);
+  border: 1px solid var(--td-line);
+  color: var(--td-text-dim);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.td-error-boundary-reload {
+  align-self: flex-start;
+  padding: 8px 16px;
+  background: var(--td-panel);
+  border: 1px solid var(--td-line);
+  color: var(--td-text);
+  font-family: var(--td-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.td-error-boundary-reload:hover {
+  border-color: var(--td-accent);
+  color: var(--td-accent);
+}
+
 /* Sprint-2-Layout: schmaler Header oben + TerminalPane fullscreen. */
 .td-app {
   height: 100vh;
