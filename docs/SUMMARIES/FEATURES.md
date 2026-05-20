@@ -1,7 +1,7 @@
 ---
 source: docs/FEATURES.md
-source_hash: 99428fabe14727602375e169f19e43203cc266015c2e3b31b930fcefe7be5f8a
-summarized_at: 2026-05-18T19:06:20Z
+source_hash: 28dfab902aab15d5e57c7f1ba6f977533eb2a21776889f5f6b3fde8e640d4793
+summarized_at: 2026-05-20T16:30:40Z
 ---
 
 # FEATURES — Kompaktfassung
@@ -26,15 +26,15 @@ Abgeschlossen am 2026-05-12.
 - **✅ Sessions:** Volle State-Detection (TUI-Patterns+JSONL-Timestamp-Loop), Trigger-Phrasen-Pillen aus Frontmatter, Eigene Session-Art mit Freitext-Label (Migration 0005), JSONL-Polling-Ring (250ms), UUID-basiertes Session-Mapping (`jsonl_path`-Spalte + 3-Stufen-Resolver, Migration 0007), Multi-Session-cwd-Backfill (Boot-One-Shot).
 - **✅ Terminal:** Screenshot-Drag-and-Drop + Clipboard-Paste (`fs:save-screenshot`), Screenshot-Retention (Boot-One-Shot, Manual-Clear), Terminal-Polish (14 Hebel: WebGL+Canvas-Fallback, TUI-Poll-Pause, Instant-Scroll, Scrollback 5000, Strg+Shift+F/L, Scroll-to-Bottom-Button, Bell-Pulse, Strg+1..9, Strg+Mausrad-Zoom, Rechtsklick-Menue).
 - **✅ Projekt-Verwaltung:** Projekt entfernen mit Hover-Trash+Doppel-Confirm+Bulk-Remap (Default-Bucket immutable), First-Start-Workspace-Wizard.
-- **✅ Token-Dashboard:** 20%-Kontext-Soft-Warning, Modell-Filter im Verlauf-Panel (Migration 0006), Reset-Schedule-Aggregation, 5h-Session-Block-Aggregat, Reset-Footer unter Plannutzungs-Bars, Wochen-Reset-UI, Cache-Hit-Statistik (Migration 0008 + Full-Rescan).
+- **✅ Token-Dashboard:** 20%-Kontext-Soft-Warning, Modell-Filter im Verlauf-Panel (Migration 0006), Reset-Schedule-Aggregation, 5h-Session-Block-Aggregat (ms-praeziser Anker via `messages.ts` seit v0.3.0-Bugfix), Reset-Footer unter Plannutzungs-Bars, Wochen-Reset-UI, Cache-Hit-Statistik (Migration 0008 + Full-Rescan).
 - **✅ Stats & Heatmap:** 8 Stats-Cards (4x2-Grid), GitHub-Style-Heatmap mit Quartilen, Modelle-View mit Cache-Hit-Spalte, Easter-Egg-Werk-Vergleiche, 30d/7d-Filter.
 - **✅ Templates:** Erweiterte Auto-Variablen (`LETZTE_SEASON_NAME`/`TECH_SCHULDEN_RELEVANT`/`LETZTE_ENTSCHEIDUNGEN`), draggable Non-Modal-Panel, Top-N konfigurierbar.
 - **✅ Docs-Sync:** Docs-Sync-Session (6. Session-Art, SHA-256-Stale-Check), Kontext-Checkbox-Erweiterung aus `on_demand_files`.
 - **✅ Editor:** Markdown-Preview Side-by-Side (Drei-Modi-Toolbar, prozentuales Sync-Scrolling, `display:none`-Mount, `remark-gfm`).
 - **✅ Settings & Persistenz:** Settings-Schema-Versionierung (Variante B, defensive Drift-Detection).
 - **✅ Build & Distribution:** Auto-Update via electron-updater, GitHub-Actions-Build-Pipeline (Tag-Push `v*` → Single-Job auf `windows-latest`).
+- **✅ Diff-Viewer:** Multi-Tab-Diff (Working/Staged/Session-Pillen, Migration 0009 `start_commit_sha`, `git:show-staged`+`git:session-diff`-IPCs, Auto-Open-Pairing, chokidar-Auto-Refresh mit Dirty-Tab-Schutz).
 - **⛔ Right-Pane-Polish:** Datei-Browser-Filter, Sensitive-Pattern-UI-Verfeinerung, Datei-Browser-Status-Indikatoren.
-- **⛔ Diff-Viewer:** Multi-Tab-Diff.
 
 ## Pflege-Hinweise
 

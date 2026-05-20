@@ -1,7 +1,7 @@
 ---
 source: docs/TECH_SCHULDEN.md
-source_hash: cc6f33451c2860af681ee021533ad7d1a936d9e486e6889204111f83208403a2
-summarized_at: 2026-05-18T19:06:20Z
+source_hash: 95221912b354a6d055e6380a0bcd97369f821b7e0c30ed153cf2540938575760
+summarized_at: 2026-05-20T16:30:40Z
 ---
 
 # TECH_SCHULDEN — Kompaktfassung
@@ -12,6 +12,14 @@ Bewusst aufgeschobene oder vereinfachte Loesungen — Code laeuft, ist aber wiss
 
 - **Aufloesungs-Trigger statt vorzeitiger Refactor:** „beim N-ten Aufrufer" (3./4.), „beim ersten echten User-Schmerz", „bei naechster Erweiterung an dieser Stelle".
 - **Pure-Logik akzeptiert oft schon den Aufholpfad** (Easter-Egg-`works`-Param, Markdown-Editor-Split-Ratio) — nur Settings-Schema+UI fehlen bis zum echten Bedarf.
+- **Defense-in-Depth bei third-party Bugs:** Symptom-Abfang mit Diagnose-Warn als Library-Bump-Trigger statt stummen Schluck (z.B. `[safeDispose]`-Log).
+
+## Third-party und Build
+
+- **`@xterm/addon-webgl@0.19.0` Dispose-Bug (Bugfix 2026-05-19):** WebGL-Init nicht durch + Tab-Close = `TypeError '_isDisposed'`. Symptom abgefangen via `safeDispose*`-Helper + ErrorBoundary. Trigger: `npm outdated`-Pass nach `^0.20.0`.
+- **Electron-Bump auf 42 blockiert** durch `better-sqlite3` V8-13-Inkompatibilitaet (Source-Bruch, nicht Toolchain) — Auflosung: bei jedem `better-sqlite3`-Release Prebuilds pruefen.
+- **Build-CVE-Tail** (`tar`/`tmp`/`better-sqlite3`-Tarball, 28 CVEs) — Build-only, Upstream-Maintainer-Probleme.
+- **Migration-Runner-Tests gegen Fake-Driver** statt echter SQLite (electron-rebuild-ABI-Konflikt mit Vitest).
 
 ## Refactor-Trigger (Duplikation und Komplexitaet)
 
@@ -34,26 +42,22 @@ Bewusst aufgeschobene oder vereinfachte Loesungen — Code laeuft, ist aber wiss
 
 ## UI-Polish und Komfort
 
-- **Per-Tab-Font-Zoom nicht persistiert (Season 28):** Strg+Mausrad-Zoom lebt nur in React-`useState`. Drei Aufholpfade: (a) Global-Override im Settings-Schema [pragmatisch], (b) Per-Project in CLAUDE.md, (c) Per-Session in DB+Migration. Trigger: erste User-Inzidenz „mein Zoom haelt nicht".
-- **Markdown-Editor-Split-Layout 50/50 fix (Season 24):** keine draggable Splitter, keine Pane-Groessen-Persistenz. Drei Aufholpfade: draggable Splitter, Settings-Slot `markdown_editor_split_ratio`, Per-Datei-Memory im FileTabsStore.
+- **Auto-Refresh ueberschreibt Dirty-Tabs nicht — aber zeigt auch keinen Warn-Marker (Season 29):** Externe Aenderung im Dirty-Tab geht beim naechsten Ctrl+S verloren. Drei Sub-Entscheidungen offen (Marker-Position/Action/Re-Sync). Trigger: erste Daily-Use-Inzidenz.
+- **Per-Tab-Font-Zoom nicht persistiert (Season 28):** Strg+Mausrad-Zoom lebt nur in React-`useState`. Drei Aufholpfade: Global-Override [pragmatisch] / Per-Project / Per-Session+Migration.
+- **Markdown-Editor-Split-Layout 50/50 fix (Season 24):** keine draggable Splitter, keine Pane-Groessen-Persistenz. Aufholpfad: Splitter, Settings-Slot, Per-Datei-Memory.
 - **Easter-Egg-Werk-Liste hartcodiert (Season 19):** Pure-Logik nimmt bereits optionale `works`-Liste — K2-Aufholpfad braucht nur Settings-Schema+UI-Block.
 - **Heatmap-Cells leicht rechteckig auf breiten Panes** (`aspect-ratio` raus wegen 300px-Bottom-Row-Clipping).
 - **Wrap-Mechanismus Action-Bar:** min-width-Trick + Container-Query als Schutznetz (redundant, beide drin).
 - **Squirrel-Installer ohne setupIcon und Branding** (Default-Electron-Icon).
 
-## Konventionen, Build, Latenz
+## Konventionen, Latenz
 
 - **`exactOptionalPropertyTypes: false`** in tsconfig (kaskadiert ueber dutzende Optional-Properties).
-- **Electron-Bump auf 42 blockiert** durch `better-sqlite3` V8-13-Inkompatibilitaet (Source-Bruch, nicht Toolchain) — Auflosung: bei jedem `better-sqlite3`-Release Prebuilds pruefen.
-- **Build-CVE-Tail** (`tar`/`tmp`/`better-sqlite3`-Tarball, 28 CVEs) — Build-only, Upstream-Maintainer-Probleme.
-- **Migration-Runner-Tests gegen Fake-Driver** statt echter SQLite (electron-rebuild-ABI-Konflikt mit Vitest).
 - **`useUsageStore.refreshContext` feuert vor deferiertem `pty:create`** (zwei harmlose Console-Warns pro Tab-Open).
 - **xterm-`dimensions`-Console-Error im Dev-StrictMode** (Production unbeeintraechtigt, xterm-Issue blockiert durch v5.5-Pin).
 - **Notes-Auto-Save bei Hard-Quit best-effort** (kein synchroner IPC).
 - **`awaitWriteFinish: 100ms`-Latenz im JSONL-Watcher** (durch Season-15-Polling-Ring mitigiert).
-- **Reset-Berechnung im `usage:window`-Aggregat fehlt** (Sprint-9-UI-Slot, ✅ Season 16 aufgeloest).
-- **Top-N fuer Schulden/Entscheidungen hartcodiert** (✅ Season 20 aufgeloest).
 
 ## Aufgeloeste Schulden (Auswahl)
 
-Datei-Tab-Persistenz, Sensitive-Patterns konfigurierbar, Modell-Limits 1M→200k, Crash-Recovery fuer orphane Sessions (alle Sprint 8), Legacy-Sessions UI-blind (Sprint 6), Default-Project FK-Lifeline (Sprint 4), Empty-State `__default__` (Sprint 5), tote `.td-sidebar-*`-CSS (Sprint 7), AppSettings-Test-Fixture (Season 20), `latest.yml`-Manual-Script (Season 27 via CI), Reset-Berechnung im Aggregat (Season 16).
+Datei-Tab-Persistenz, Sensitive-Patterns konfigurierbar, Modell-Limits 1M→200k, Crash-Recovery fuer orphane Sessions (alle Sprint 8), Legacy-Sessions UI-blind (Sprint 6), Default-Project FK-Lifeline (Sprint 4), Empty-State `__default__` (Sprint 5), tote `.td-sidebar-*`-CSS (Sprint 7), AppSettings-Test-Fixture (Season 20), `latest.yml`-Manual-Script (Season 27 via CI), Reset-Berechnung im Aggregat (Season 16), Top-N hartcodiert (Season 20).
