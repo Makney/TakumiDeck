@@ -34,6 +34,17 @@ export interface SessionTab {
   // (siehe TabContainer.setActive). Damit erfährt der User, dass ein
   // Hintergrund-Tab Aufmerksamkeit will (Claude-Permission, Build fertig).
   hasBell: boolean;
+  // Bugfix v0.3.2 (Variante B aus v0.2.0-TECH_SCHULDEN): Spawn-Tracking pro Tab
+  // im Store statt im TabContainer-lokalen State. needsSpawn markiert eine frisch
+  // ueber NewSessionModal erstellte Session, die noch ein pty:create braucht;
+  // Resume aus dem Verlauf laesst das Feld auf false und ueberspringt den Spawn.
+  // Vorteil gegenueber dem v0.2.1-Fix: closeTab raeumt das Feld automatisch mit
+  // auf — egal ob ueber Tab-Bar-x oder LeftSidebar-x geschlossen wird.
+  needsSpawn: boolean;
+  // Phase-2 Season-21 (in den Store gehoben mit v0.3.2): one-shot Prompt fuer
+  // Docs-Sync-Sessions. TerminalTab pastet ihn nach erfolgreichem Spawn einmalig
+  // und ruft consumeInitialPrompt, das das Feld auf null setzt.
+  initialPrompt: string | null;
 }
 
 export interface AddTabInput {
@@ -46,6 +57,12 @@ export interface AddTabInput {
   // Phase-2 Season-5: bei type='custom' Pflicht-Bezeichnung. Bei den vier festen
   // Typen weglassen — der Store setzt dann null.
   customTypeLabel?: string | null;
+  // Bugfix v0.3.2: NewSessionModal setzt true, Resume-Pfade (HistoryPane,
+  // HistoryActionModal, LeftSidebar) lassen das Feld weg (Default false).
+  needsSpawn?: boolean;
+  // Phase-2 Season-21: Docs-Sync-Sessions geben hier den vorbereiteten Prompt
+  // mit, der nach erfolgreichem Spawn einmalig gepastet wird.
+  initialPrompt?: string | null;
 }
 
 interface SessionStoreState {
@@ -70,6 +87,10 @@ interface SessionStoreState {
   // onBell-Handler im TerminalTab gerufen (nur für inaktive Tabs); clearBell
   // läuft beim Tab-Aktivieren.
   setBell: (sessionId: string, hasBell: boolean) => void;
+  // Bugfix v0.3.2: TerminalTab ruft das nach einmaligem Paste des Initial-Prompts,
+  // damit ein erneutes Tab-Mount (StrictMode, React-Tree-Repaint) den Prompt nicht
+  // erneut sendet. Idempotent — bei bereits null gibt's keinen State-Update.
+  consumeInitialPrompt: (sessionId: string) => void;
 }
 
 // Sprint-4-Selector: liefert die Tabs eines Projekts in Insert-Reihenfolge.
@@ -132,6 +153,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       notesDraft: input.initialNotes ?? '',
       notesSaved: input.initialNotes ?? '',
       hasBell: false,
+      needsSpawn: input.needsSpawn ?? false,
+      initialPrompt: input.initialPrompt ?? null,
     };
     set((s) => ({
       tabs: [...s.tabs, tab],
@@ -220,6 +243,18 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       return {
         tabs: s.tabs.map((t) =>
           t.sessionId === sessionId ? { ...t, hasBell } : t,
+        ),
+      };
+    });
+  },
+
+  consumeInitialPrompt: (sessionId) => {
+    set((s) => {
+      const target = s.tabs.find((t) => t.sessionId === sessionId);
+      if (!target || target.initialPrompt === null) return s;
+      return {
+        tabs: s.tabs.map((t) =>
+          t.sessionId === sessionId ? { ...t, initialPrompt: null } : t,
         ),
       };
     });

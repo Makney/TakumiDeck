@@ -250,3 +250,73 @@ describe('useSessionStore Bell-Marker', () => {
     expect(a.hasBell).toBe(false);
   });
 });
+
+// Bugfix v0.3.2 (loest v0.2.0-TECH_SCHULDEN-Variante-B ab): Spawn-Tracking lebt
+// pro Tab im Store statt im TabContainer-State. closeTab raeumt das automatisch
+// auf — egal von welchem ×-Pfad (Tab-Bar in der Mitte, Aktive-Sessions in der
+// LeftSidebar, kuenftige Pfade). Resume aus dem Verlauf legt einen neuen Tab
+// ohne needsSpawn an, dadurch feuert TerminalTab kein zweites pty:create.
+describe('useSessionStore Spawn-Tracking', () => {
+  it('neuer Tab startet mit needsSpawn=false und initialPrompt=null als Default', () => {
+    const a = useSessionStore.getState().addTab(baseInput);
+    expect(a.needsSpawn).toBe(false);
+    expect(a.initialPrompt).toBeNull();
+  });
+
+  it('addTab uebernimmt needsSpawn=true (NewSessionModal-Pfad)', () => {
+    const a = useSessionStore.getState().addTab({ ...baseInput, needsSpawn: true });
+    expect(a.needsSpawn).toBe(true);
+  });
+
+  it('addTab uebernimmt initialPrompt (Docs-Sync-Pfad)', () => {
+    const a = useSessionStore
+      .getState()
+      .addTab({ ...baseInput, initialPrompt: 'Lies die vier Doku-Files...' });
+    expect(a.initialPrompt).toBe('Lies die vier Doku-Files...');
+  });
+
+  it('consumeInitialPrompt nullt das Feld auf dem passenden Tab', () => {
+    const a = useSessionStore
+      .getState()
+      .addTab({ ...baseInput, initialPrompt: 'Prompt' });
+    useSessionStore.getState().consumeInitialPrompt(a.sessionId);
+    const tab = useSessionStore.getState().tabs.find((t) => t.sessionId === a.sessionId);
+    expect(tab?.initialPrompt).toBeNull();
+  });
+
+  it('consumeInitialPrompt ist idempotent — null-Feld erzeugt keinen State-Update', () => {
+    const a = useSessionStore.getState().addTab(baseInput);
+    const before = useSessionStore.getState().tabs;
+    useSessionStore.getState().consumeInitialPrompt(a.sessionId);
+    const after = useSessionStore.getState().tabs;
+    // Referenz-Gleichheit als Beleg, dass kein Re-Render getriggert wurde.
+    expect(after).toBe(before);
+  });
+
+  it('consumeInitialPrompt ist No-op fuer unbekannte sessionId', () => {
+    useSessionStore.getState().addTab(baseInput);
+    expect(() =>
+      useSessionStore.getState().consumeInitialPrompt('ghost-id'),
+    ).not.toThrow();
+  });
+
+  // Kern-Regression: das war der UNIQUE-constraint-Bug v0.2.0 / v0.3.2.
+  it('Close → Resume mit gleicher sessionId liefert needsSpawn=false (kein Doppel-Spawn)', () => {
+    // Schritt 1: NewSessionModal-Pfad — neuer Tab mit needsSpawn=true.
+    const SID = 'sess-resume-target';
+    useSessionStore.getState().addTab({ ...baseInput, sessionId: SID, needsSpawn: true });
+    expect(
+      useSessionStore.getState().tabs.find((t) => t.sessionId === SID)?.needsSpawn,
+    ).toBe(true);
+
+    // Schritt 2: Tab schliessen — egal ueber welchen ×-Pfad, am Ende ruft er closeTab.
+    useSessionStore.getState().closeTab(SID);
+    expect(useSessionStore.getState().tabs.find((t) => t.sessionId === SID)).toBeUndefined();
+
+    // Schritt 3: Resume aus History — addTab mit gleicher sessionId, ohne needsSpawn.
+    useSessionStore.getState().addTab({ ...baseInput, sessionId: SID });
+    const resumed = useSessionStore.getState().tabs.find((t) => t.sessionId === SID);
+    expect(resumed?.needsSpawn).toBe(false);
+    expect(resumed?.initialPrompt).toBeNull();
+  });
+});

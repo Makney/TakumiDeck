@@ -92,7 +92,7 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
-## Spawn-Tracking als TabContainer-lokales State-Paar statt am Tab (v0.2.0 Bugfix)
+## Spawn-Tracking als TabContainer-lokales State-Paar statt am Tab (v0.2.0 Bugfix) ✅ 2026-05-20 (v0.3.2 Hotfix)
 
 **Bereich:** `src/renderer/panels/TabContainer.tsx` (`spawnedIds: Set<string>` + `initialPrompts: Map<string,string>`); Cleanup in `handleClose` plus Pure-Helper in `src/renderer/components/spawnTrackingState.ts`.
 
@@ -102,7 +102,7 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 **Risiko:** Niedrig. Der Bug, den Variante A direkt loest, war der einzige produktive Crash-Pfad. Die theoretischen Edge-Cases (Projekt entfernen → Session-UUID kollidiert spaeter zufaellig mit neuer Session) sind UUID-statistisch nicht erreichbar. Pattern-Risiko: jede neue Close-Aufrufstelle muss daran denken, das TabContainer-State mit zu sauberen. Ohne Lint-Regel oder Konvention wird das beim naechsten Refactor wieder uebersehen — siehe historisch die Sprint-2/3-Tab-Lifecycle-Bugs.
 
-**Aufloesung:** `SessionTab` um `needsSpawn: boolean` (Default false; true nur via addTab beim NewSession-Pfad) und `initialPrompt: string | null` (Default null; true nur fuer Docs-Sync) erweitern. `addTab` bekommt die zwei Felder optional; `closeTab` raeumt automatisch mit, weil die Tab-Row aus dem Store fliegt. TabContainer streicht `spawnedIds` und `initialPrompts` komplett, liest die Werte direkt aus `tab.needsSpawn` / `tab.initialPrompt`. `removeFromIdSet` und `removeFromIdMap` sowie der `handleClose`-Cleanup-Block fallen ersatzlos weg. **Trigger:** sobald sich ein dritter Tracking-Container ansammelt (z.B. fuer ein neues per-Tab-One-Shot-Feature) ODER sobald ein neuer Close-Pfad gebaut wird, der das Cleanup-Plumbing erneut anfassen muesste.
+**Aufloesung:** ✅ 2026-05-20 mit v0.3.2-Hotfix eingeloest, weil der Trigger „erste echte Inzidenz" eingetreten ist: User-Reproduktion „× in der LeftSidebar-Aktive-Sessions-Pille → Resume aus History → rote `UNIQUE constraint failed: sessions.id`-Box im Terminal-Tab". `SessionTab` traegt jetzt `needsSpawn: boolean` (Default `false`; nur NewSessionModal-Pfad setzt `true`) und `initialPrompt: string | null` (Default `null`; nur Docs-Sync-Pfad setzt einen Prompt). `AddTabInput` nimmt sie optional an. `addTab` initialisiert beide Felder aus dem Input, `closeTab` raeumt sie implizit mit — die ganze Tab-Row fliegt aus dem Store, egal von welchem `×`-Pfad geschlossen wird. Neue Store-Action `consumeInitialPrompt(sessionId)` ersetzt den `handleInitialPromptSent`-Callback aus dem TabContainer-State-Pfad mit Referenz-Gleichheits-Bailout fuer Idempotenz. `TabContainer` streicht `spawnedIds`/`initialPrompts`/`removeFromIdSet`/`removeFromIdMap` komplett; `TerminalTab` liest `needsSpawn` und `initialPrompt` direkt aus dem Tab-Objekt. `src/renderer/components/spawnTrackingState.ts` und `tests/renderer/spawn-tracking-state.test.ts` gelöscht. 7 neue Tests im neuen `useSessionStore Spawn-Tracking`-Block in `tests/renderer/sessions-store.test.ts`, inkl. der Kern-Regression „Close → Resume mit gleicher sessionId liefert needsSpawn=false".
 
 ---
 

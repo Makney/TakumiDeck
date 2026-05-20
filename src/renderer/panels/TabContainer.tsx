@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 import type { AppSettings, SessionStatus } from '@shared/types';
 import { useSessionStore, selectTabsForProject } from '../stores/sessions';
 import { useUiStore } from '../stores/ui';
@@ -15,7 +15,6 @@ import {
   buildTriggerPillList,
   type TriggerPhrasePill,
 } from '../components/triggerPhrasePills';
-import { removeFromIdMap, removeFromIdSet } from '../components/spawnTrackingState';
 import type { ClaudeMdFrontmatter } from '@shared/types';
 // Sprint 7 (Q8 Variante A): NotesFooter ist hier weg — Notes leben jetzt im
 // RightPane (panels/RightPane.tsx → components/NotesPanel.tsx). Ein klarer Ort
@@ -40,6 +39,7 @@ export function TabContainer({ settings }: Props) {
   const nextTab = useSessionStore((s) => s.nextTab);
   const prevTab = useSessionStore((s) => s.prevTab);
   const setStatus = useSessionStore((s) => s.setStatus);
+  const consumeInitialPrompt = useSessionStore((s) => s.consumeInitialPrompt);
 
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const activeProjectFrontmatter = useUiStore((s) => s.activeProjectFrontmatter);
@@ -92,16 +92,10 @@ export function TabContainer({ settings }: Props) {
 
   // Sprint-6-UI-Fix: Modal-State liegt im UiStore, weil Sidebar und Tab-Bar
   // beide auf den gleichen Open-Zustand zugreifen.
-  // Tabs, die in dieser Session-Lebensdauer schon gespawnt wurden — verhindert,
-  // dass ein erneuter Tab-Mount (z.B. nach React-Tree-Repaint) eine zweite PTY öffnet.
-  const [spawnedIds, setSpawnedIds] = useState<Set<string>>(() => new Set());
-  // Phase-2 Season-21: Initial-Prompts fuer frisch gespawnte Docs-Sync-Sessions.
-  // Wird nach dem ersten erfolgreichen Spawn vom TerminalTab konsumiert (one-
-  // shot, dann via onInitialPromptSent ausgetragen). Map statt Object, damit
-  // Add/Delete keine Object-Spread-Identitaeten zerhauen.
-  const [initialPrompts, setInitialPrompts] = useState<Map<string, string>>(
-    () => new Map(),
-  );
+  // Bugfix v0.3.2: Spawn-Tracking (needsSpawn + initialPrompt) lebt jetzt pro Tab
+  // im Sessions-Store. closeTab raeumt damit beide Felder automatisch mit auf,
+  // egal von welchem ×-Pfad geschlossen wird (Tab-Bar, LeftSidebar, kuenftige
+  // Pfade). Loest die v0.2.0-TECH_SCHULDEN-Variante-B ab.
 
   // Wenn das Modal schließt, soll der Fokus zurück aufs aktive Terminal gehen.
   // Sonst bleibt er auf dem (jetzt unmounteten) Submit-/Cancel-Button und Tastatur-
@@ -181,18 +175,16 @@ export function TabContainer({ settings }: Props) {
       // PTY (falls noch läuft), der Lifecycle setzt via pty:exit auf completed.
       // Die Session bleibt im Verlauf erreichbar; expliziter Archive-Schritt
       // läuft separat über das Verlauf-Detail-Pane.
+      //
+      // Bugfix v0.3.2: Spawn-Tracking wird hier NICHT mehr separat geleert —
+      // closeTab entfernt den ganzen SessionTab samt needsSpawn/initialPrompt
+      // aus dem Store. Resume via History legt einen neuen Tab mit needsSpawn=false
+      // an, dadurch feuert TerminalTab kein zweites pty:create.
       const result = await window.api.sessions.close({ sessionId });
       if (!result.ok) {
         console.warn(`[TabContainer] session:close fehlgeschlagen: ${result.error}`);
       }
       closeTab(sessionId);
-      // Bugfix v0.2.0: Spawn-Tracking-State pro Tab muss beim Close mitgehen.
-      // Sonst sieht ein spaeteres Resume (HistoryActionModal/HistoryPane: addTab
-      // mit gleicher sessionId → TerminalTab mountet frisch) needsSpawn=true und
-      // feuert ein zweites pty:create → INSERT INTO sessions kollidiert am
-      // UNIQUE-Index sessions.id.
-      setSpawnedIds((prev) => removeFromIdSet(prev, sessionId));
-      setInitialPrompts((prev) => removeFromIdMap(prev, sessionId));
     },
     [closeTab],
   );
@@ -239,42 +231,21 @@ export function TabContainer({ settings }: Props) {
       if (!activeProjectId || !activeProject) return;
       // Bereich-4-Review (B-5): cwd wird im Main aus projects.getById(projectId).path
       // hergeleitet — Renderer übergibt die Working-Directory nicht mehr.
-      const tab = addTab({
+      // Bugfix v0.3.2: needsSpawn + initialPrompt direkt am Tab speichern,
+      // damit closeTab beides aufraeumt.
+      addTab({
         projectId: activeProjectId,
         title: input.title,
         type: input.type,
         model: input.model,
         customTypeLabel: input.customTypeLabel ?? null,
+        needsSpawn: true,
+        initialPrompt: input.initialPrompt ?? null,
       });
-      // Diesen Tab als spawn-pflichtig markieren — TerminalTab feuert dann pty:create.
-      setSpawnedIds((prev) => {
-        const next = new Set(prev);
-        next.add(tab.sessionId);
-        return next;
-      });
-      if (input.initialPrompt) {
-        setInitialPrompts((prev) => {
-          const next = new Map(prev);
-          next.set(tab.sessionId, input.initialPrompt as string);
-          return next;
-        });
-      }
       setShowNewSessionModal(false);
     },
     [addTab, activeProjectId, activeProject, setShowNewSessionModal],
   );
-
-  // Phase-2 Season-21: One-Shot-Cleanup, sobald der TerminalTab den Prompt
-  // gepastet hat. Verhindert, dass ein erneutes Tab-Mount (StrictMode oder
-  // React-Tree-Repaint) den Prompt nochmal sendet.
-  const handleInitialPromptSent = useCallback((sessionId: string) => {
-    setInitialPrompts((prev) => {
-      if (!prev.has(sessionId)) return prev;
-      const next = new Map(prev);
-      next.delete(sessionId);
-      return next;
-    });
-  }, []);
 
   const canAddSession = activeProjectId !== null && activeProject !== null;
 
@@ -334,9 +305,9 @@ export function TabContainer({ settings }: Props) {
               model={tab.model}
               settings={settings}
               isActive={tab.sessionId === activeId}
-              needsSpawn={spawnedIds.has(tab.sessionId)}
-              initialPrompt={initialPrompts.get(tab.sessionId) ?? null}
-              onInitialPromptSent={handleInitialPromptSent}
+              needsSpawn={tab.needsSpawn}
+              initialPrompt={tab.initialPrompt}
+              onInitialPromptSent={consumeInitialPrompt}
               onStatusChange={setStatus}
             />
           </div>

@@ -43,19 +43,17 @@ Befunde aus dem Release-Review von v0.1.2 → v0.2.0, die bewusst nicht release-
 
 Befunde aus dem Release-Review von v0.2.0 → v0.2.1 (Hotfix Resume-UNIQUE-Constraint + Markdown-Preview Side-by-Side), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
 
-### Sidebar-Schließ-Pfade räumen Spawn-Tracking nicht auf
+### ✅ Sidebar-Schließ-Pfade räumen Spawn-Tracking nicht auf — aufgelöst 2026-05-20 (v0.3.2 Hotfix)
 
 - `src/renderer/panels/LeftSidebar.tsx:171-183` (`handleCloseTab`) · `src/renderer/panels/LeftSidebar.tsx:208-242` (`handleConfirmRemove`) · Kategorie: **Verbesserung-Doku** (latente Lücke)
 - **Beschreibung:** Der v0.2.1-Hotfix räumt `spawnedIds` + `initialPrompts` nur in `TabContainer.handleClose` auf — also nur beim Schließen über das Tab-Bar-„×". Die Sidebar-Pfade `handleCloseTab` (Sidebar-„×") und `handleConfirmRemove` (Projekt-Entfernen) räumen den TabContainer-State weiterhin nicht auf.
-- **Begründung:** Heute praktisch abgesichert durch den Dedupe-Guard im SessionStore (`stores/sessions.ts:109-113`): `addTab` mit derselben sessionId gibt `existing` zurück, TerminalTab wird nicht unmounted/remounted, `needsSpawn` wird nicht neu ausgewertet. Sauberer Fix wäre Variante B — `needsSpawn`+`initialPrompt` ins `SessionTab`-Schema heben, damit der State zur Session gehört statt zum TabContainer. Dieser Schritt ist bereits in `docs/TECH_SCHULDEN.md` als Auflösungs-Skizze hinterlegt.
-- **Trigger:** sobald ein Refactoring den vorausgeschickten `closeTab()` über die Sidebar auch im SessionStore platziert (z.B. um den Verlauf gleichzeitig zu öffnen), reißt die Lücke wieder auf — dann Variante B ziehen.
+- **Begründung (historisch):** Theoretisch abgesichert durch den Dedupe-Guard im SessionStore. Die Lücke ist beim Daily-Use mit dem Sidebar-`×`-Pfad doch echt aufgetreten — User-Repro „× in Aktive-Sessions-Pille → Resume aus History → rote `UNIQUE constraint failed: sessions.id`-Box". Mit v0.3.2 ist Variante B aus der TECH_SCHULDEN-Notiz eingelöst: `needsSpawn` und `initialPrompt` leben am `SessionTab`-Schema; `closeTab` cleart sie implizit, egal welcher Pfad aufruft. Siehe ENTSCHEIDUNGEN-Eintrag „Spawn-Tracking ins SessionTab-Schema heben (A)".
 
-### Hotfix-Regressionstest auf TabContainer-Integrationsebene fehlt
+### ✅ Hotfix-Regressionstest auf TabContainer-Integrationsebene fehlt — aufgelöst 2026-05-20 (v0.3.2 Hotfix)
 
 - `tests/renderer/spawn-tracking-state.test.ts` · Kategorie: **Verbesserung**
 - **Beschreibung:** Die acht neuen Tests prüfen die Pure-Helper-Verträge (`removeFromIdSet`/`removeFromIdMap` referenz-stabil bei No-op, neue Instanz bei Treffer) und ein Bugfix-Szenario auf Helper-Ebene. Es fehlt aber ein Renderer-Integrations- oder Hook-Test, der `TabContainer.handleClose` tatsächlich aufruft und danach `addTab` mit derselben sessionId wieder einfügt und verifiziert, dass die Resume-Folge-Aktion (`needsSpawn=false`, `initialPrompt=null`) tatsächlich am Mount ankommt.
-- **Begründung:** Der Helper-Vertrag ist der eigentliche Sicherheitsanker und manuell verifizierbar. Ein Integrationstest würde zusätzlich gegen ein versehentliches Aufheben des Cleanups in einer späteren Refactoring-Welle absichern (z.B. wenn jemand `handleClose` extrahiert oder generalisiert).
-- **Trigger:** wenn die TabContainer-Lifecycle-Logik nochmal angefasst wird (z.B. im Zuge der Variante-B-Schuld) — dann diesen Test mit-einziehen.
+- **Begründung (historisch):** Mit der v0.3.2-Variante-B-Umstellung sind die Pure-Helper und ihr Test komplett weggefallen. Der zentrale Regressions-Test sitzt jetzt im neuen `useSessionStore Spawn-Tracking`-Block in `tests/renderer/sessions-store.test.ts` und prüft den End-to-End-Pfad direkt am Store: `addTab({sessionId, needsSpawn: true})` → `closeTab(sessionId)` → `addTab({sessionId})` → erwarteter `needsSpawn=false` am neuen Tab. Damit ist der Resume-Pfad auf der Schicht abgesichert, auf der er passiert.
 
 ### Markdown-Preview-Layout-Switch wirkt tab-/mount-lokal
 

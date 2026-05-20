@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Spawn-Tracking ins SessionTab-Schema heben (A)
+
+**Entscheidung:** `needsSpawn: boolean` und `initialPrompt: string | null` leben als Pflichtfelder am `SessionTab`-Schema im zentralen Sessions-Store, statt als TabContainer-lokales State-Paar (`spawnedIds: Set<string>` + `initialPrompts: Map<string,string>`). `closeTab` raeumt beide Felder implizit mit, weil die ganze Tab-Row aus dem Store fliegt — kein expliziter Cleanup-Pfad mehr noetig. Damit ist `LeftSidebar.handleCloseTab` (das `×` in der „Aktive Sessions"-Pille links) und `LeftSidebar.handleConfirmRemove` (Projekt-Entfernen mit offenen Tabs) automatisch mitgehoert, ohne dass die Sidebar das TabContainer-State erreichen muesste.
+
+**Varianten:**
+
+- **A** Felder ins `SessionTab`-Schema heben (gewaehlt). Eine Source of Truth pro Tab; jeder Close-Pfad raeumt implizit mit. Die in v0.2.0 explizit als „cleanere Architektur" markierte Aufholpfad-Variante, jetzt eingeloest.
+- **B** `closeTab(sessionId)` im Store ruft intern einen Spawn-Tracker-Slice auf — eigene Sub-Store-Sektion `spawnTracking` innerhalb des Sessions-Stores, `closeTab` cleart sie inline.
+- **C** `LeftSidebar.handleCloseTab` feuert ein `CustomEvent` `td-tab-closed`, TabContainer hoert zu und ruft die beiden remove-Helper. Implizite Kopplung ueber Event-Bus.
+
+**Grund:** A nutzt das schon existierende Tab-als-Wahrheits-Anker-Pattern; `setStatus`, `setNotesDraft`, `hasBell` etc. liegen alle als Felder am Tab. Spawn-Bedarf und Docs-Sync-Prompt gehoeren konzeptuell genauso zum Tab — sie sind Per-Tab-State, kein TabContainer-globaler State. Der Refactor folgt der Konvention, statt eine zweite. B haette eine kuenstliche Trennung zwischen „Tab-Daten" und „Spawn-Tracking" eingefuehrt, obwohl beide synchron sterben muessen (Tab geschlossen = Spawn-Bedarf weg). C nutzt ein Pattern, das im Repo noch nirgends etabliert ist — Event-Bus-Kopplung ist schwer zu testen, schwer im DevTools-Inspector nachvollziehbar, und der naechste neue Close-Pfad muss sich an die Konvention erinnern, das Event zu feuern. Dasselbe Pattern-Risiko wie der v0.2.1-Variante-A-Workaround, nur mit zusaetzlichem Indirection-Layer.
+
+**Konsequenz:** Der v0.2.1-Pure-Helper-Pfad `src/renderer/components/spawnTrackingState.ts` und der zugehoerige Test fallen ersatzlos weg — Variante A braucht weder die Set/Map-Mutation noch die immutability-Helper, weil das Schema-Feld direkt mit dem Tab stirbt. Die im v0.2.1-Bug-Brief offen gehaltenen Edge-Cases (Projekt-Entfernen, kuenftige neue Close-Pfade) sind damit erledigt — jeder Pfad, der `closeTab()` aufruft, raeumt Spawn-Tracking automatisch mit. Aufrufstellen-Migration war minimal, weil HistoryActionModal, HistoryPane und LeftSidebar Resume-Pfade die Felder ohnehin nicht setzen (Default `false`/`null`).
+
+**Implementierungsdetail:** `addTab(input)` initialisiert `needsSpawn: input.needsSpawn ?? false` und `initialPrompt: input.initialPrompt ?? null` — Default-by-Convention statt Pflicht-Parameter, damit der haeufige Resume-Pfad ohne Boilerplate auskommt. Neue Store-Action `consumeInitialPrompt(sessionId)` mit Referenz-Gleichheits-Bailout bei bereits-`null` (idempotent gegen StrictMode-Double-Effects und kuenftige Re-Mount-Pfade). `TerminalTab.onInitialPromptSent` zeigt jetzt direkt auf die Store-Action statt auf einen TabContainer-Callback. 7 neue Tests im `useSessionStore Spawn-Tracking`-Block — Default-Werte, addTab-Uebernahme, `consumeInitialPrompt`-Idempotenz/No-op-fuer-Ghost-IDs, Kern-Regression Close → Resume.
+
+---
+
 ## Renderer-Crash-Schutz: ErrorBoundary plus expliziter Renderer-Addon-Pre-Dispose (C)
 
 **Entscheidung:** Zwei Schichten kombiniert — die `@xterm/addon-webgl@0.19.0`-Dispose-Exception wird beim Cleanup mit einem expliziten Pre-Dispose via `safeDisposeAddon` abgefangen (Helper-Variante B aus dem Bug-Brief), zusaetzlich wickelt eine globale `ErrorBoundary` den `<App>`-Tree, damit kuenftige Effect-Cleanup-Exceptions anderer Komponenten den Renderer ebenfalls nicht mehr kollabieren lassen.
