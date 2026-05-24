@@ -132,11 +132,17 @@ body,
 .td-main {
   flex: 1;
   display: grid;
-  /* Sprint 9 — Rückkehr zur Vorlage-Verteilung 1fr/1fr (styles.css 124).
-     Sprint-8-Variante 1.6fr/1fr hatte Editor + Diff zu schmal gemacht; nach
-     Vorlage bekommen beide Spalten gleich viel Raum. Linke Sidebar 240 px,
-     Right-Stack 232 px bleiben. */
-  grid-template-columns: 240px 1fr 1fr 232px;
+  /* Season 30 UI-Overhaul — Sidebars 240/232 → 300/300 px:
+     (a) symmetrische Aussen-Spalten ziehen den Mittelteiler exakt auf die
+         Fenstermitte (vorher 8 px Drift wegen 240≠232),
+     (b) breiterer Files-Stack rechts traegt Filter-Pillen + Tree + Status-
+         Marker komfortabler,
+     (c) breitere LeftSidebar zeigt Projektnamen + Tab-Pillen mit weniger
+         Truncate.
+     Initial-Wahl 400 war optisch zu breit; 300 ist der Kompromiss zwischen
+     Komfort und Mittel-Spalten-Platz. Mitte bleibt 1fr/1fr — Editor +
+     Terminal weiterhin gleich breit. */
+  grid-template-columns: 300px 1fr 1fr 300px;
   grid-template-rows: minmax(0, 1fr) 300px;
   gap: 1px;
   background: var(--td-line);
@@ -270,7 +276,12 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 14px 8px 14px;
+  /* Season 30 — Padding-Stack 10/8 → 0 vertikal, Hoehe via Token. Inhalt
+     bleibt durch align-items: center mittig. Greift Sidebar-Sections
+     (Projekte/Aktive Sessions/Verlauf) + Files-Pane-Head + ggf. weitere. */
+  padding: 0 14px;
+  height: var(--td-section-head-h);
+  box-sizing: border-box;
   border-bottom: 1px solid var(--td-line);
   background: var(--td-panel-2);
   flex-shrink: 0;
@@ -847,7 +858,13 @@ body,
   display: flex;
   align-items: stretch;
   gap: 0;
-  padding: 6px 6px 0 6px;
+  /* Season 30 — Hoehe via Token (Top-Band-Angleichung). Padding-top auf 4 px
+     reduziert, damit die Tab-Pillen mit `bottom: -1px` weiterhin sauber ueber
+     der Bottom-Border kleben; Tab-Pille fuellt verbleibende 31 px via
+     align-items: stretch. */
+  padding: 4px 6px 0 6px;
+  height: var(--td-section-head-h);
+  box-sizing: border-box;
   background: var(--td-bg-2);
   border-bottom: 1px solid var(--td-line);
   flex-shrink: 0;
@@ -1521,19 +1538,29 @@ body,
 /* ----- Sprint 5: PlanPane + UsageBar (Architektur 6.4) ----- */
 
 .td-plan-pane {
+  /* Season 30 — `border-left` entfernt: das war Sprint-7-Altlast, als Stats
+     und Plan ohne Grid-Gap direkt nebeneinander standen. Heute liefert das
+     `.td-main`-Grid (gap: 1px, background: var(--td-line)) die Trennlinie
+     bereits. Der zusaetzliche Border erzeugte eine 2-px-Doppellinie und
+     verschob die wahrgenommene Mittellinie des Plan-Headers um 1 px
+     gegen die Stats-Toggles links. */
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border-left: 1px solid var(--td-line);
   background: var(--td-panel);
 }
 
 .td-plan-pane-header {
+  /* Season 30 — Padding-vertikal 8 → 0, Hoehe via Token. Top-Band-Angleichung
+     mit der Stats-Head daneben. Plan-Titel ist 28 px Display-Font — passt
+     bequem in das 36-px-Band. */
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
+  padding: 0 14px;
+  height: var(--td-section-head-h);
+  box-sizing: border-box;
   border-bottom: 1px solid var(--td-line);
   flex-shrink: 0;
 }
@@ -1745,12 +1772,16 @@ body,
 
 .td-dash-head {
   /* Sprint 9 (C4) — Header trägt jetzt zwei Toggle-Gruppen (Übersicht/Modelle
-     links, Range rechts). Flex-Row mit space-between. */
+     links, Range rechts). Flex-Row mit space-between.
+     Season 30 — Padding-vertikal 8 → 0, Hoehe via Token. Top-Band-Angleichung
+     mit dem PlanPane-Header daneben. */
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 14px;
+  padding: 0 14px;
+  height: var(--td-section-head-h);
+  box-sizing: border-box;
   border-bottom: 1px solid var(--td-line);
   flex-shrink: 0;
   font-size: 12px;
@@ -2558,7 +2589,13 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px 6px;
+  /* Season 30 — Padding-Stack 10/6 → 0 vertikal, Hoehe via Token (Top-Band-
+     Angleichung zum Terminal-Tabs daneben). border-bottom passt zum Rest des
+     Bandes. */
+  padding: 0 14px;
+  height: var(--td-section-head-h);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--td-line);
   flex-shrink: 0;
 }
 
@@ -3140,7 +3177,10 @@ body,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px 8px 14px;
+  /* Season 30 — Padding-Stack 10/8 → 0 vertikal, Hoehe via Token. */
+  padding: 0 14px;
+  height: var(--td-section-head-h);
+  box-sizing: border-box;
   border-bottom: 1px solid var(--td-line);
   background: var(--td-panel-2);
   flex-shrink: 0;
@@ -3210,7 +3250,9 @@ body,
 /* Skeleton-Variante für die Tab-Bar, wenn kein Projekt aktiv (gibt der Sektion
    eine konstante Höhe oben, damit der td-code-body sauber starten kann). */
 .td-code-tabs-empty {
-  min-height: 28px;
+  /* Season 30 — gleiches Token wie .td-code-tabs, damit der Empty-State
+     dieselbe Bandhoehe traegt. */
+  min-height: var(--td-section-head-h);
 }
 
 .td-files {
@@ -3856,7 +3898,9 @@ body,
   background: var(--td-panel-2);
   border-bottom: 1px solid var(--td-line);
   flex-shrink: 0;
-  min-height: 28px;
+  /* Season 30 — Hoehe via Token (Top-Band-Angleichung mit Terminal-Tabs). */
+  min-height: var(--td-section-head-h);
+  box-sizing: border-box;
 }
 
 .td-code-tab {
@@ -4281,7 +4325,10 @@ body,
   align-items: center;
   gap: 14px;
   padding: 0 12px;
-  height: 36px;
+  /* Season 30 — Single-Source via Token; alle anderen Top-Bars greifen
+     denselben Wert (siehe tokens.css `--td-section-head-h`). */
+  height: var(--td-section-head-h);
+  box-sizing: border-box;
   border-bottom: 1px solid var(--td-line);
   background: linear-gradient(180deg, #15191b, #0f1311);
   user-select: none;

@@ -24,6 +24,36 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Season-30-UI-Overhaul (Block 1): symmetrische Sidebars + Single-Source-Header-Band
+
+**Entscheidung:** Drei Achsen-Entscheidungen fuer den ersten Block der UI-Symmetrierung, in einem Eintrag gebuendelt, weil sie sich gegenseitig stuetzen. (1) Sidebars beidseitig **300 px** breit, statt der ungleichen 240/232 oder dem initial vorgeschlagenen 400/400. (2) Einheitliche Bandhoehe aller Top-Bars ueber **`--td-section-head-h: 36px`** als Single-Source-Token, statt pro Klasse individuelle `padding`-Stacks zu pflegen. (3) Den Sprint-7-`border-left` an `.td-plan-pane` **ersatzlos entfernen**, weil das Grid-Gap die Trennlinie ohnehin liefert.
+
+**Varianten (Sidebar-Breite):**
+
+- **A** 300 px beidseitig — symmetrisch ums Mittel, fuer Files-Stack komfortabler als 240 px, ohne den Mittel-Spalten zu viel Platz wegzunehmen. (Gewaehlt)
+- **B** 400 px beidseitig — der Initial-Wunsch aus dem Variants-Brief; im Live-Test optisch zu wuchtig, Mittel-Spalten visuell zu schmal.
+- **C** Asymmetrisch belassen (240/232) — wuerde die Wahrnehmung der Fenstermitte unaufgeloest lassen.
+
+**Varianten (Bandhoehe-Mechanik):**
+
+- **D** Single-Source-CSS-Variable `--td-section-head-h` in `tokens.css` plus Spiegel als `LAYOUT.SECTION_HEAD_HEIGHT` in `layout.ts`. Acht Header-Klassen lesen `var(...)`. (Gewaehlt)
+- **E** Subgrid / Container-Queries fuer Auto-Aligning ohne fixe Hoehe. Theoretisch eleganter, aber riskant fuer den `.td-tab`-`bottom: -1px`-Overlap-Trick (Window-Frame-Tab-Optik aus Sprint 9), der mit Subgrid potentiell bricht.
+- **F** Pro Klasse weiter individuelle `padding`-Stacks tunen, bis sie visuell gleich aussehen. Nicht skalierbar — der naechste Sprint mit einem neuen Header haette wieder dasselbe Problem.
+
+**Varianten (`.td-plan-pane`-`border-left`):**
+
+- **G** Border-Left ersatzlos entfernen, weil das Grid-Gap die Trennlinie liefert. (Gewaehlt)
+- **H** Border-Left in den anderen Bottom-Pane (`.td-dash-pane`) spiegeln, damit beide gleich-versetzt sind. Wuerde die Doppellinie nur verdoppeln statt aufloesen.
+- **I** Grid-Gap auf 2 px erhoehen, damit der Border-Left nicht doppelt zeichnet. Wuerde die anderen drei Trennlinien (Left-Sidebar↔Mid-Top, Mid-Top↔Right-Top, Right-Top↔Right-Stack) ebenfalls verdoppeln — Nebenwirkung trifft das ganze Layout fuer ein lokales Problem.
+
+**Grund:** 300 px (A) ist der gemessene Kompromiss aus zwei User-Iterationen — 240 zu eng (Tabs trunkieren, Files-Filter wrappen), 400 zu wuchtig (Mittel-Spalten verlieren Lesbarkeit). Der `--td-section-head-h`-Token (D) macht aus einem 8-Klassen-Refactor eine 1-Wert-Aenderung fuer die naechste Anpassung; die acht Klassen lesen denselben Wert, `box-sizing: border-box` sorgt dafuer, dass die 1-px-Bottom-Border die Hoehe nicht ueberlaeuft. Der `border-left`-Removal (G) ist die einzig saubere Aufloesung — der Border war seit dem Grid-Refactor in Sprint 7 tote Last und entstand vor der gap-Aera; in der Mischung aus uneinheitlichen Padding-Hoehen fiel er optisch nicht auf, jetzt mit Bandangleichung schon.
+
+**Konsequenz:** Kuenftige Header-Aenderungen (z. B. Bandhoehe anpassen) treffen genau eine Stelle: `tokens.css` + `layout.ts`. Falls eine neue Pane einen Top-Bar braucht: dieselbe Konvention anwenden (`height: var(--td-section-head-h); padding: 0 14px; box-sizing: border-box; align-items: center`). Sidebar-Breiten haben jetzt eine gemeinsame Konstante (`LAYOUT.COL_LEFT_WIDTH == LAYOUT.COL_RIGHT_WIDTH`); wenn die irgendwann auseinanderlaufen sollen (z. B. Files-Stack breiter als LeftSidebar), bewusst zwei Werte einfuehren statt unbeabsichtigt zu driften.
+
+**Implementierungsdetail:** Der Spiegel von `--td-section-head-h` als `LAYOUT.SECTION_HEAD_HEIGHT` ist redundant — heute liest keine TypeScript-Komponente diesen Wert direkt. Aber das Pattern fuer `LAYOUT.COL_LEFT_WIDTH` / `COL_RIGHT_WIDTH` ist etabliert (mehrere TS-Komponenten konsumieren die LAYOUT-Konstanten), und Single-Source-of-Truth zwischen CSS und TS lebt traditionell so. Falls in Zukunft eine TS-Komponente die Header-Hoehe braucht, sitzt der Wert schon da.
+
+---
+
 ## Right-Pane-Polish (Season 29.5): localStorage statt Settings, Toggle-Pillen, Watcher-Reuse
 
 **Entscheidung:** Vier Achsen-Entscheidungen fuer den Right-Pane-Polish, bewusst in einem Eintrag gebuendelt, weil sie sich gegenseitig stuetzen. (1) Filter-UI als Toggle-Pillen-Reihe unter dem Suchfeld, statt Dropdown-Popover oder Smart-Suchfeld. (2) Persistenz der Filter-Wahl in `localStorage('td.fileBrowserFilter')`, statt im `AppSettings`-Schema. (3) Sensitive-Warning-Gate als eine Pflicht-Confirm-Checkbox, statt Per-File-Checkboxen. (4) Git-Status-Marker via Reuse des Season-29-`fs:changed`-Watcher-Pushs plus `git:status`-Pull, statt eigenem simple-git-Polling-Loop. Konflikt-Regel beim Marker: Editor-Dirty schlaegt Git-Status auf dem gleichen UI-Slot.

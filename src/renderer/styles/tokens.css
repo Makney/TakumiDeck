@@ -29,4 +29,10 @@
   --td-mono: "JetBrains Mono", "Cascadia Code", "MesloLGS NF", ui-monospace, Consolas, monospace;
   --td-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --td-display: "VT323", "JetBrains Mono", monospace;
+
+  /* Season 30 UI-Overhaul — einheitliche Header-Hoehe fuer alle Top-Bars
+     (Titlebar, Sidebar-Section-Heads, Terminal-/Editor-Tabs, Files-/Notes-/
+     History-/Stats-/Plan-Header). Spiegel von LAYOUT.SECTION_HEAD_HEIGHT in
+     src/renderer/styles/layout.ts. Aenderung nur an einer Stelle propagiert. */
+  --td-section-head-h: 36px;
 }

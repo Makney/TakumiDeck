@@ -18,15 +18,16 @@ import { useUiStore } from './stores/ui';
 import { useFileTabsStore } from './stores/fileTabs';
 
 // Renderer-Layout — 4-Spalten-Grid nach docs/design/claude-export/styles.css
-// (.td-main, Zeilen 122-195). Die ursprüngliche Sprint-7-Variante mit Editor
-// im 232 px-Right-Pane war visuell zu eng; User-Feedback nach Phase-4-Test
-// hat auf das Design-Vorlage-Layout zurückgeführt.
+// (.td-main, Zeilen 122-195). Season 30 UI-Overhaul: Sidebars 240/232 →
+// 300/300 px (symmetrische Aussen-Spalten ziehen den Mittelteiler exakt auf
+// die Fenstermitte). Header-Bands aller Sektionen sitzen auf einheitlich
+// 36 px (--td-section-head-h) parallel zur Titlebar.
 //
 //   ┌────────┬──────────┬──────────┬─────────┐
 //   │ Left   │ Terminal │ Editor / │ Files   │
 //   │Sidebar │ (TabCont)│ Diff     │   +     │
-//   │ 240 px │  1 fr    │ 1 fr     │ Notes   │
-//   │        ├──────────┼──────────┤ 232 px  │
+//   │ 300 px │  1 fr    │ 1 fr     │ Notes   │
+//   │        ├──────────┼──────────┤ 300 px  │
 //   │ (full) │ Stats    │ PlanPane │ (full)  │
 //   │        │ 300 px   │ 300 px   │         │
 //   └────────┴──────────┴──────────┴─────────┘

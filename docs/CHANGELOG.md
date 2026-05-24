@@ -17,6 +17,26 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-24 — Season 30 UI-Overhaul (Block 1): symmetrische Sidebars + einheitliches 36-px-Header-Band
+
+### Was jetzt geht
+
+- **Die Mitte sitzt jetzt exakt in der Fenstermitte.** LeftSidebar und RightStack haben dieselbe Breite (300 px statt vorher 240/232 px) — die vertikale Trennlinie zwischen den beiden Mittel-Spalten (Terminal | Editor) faellt damit auf die geometrische Mitte des Fensters, nicht mehr 8 px daneben. Initialer Vorschlag war 400 px, im Live-Test war das zu breit zu Lasten der Mittel-Spalten; 300 px ist der Kompromiss.
+- **Alle Top-Bars sitzen auf einer einheitlichen 36-px-Linie parallel zur Titlebar.** Sidebar-Section-Heads (Projekte / Aktive Sessions / Verlauf), Terminal-Tab-Bar, Editor-Tab-Bar, Stats-Header, Plan-Header, Files-Header, Notes-Header, History-Header — alle ziehen ihre Hoehe jetzt aus dem CSS-Token `--td-section-head-h`. Ergibt ein durchgehendes Chrome-Band ueber alle vier Spalten, statt der bisherigen Mischung aus 28 px (Tabs) / 32 px (Stats/Plan/Files) / ~38 px (Panel-Heads via Padding 10/8).
+- **Plan-Pane sitzt jetzt buendig mit der Stats-Pane.** Die `.td-plan-pane` trug noch einen `border-left` als Sprint-7-Altlast (damals standen Stats + Plan ohne Grid-Gap direkt nebeneinander). Heute liefert das `.td-main`-Grid via `gap: 1px` + `background: var(--td-line)` die Trennlinie bereits — der zusaetzliche Border ergab eine sichtbare 2-px-Doppellinie und verschob die wahrgenommene Mittellinie des Plan-Headers um 1 px gegen die Stats-Toggles links.
+
+### Architektur-Notiz
+
+Single-Source-Token: `--td-section-head-h: 36px` in `tokens.css` ist der einzige Knopf fuer die Bandhoehe. Spiegel als `LAYOUT.SECTION_HEAD_HEIGHT` in `src/renderer/styles/layout.ts` (mehrere TypeScript-Komponenten lesen LAYOUT direkt). Acht CSS-Klassen (`td-titlebar`, `td-panel-head`, `td-tabs`, `td-code-tabs` + `-empty`, `td-notes-head`, `td-history-header`, `td-dash-head`, `td-plan-pane-header`) haben ihre vorher individuellen `padding`-Stacks (10/8, 8/6, 6/0, …) auf `padding: 0 14px` + `height: var(--td-section-head-h)` + `box-sizing: border-box` umgestellt. Inhalte zentrieren sich via `align-items: center` automatisch; der 28-px-Display-Title in `.td-plan-pane-title` und die 22-px-Display-Titles in `.td-panel-title` passen visuell sauber ins 36-px-Band.
+
+Container-Sizes: `LAYOUT.COL_LEFT_WIDTH` / `LAYOUT.COL_RIGHT_WIDTH` jetzt 300 px statt 240/232. `.td-main`-`grid-template-columns` zieht den Wert nicht aus dem Token (Browser kann `var()` in `grid-template-columns` zwar, aber TS-Komponenten wie `estimateTerminalCols` lesen die Konstante aus `layout.ts` direkt, was schlecht aus CSS zurueckspielbar waere — bewusster Bruch, einer der zwei Werte muss manuell mitgezogen werden). Beides ist im selben Commit synchron.
+
+Die `.td-plan-pane`-`border-left`-Entfernung wurde erst nach einem User-Screenshot sichtbar, der einen 1-px-Versatz an der Stats↔Plan-Trennlinie zeigte — der Border-Left aus Sprint 7 war seit dem Grid-Layout (Sprint 7-Refactor, das `gap: 1px` einfuehrte) tote Last; vor Season 30 fiel der visuelle Effekt unter der Mischung aus unterschiedlichen Padding-Heights nicht auf, jetzt mit angeglichenen Bandhoehen aber schon.
+
+Kein neuer Test in dieser Aenderung — reine CSS/Layout-Anpassung; einziges verifizierbares Verhalten ist Pixel-Rendering, das nur durch Augen-Test am Dev-Build belastbar ist (siehe CODING_RULES, „no tests for impossible scenarios"). Pre-Check `lint` + `typecheck` gruen.
+
+---
+
 ## 2026-05-24 — Right-Pane-Polish: Datei-Browser-Filter, Sensitive-Confirm-Gate, Git-Status-Indikatoren
 
 ### Was jetzt geht
