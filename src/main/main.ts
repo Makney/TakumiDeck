@@ -78,12 +78,19 @@ let stateLoop: StateDetectionLoop | null = null;
 let projectFilesWatcher: ProjectFilesWatcher | null = null;
 
 function createMainWindow(): void {
+  // Im gepackten Build liegt icon.ico als extraResource neben den anderen Resources,
+  // im Dev-Mode unter <repo>/build/icon.ico (__dirname == .vite/build/ in Dev).
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.ico')
+    : path.join(__dirname, '../../build/icon.ico');
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1100,
     minHeight: 720,
     backgroundColor: '#0d0f0e',
+    icon: iconPath,
     show: false,
     autoHideMenuBar: true,
     // Sprint 8 — native Title-Bar weg, td-titlebar (Architektur 6.0) übernimmt

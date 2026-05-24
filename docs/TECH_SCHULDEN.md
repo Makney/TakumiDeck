@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Brand-Logo-Quell-PNGs leben extern auf dem Desktop, nicht im Repo (2026-05-24)
+
+**Bereich:** Asset-Pipeline. Konkret: `build/icon.ico` lebt im Repo (committet), aber die Quell-PNGs (`16.png`, `24.png`, ..., `1024.png`, `1254.png`) leben unter `C:\Users\makne\Desktop\Logos\TakumiDeck\ICOs2\`. Build-Skript: `D:\Projekte\Scripts\build-icon.py` (auch nicht im TakumiDeck-Repo, sondern projekt-uebergreifend abgelegt).
+
+**Was:** Die fertige `build/icon.ico` ist im Repo und wird vom Forge-Build verwendet — Releases sind reproduzierbar. Aber: wenn das Logo nochmal ueberarbeitet werden muss, braucht es die Quell-PNGs vom Desktop, und das externe Build-Skript aus `D:\Projekte\Scripts\`. Geht der Desktop-Ordner verloren (Geraete-Wechsel, Reset, versehentliches Loeschen), kann das Icon nur noch dekomprimiert aus der `.ico` selbst rekonstruiert werden — was wiederum bedeutet, dass die Master-Aufloesungen 1024 und 1254 (die NICHT in der `.ico` landen, weil ICO-Container max. 256 px haelt) endgueltig weg sind.
+
+**Warum so:** Bewusster Trade-off zugunsten kleiner Repo-Groesse und einfachem Update-Workflow. Quell-PNGs summieren sich auf ~50–200 KB (1254er allein ist der dickste Brocken), Build-Skript nochmal ~3 KB. Im aktuellen Lebenszyklus passiert ein Logo-Update vielleicht zwei- bis dreimal vor Phase-1.0 und dann nie wieder — die im-Repo-Variante (Variante F im ENTSCHEIDUNGEN-Eintrag „App-Icon und Brand-Logo") haette einen CI-Build-Step mit Python-Pillow-Setup erforderlich gemacht, der nur fuer einen Re-Run-pro-Jahr-Workflow uebertrieben ist. Der zentrale Scripts-Ordner-Ansatz (Variante D) hat das Skript-Problem geloest, das Quell-PNG-Problem aber explizit nicht angefasst.
+
+**Risiko:** Niedrig–mittel. Konkretes Worst-Case-Szenario: Festplatte stirbt oder OneDrive-Sync verliert den `Desktop/Logos/TakumiDeck/`-Ordner — die `.ico` selbst lebt weiter (im Git), aber jede kuenftige Logo-Variante muss aus den Container-Frames neu extrahiert werden (256 px Max-Aufloesung) plus die Master-PNGs sind weg. Mittlere Schwere, weil die Quellen rekonstruierbar waeren (1024er aus dem aktuellen Logo neu zeichnen lassen), aber Aufwand und Drift-Risiko sind real. Mitigation aktuell: OneDrive synct den Desktop ohnehin, also Drift nur bei aktivem Loeschen.
+
+**Aufloesung:** **Trigger:** wenn das Logo zum dritten Mal in Folge regeneriert wird (Indikator: aktive Iteration-Phase, dann ist die Reibung mit dem externen Pfad spuerbar). Variante F aus dem ENTSCHEIDUNGEN-Eintrag nachziehen: Quell-PNGs als `build/icon-src/<size>.png` ins Repo committen (alle 7 ICO-Groessen plus 1024er als Master, die 1254er bewusst rauslassen — die ist nur Tippfehler-Fallback). `.gitignore` mit `!build/icon-src/` durchlassen. Build-Skript bleibt zentral unter `D:\Projekte\Scripts\` — der Aufruf wandert in ein Repo-lokales Wrapper-Skript (`scripts/rebuild-icon.bat`) oder einen npm-Script-Eintrag (`"icon:rebuild": "python ../Scripts/build-icon.py --src build/icon-src --out build/icon.ico"`), damit der Pfad zur Quelle im Repo lebt. CI-Hook explizit weiter nicht — der Pre-Build-Pass bleibt schnell, das Icon-Rebuild ist manueller One-Shot.
+
+---
+
 ## @xterm/addon-webgl@0.19.0 Dispose-Bug — Symptom abgefangen, Upstream-Fix offen (Bugfix 2026-05-19)
 
 **Bereich:** `@xterm/addon-webgl@^0.19.0` (third-party Runtime-Dependency, seit Season 28 im Stack). Symptom-Abfang sitzt in `src/renderer/panels/TerminalTab.tsx` (Cleanup-Pfad) plus `src/renderer/components/safeDispose.ts` (Pure-Helper) plus `src/renderer/components/ErrorBoundary.tsx` (Defense-in-Depth).

@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/sessions';
 import { useUiStore } from '../stores/ui';
 import { displayProjectName } from '../components/displayProjectName';
 import { useUpdaterState } from '../components/useUpdaterState';
+import logoUrl from '../assets/logo.png';
 
 // Sprint 8 — Header-Bar (Architektur 6.0, td-titlebar-Klassen aus
 // docs/design/claude-export/styles.css Zeilen 62-118).
@@ -145,7 +146,7 @@ export function TitleBar({ version }: Props) {
   return (
     <header className="td-titlebar">
       <div className="td-brand">
-        <span className="td-kanji" aria-hidden>匠</span>
+        <img src={logoUrl} alt="" className="td-brand-logo" aria-hidden />
         <span>
           <b>Takumi</b>Deck
         </span>

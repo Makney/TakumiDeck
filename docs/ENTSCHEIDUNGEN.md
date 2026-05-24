@@ -24,6 +24,32 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## App-Icon und Brand-Logo: Logo ersetzt Kanji, Build-Skript in zentralem Scripts-Ordner
+
+**Entscheidung:** Zwei zusammenhaengende Entscheidungen in einem Eintrag. (1) Das Brand-Element oben links in der Titlebar wechselt vom Kanji `匠` auf ein eigenes Logo-Asset (`src/renderer/assets/logo.png`, 128 px). Die Wortmarke `**Takumi**Deck` und die Versions-Pille bleiben unveraendert daneben. (2) Der ICO-Generator (`build-icon.py`) lebt nicht projekt-lokal unter `scripts/` im TakumiDeck-Repo, sondern in einem neuen projekt-uebergreifenden Ordner `D:\Projekte\Scripts\` parallel zu den eigentlichen Projekt-Repos.
+
+**Varianten (Brand-Element):**
+
+- **A** Logo ersetzt Kanji — ein Brand-Element links, konsistent mit Taskleiste/Setup.exe/Exe. (Gewaehlt)
+- **B** Logo zusaetzlich vor dem Kanji — `[Logo] 匠 TakumiDeck`. Doppel-Branding, mehr visuelles Gewicht.
+- **C** Logo ersetzt Kanji UND Wortmarke — nur das Logo links, kein „TakumiDeck"-Text mehr. Radikalster Cut, gewinnt am meisten Platz fuer die Meta-Sektion.
+
+**Varianten (Build-Skript-Ablage):**
+
+- **D** Zentraler Scripts-Ordner `D:\Projekte\Scripts\` mit projekt-agnostischem Skript (CLI-Args fuer Source + Target). (Gewaehlt)
+- **E** Projekt-lokal unter `D:\Projekte\TakumiDeck\scripts\build-icon.py`, Pfad zur Quelle hardcoded analog zur TanaLib-Vorlage.
+- **F** Projekt-lokal, aber zusaetzlich Quell-PNGs ins Repo (`build/icon-src/*.png`) und `.ico` generiert per CI-Hook beim Build.
+
+**Grund (Brand-Element):** A folgt dem etablierten Brand-Konzept aus Taskleiste und Setup.exe — dort sieht der User das Logo, in der Titlebar bisher nur den Kanji-Surrogat. Konsistenz ueber die Surfaces hinweg ist wichtiger als die Beibehaltung des Sprint-8-Kanji-Anchors. B haette einen redundanten Doppel-Brand-Spot erzeugt, ohne Information dazuzuholen — und der Kanji wuerde optisch mit dem Logo um Aufmerksamkeit konkurrieren. C verliert den Wortmarken-Text, der bei einer Multi-Tool-Taskbar fuer schnelle Identifikation hilft („TakumiDeck" lesen geht schneller als „Logo erkennen" beim ersten Mal).
+
+**Grund (Build-Skript-Ablage):** D nutzt den Fakt, dass `build-icon.py` ein wiederverwendbarer Util ist (Multi-Size-ICO-Erzeugung ist nicht TakumiDeck-spezifisch — TanaLib hatte das Skript schon einmal projekt-lokal, kuenftige Projekte koennten das auch brauchen). Der CLI-Args-Ansatz macht das Skript projekt-agnostisch, statt einen Quell-Pfad zu hardcoden. E haette die Dopplung aus TanaLib direkt nach TakumiDeck portiert und beim naechsten Projekt nochmal — ein typischer Drift-Pfad. F waere die maximal-reproduzierbare Variante (kein externer Quell-Pfad), aber kostet ~10 KB PNG-Quellen pro Projekt im Git und einen CI-Build-Step (Python im Forge-Pipeline) — Overkill, weil das Icon quasi nie regeneriert wird.
+
+**Konsequenz:** Drei TakumiDeck-Integration-Punkte griffen einheitlich auf `build/icon.ico` zu: `packagerConfig.icon` (ohne Extension, electron-packager-Konvention), `MakerSquirrel.setupIcon` (mit Extension), `BrowserWindow({ icon })` (Dev/Prod-Switch ueber `app.isPackaged`). `build/icon.ico` ist zusaetzlich in `extraResource` enthalten, damit der Main-Prozess es im gepackten Build ueber `process.resourcesPath/icon.ico` findet — dasselbe Pattern wie fuer `app-update.yml` aus v0.3.1, kein neuer Konvention-Anker. Renderer-seitig ist `src/renderer/assets/logo.png` (die 128er-Quell-PNG) das Asset — Vite bundled das mit Hash. CSS-Klasse `.td-brand-logo` (24×24 px, `object-fit: contain`) ersetzt den `.td-kanji`-Block (Font-Glyph) — Layout-Drift Null, weil das Logo-Element optisch dieselbe Slot-Position einnimmt. Der zentrale Scripts-Ordner hat eine kleine README, die ihn als „projekt-agnostisch, Pfade nur per CLI-Arg" kennzeichnet — wenn TanaLib seinen lokalen `scripts/build_icon.py` irgendwann loswerden will, kann er ueber das zentrale Skript ersetzt werden (Naming-Pattern-Kompatibilitaet ist eingebaut: sowohl `16.png` als auch `16x16.png` werden akzeptiert). Pillow-Dependency lebt vorerst nur im TanaLib-venv (`D:\Projekte\TanaLib\venv\Scripts\python.exe`); kein dedizierter Scripts-venv noetig, solange das Re-Run-Volumen niedrig bleibt.
+
+**Implementierungsdetail:** Logo-Asset ist die 128er-PNG (nicht die 64er) — entspricht ~2× der CSS-Display-Groesse, sieht auf HiDPI-Displays sauber aus. Die Quell-PNG-Datei `logo.png` ist physisch im Renderer-Asset-Ordner abgelegt und wird per Import gezogen, statt ueber einen Vite-Public-Pfad oder gleich aus `build/icon.ico` — der Renderer kann `.ico` nicht direkt zeigen, und `assets/logo.png` ist das Repo-Konvention-Pattern, das Vite hash-bundled. `<img alt="" aria-hidden>` weil die Wortmarke „TakumiDeck" daneben den Screenreader-Inhalt schon traegt. `forge.config.ts` `packagerConfig.icon` braucht **keine** Extension (`'./build/icon'` statt `'./build/icon.ico'`) — electron-packager waehlt die plattform-passende Endung selbst. `MakerSquirrel.setupIcon` braucht dagegen die Extension. `BrowserWindow({ icon })`-Pfad-Berechnung mit `app.isPackaged`-Switch, weil im Dev `__dirname` auf `.vite/build/` zeigt (Repo-Root via `../../build/`) und im Build auf den extraResource-Ordner (`process.resourcesPath/icon.ico`). Quell-PNGs leben nicht im Repo (Drift-Risiko dokumentiert in TECH_SCHULDEN als „Quell-PNGs extern auf dem Desktop"-Eintrag).
+
+---
+
 ## Spawn-Tracking ins SessionTab-Schema heben (A)
 
 **Entscheidung:** `needsSpawn: boolean` und `initialPrompt: string | null` leben als Pflichtfelder am `SessionTab`-Schema im zentralen Sessions-Store, statt als TabContainer-lokales State-Paar (`spawnedIds: Set<string>` + `initialPrompts: Map<string,string>`). `closeTab` raeumt beide Felder implizit mit, weil die ganze Tab-Row aus dem Store fliegt — kein expliziter Cleanup-Pfad mehr noetig. Damit ist `LeftSidebar.handleCloseTab` (das `×` in der „Aktive Sessions"-Pille links) und `LeftSidebar.handleConfirmRemove` (Projekt-Entfernen mit offenen Tabs) automatisch mitgehoert, ohne dass die Sidebar das TabContainer-State erreichen muesste.

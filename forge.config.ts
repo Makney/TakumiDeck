@@ -76,11 +76,16 @@ const config: ForgeConfig = {
     asar: true,
     name: 'TakumiDeck',
     appBundleId: 'dev.takumideck.app',
+    // electron-packager waehlt die plattform-passende Endung (.ico fuer win32) —
+    // deshalb wird der Pfad OHNE Extension angegeben. Brandiert das Exe-Icon.
+    icon: './build/icon',
     // electron-updater liest <resourcesPath>/app-update.yml beim Download-Pfad
     // (AppUpdater.js getOrCreateDownloadHelper -> updaterCacheDirName; NsisUpdater
     // -> publisherName). Forge erzeugt die Datei NICHT (electron-builder-Konvention) —
     // wir packen sie deshalb explizit als extraResource. Pfad relativ zum Repo-Root.
-    extraResource: ['./build/app-update.yml'],
+    // icon.ico ist zusaetzlich als extraResource enthalten, damit der Main-Prozess
+    // im gepackten Build das BrowserWindow-Icon ueber process.resourcesPath finden kann.
+    extraResource: ['./build/app-update.yml', './build/icon.ico'],
     // Eigener Ignore-Filter ueberschreibt den Default des Vite-Plugins (der ALLES
     // ausser /.vite ausschliesst — siehe @electron-forge/plugin-vite VitePlugin.js
     // Z.124-131). Wir lassen /.vite + /package.json + node_modules-Eintraege durch,
@@ -100,7 +105,11 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({ name: 'TakumiDeck' }),
+    new MakerSquirrel({
+      name: 'TakumiDeck',
+      // Setup.exe-Icon (im Windows-Explorer + waehrend der Installation sichtbar).
+      setupIcon: './build/icon.ico',
+    }),
     // Nur win32 — TakumiDeck ist Win11-Target (siehe CLAUDE.md).
     new MakerZIP({}, ['win32']),
   ],

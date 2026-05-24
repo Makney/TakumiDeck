@@ -4228,11 +4228,15 @@ body,
   font-weight: 600;
 }
 
-.td-titlebar .td-kanji {
-  font-family: var(--td-display);
-  color: var(--td-accent);
-  font-size: 18px;
-  line-height: 1;
+/* Brand-Logo in der Titlebar (Quelle: src/renderer/assets/logo.png, 128px).
+   Ersetzt seit 2026-05-24 den frueheren Kanji-Glyph als Brand-Element. Hoehe
+   knapp unter der Titlebar-Hoehe (36px), damit oben/unten ein leichter
+   optischer Atemraum bleibt. */
+.td-titlebar .td-brand-logo {
+  width: 24px;
+  height: 24px;
+  display: block;
+  object-fit: contain;
 }
 
 .td-titlebar .td-version {

@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-24 — App-Icon + Brand-Logo in der Titlebar
+
+### Was jetzt geht
+
+- **TakumiDeck hat ab jetzt ein eigenes App-Icon.** Sichtbar in der Windows-Taskleiste, im Alt-Tab-Switcher, auf der `Setup.exe` im Datei-Explorer und auf der `TakumiDeck.exe` selbst. Vorher griff Electron auf das Default-Electron-Logo zurueck.
+- **Die Titlebar oben links zeigt jetzt das Logo statt des Kanji-Glyphs `匠`.** Wortmarke `**Takumi**Deck` und Versions-Pille bleiben unveraendert daneben — ein einziges Brand-Element links, konsistent mit Taskleiste und Setup.exe.
+- **Wiederverwendbares Build-Skript fuer ICO-Generierung.** Neuer projekt-uebergreifender Scripts-Ordner `D:\Projekte\Scripts\` mit `build-icon.py` (CLI: `--src`, `--out`, `--sizes`). Steht ab jetzt auch kuenftigen Projekten zur Verfuegung; TanaLib hat sein projekt-lokales Pendant noch, kann bei Bedarf nachziehen.
+
+### Architektur-Notiz
+
+Drei Ebenen wurden gleichzeitig verdrahtet, damit das Icon ueberall greift, wo Windows nachschaut: (1) `forge.config.ts` `packagerConfig.icon: './build/icon'` (ohne Extension — electron-packager waehlt `.ico` auf win32 automatisch) brandiert die `TakumiDeck.exe`-Resource, (2) `MakerSquirrel.setupIcon: './build/icon.ico'` brandiert die `Setup.exe`, (3) `BrowserWindow({ icon })` mit Dev/Prod-Switch — im gepackten Build aus `process.resourcesPath/icon.ico` (deshalb taucht `icon.ico` zusaetzlich in `extraResource` auf, analog zum Pattern fuer `app-update.yml`), im Dev-Mode aus `<repo>/build/icon.ico`. Die Renderer-Titlebar braucht ein eigenes Asset (das ICO-Container-Format ist nichts, was der Renderer-DOM direkt frisst), deshalb `src/renderer/assets/logo.png` (die 128er-Quell-PNG, Vite bundled das mit Hash); in `TitleBar.tsx` ersetzt `<img src={logoUrl} alt="" aria-hidden className="td-brand-logo">` den frueheren `<span className="td-kanji">匠</span>`, in `styles/app.css` ersetzt eine neue `.td-brand-logo`-Klasse (24×24 px, `object-fit: contain`) den frueheren `.td-kanji`-Block. ICO-Generierung lief ueber den projekt-uebergreifenden `D:\Projekte\Scripts\build-icon.py` (CLI-Args fuer Source + Target, akzeptiert sowohl `16.png` als auch `16x16.png` Naming, Tippfehler-Fallback `size+2`, Default-Groessen `[16,24,32,48,64,128,256]`), aufgerufen mit dem TanaLib-venv (`D:\Projekte\TanaLib\venv\Scripts\python.exe`, dort ist Pillow schon installiert). Zwei zusaetzliche `.gitignore`-Ausnahmen `!build/icon.ico` (analog `!build/app-update.yml` aus v0.3.1). `npm run lint` + `npm run typecheck` gruen, kein Code-Branch ohne neuen Test — der Asset-Pfad ist nur durch echten Build oder Dev-Start visuell verifizierbar, Unit-Tests waeren Theatre. Quell-PNGs liegen weiterhin extern auf `C:\Users\makne\Desktop\Logos\TakumiDeck\ICOs2\`; ein TECH_SCHULDEN-Eintrag dokumentiert den Pfad-zu-`build/icon-src/`-im-Repo, falls die Desktop-Quellen verloren gehen.
+
+---
+
 ## 2026-05-20 — v0.3.2 — Bugfix: UNIQUE constraint sessions.id beim Resume nach LeftSidebar-× (Variante B aus v0.2.0-TECH_SCHULDEN nachgezogen)
 
 ### Was jetzt geht

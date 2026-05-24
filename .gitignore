@@ -41,6 +41,7 @@ dist/
 # Forge-Output landet in out/ + .vite/, daher nur tatsaechlichen Build-Muell ignorieren.
 build/*
 !build/app-update.yml
+!build/icon.ico
 
 # Package-/Build-Artefakte
 *.egg-info/
