@@ -35,13 +35,25 @@ import {
 // aus den Body-Inhalten der Summaries eine Praeambel, die genauso wie der
 // Docs-Sync-Prompt nach Spawn via Bracketed-Paste an die Session geht.
 
-const SESSION_TYPES: SessionType[] = ['feature', 'bug', 'review', 'docs-sync', 'custom'];
+const SESSION_TYPES: SessionType[] = [
+  'feature',
+  'bug',
+  'review',
+  'docs-sync',
+  'custom',
+  // Phase-2 Season-31: sechster Button — Terminal spawnt PowerShell statt
+  // claude. Bewusst in derselben Reihe ohne eigenen "Ohne Agent"-Block: visuell
+  // konsistent mit den anderen Typen, der Skip-Charakter ergibt sich aus dem
+  // Wegfall von Modell-Dropdown und On-Demand-Kontext-Block.
+  'terminal',
+];
 const TYPE_LABELS: Record<SessionType, string> = {
   feature: 'Feature',
   bug: 'Bug',
   review: 'Review',
   'docs-sync': 'Docs-Sync',
   custom: 'Eigene Art',
+  terminal: 'Terminal',
 };
 
 // Phase-2 Season-5: gleiche Cap wie das zod-Schema (PtyCreateInputSchema.customTypeLabel).
@@ -175,8 +187,10 @@ export function NewSessionModal({
   // Wird einmal beim ersten Wechsel auf einen non-docs-sync-Typ gefetcht und
   // dann gecached — der User wechselt typischerweise mehrfach zwischen
   // Feature/Bug/Review, ohne dass sich die On-Demand-Files-Liste aendert.
+  // Phase-2 Season-31: Terminal-Sessions sind Quick-Shells — kein claude-Prompt,
+  // also auch kein Praeambel-Block. IPC bleibt ungerufen.
   useEffect(() => {
-    if (type === 'docs-sync' || !projectId) return;
+    if (type === 'docs-sync' || type === 'terminal' || !projectId) return;
     if (onDemandStatus !== null) return; // bereits geladen
     let cancelled = false;
     setOnDemandLoading(true);
@@ -256,16 +270,20 @@ export function NewSessionModal({
     // Phase-2 Season-22: zwei moegliche Praeambel-Quellen, die sich gegen-
     // seitig ausschliessen. docs-sync ⇒ Docs-Sync-Prompt; alle anderen ⇒
     // Kontext-Praeambel (oder null, wenn nichts ausgewaehlt/verfuegbar).
+    // Phase-2 Season-31: Terminal-Sessions kriegen weder Praeambel noch echtes
+    // Modell — der Sentinel 'none' erfuellt die zod-Pflicht (min(1)) und wird
+    // im Spawn-Branch in pty.ts ignoriert, weil dort current_model bei
+    // type='terminal' fix auf null geschrieben wird.
     let preamble: string | null = null;
     if (type === 'docs-sync') {
       preamble = buildDocsSyncPrompt(selectedDocsSyncFiles);
-    } else if (onDemandPreambleItems.length > 0) {
+    } else if (type !== 'terminal' && onDemandPreambleItems.length > 0) {
       preamble = buildContextPreamble(onDemandPreambleItems);
     }
     onCreate({
       title: title.trim(),
       type,
-      model,
+      model: type === 'terminal' ? 'none' : model,
       customTypeLabel: type === 'custom' ? trimmedCustomLabel : null,
       initialPrompt: preamble,
     });
@@ -374,8 +392,11 @@ export function NewSessionModal({
 
           {/* Phase-2 Season-22: On-Demand-Kontext-Block fuer alle anderen
               Session-Arten. Nutzt dieselben CSS-Klassen wie der Docs-Sync-
-              Block (visuell identisch — Checkbox-Reihe mit Status-Marker). */}
+              Block (visuell identisch — Checkbox-Reihe mit Status-Marker).
+              Phase-2 Season-31: Terminal-Sessions ueberspringen den Block —
+              eine PowerShell konsumiert keinen Praeambel-Text. */}
           {type !== 'docs-sync' &&
+            type !== 'terminal' &&
             ((onDemandStatus !== null && onDemandStatus.length > 0) || onDemandLoading) && (
               <div className="td-field">
                 <span>Kontext laden</span>
@@ -427,19 +448,26 @@ export function NewSessionModal({
             </div>
           )}
 
-          <label className="td-field">
-            <span>Modell</span>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            >
-              {MODEL_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* Phase-2 Season-31: Terminal-Sessions kennen kein Modell — die
+              Shell ignoriert --model. Statt das Feld leer zu rendern, blenden
+              wir es komplett aus; das Submit setzt den Schema-Pflicht-Wert
+              ueber einen Sentinel-String, den der Spawn-Branch in pty.ts
+              ignoriert (current_model wird dort auf null geschrieben). */}
+          {type !== 'terminal' && (
+            <label className="td-field">
+              <span>Modell</span>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+              >
+                {MODEL_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <div className="td-modal-footer">
             <button type="button" className="td-btn td-btn-ghost" onClick={onCancel}>

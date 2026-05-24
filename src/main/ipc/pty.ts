@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { ipcMain, type WebContents } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import { ok, err, errFromUnknown } from '@shared/result';
@@ -15,6 +16,7 @@ import type { SessionLifecycle } from '../sessions/lifecycle';
 import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
 import { preSpawnCheck } from '../pty/preSpawnCheck';
+import { resolveTerminalShell } from '../pty/terminalShell';
 import { assertFromMainWindow } from './sender-guard';
 import { expectedJsonlPath } from '../jsonl/cwd-encoding';
 import { defaultClaudeProjectsPath } from '../jsonl/watcher';
@@ -115,18 +117,38 @@ export function registerPtyIpc(deps: {
       }
       const cwd = project.path;
 
-      // Bereich-4-Review (W-1): Binary + cwd in einem Pre-Spawn-Helper, weil
-      // session:resume denselben Block hatte. PTY_BINARY_NOT_FOUND und
-      // PTY_CWD_NOT_FOUND kommen aus dem Helper zurück.
-      const pre = preSpawnCheck({
-        binaryPath: current.claude_binary_path,
-        cwd,
-        log,
-        label: 'pty',
-        cwdMissingHint: 'Setze workspace_path in settings.json auf einen vorhandenen Ordner.',
-      });
-      if (!pre.ok) return pre;
-      const { resolvedBinary } = pre.data;
+      // Phase-2 Season-31: Terminal-Sessions spawnen pwsh.exe/powershell.exe statt
+      // der claude-Binary — Skip-Gate #1: Pre-Spawn-Check geht durch einen anderen
+      // Helper, der den settings.claude_binary_path-Lookup nicht braucht.
+      const isTerminal = input.type === 'terminal';
+      let resolvedBinary: string;
+      if (isTerminal) {
+        const shellResult = resolveTerminalShell(log);
+        if (!shellResult.ok) return shellResult;
+        // cwd-Existenz-Check ziehen wir aus dem claude-Pfad heraus dupliziert nach,
+        // damit ein umbenannter/geloeschter Projekt-Pfad nicht in ConPTYs
+        // ERROR_DIRECTORY landet.
+        if (!fs.existsSync(cwd)) {
+          return err<never>(
+            `Working-Directory existiert nicht: ${cwd}. Setze workspace_path in settings.json auf einen vorhandenen Ordner.`,
+            'PTY_CWD_NOT_FOUND',
+          );
+        }
+        resolvedBinary = shellResult.data.resolvedShell;
+      } else {
+        // Bereich-4-Review (W-1): Binary + cwd in einem Pre-Spawn-Helper, weil
+        // session:resume denselben Block hatte. PTY_BINARY_NOT_FOUND und
+        // PTY_CWD_NOT_FOUND kommen aus dem Helper zurück.
+        const pre = preSpawnCheck({
+          binaryPath: current.claude_binary_path,
+          cwd,
+          log,
+          label: 'pty',
+          cwdMissingHint: 'Setze workspace_path in settings.json auf einen vorhandenen Ordner.',
+        });
+        if (!pre.ok) return pre;
+        resolvedBinary = pre.data.resolvedBinary;
+      }
 
       // 1. Sprint 6: Counter atomar allozieren (Q6 Variante B). Nur für 'feature' —
       //    Bug/Review/Docs-Sync/Custom bleiben ohne season_number. Wenn das Project
@@ -155,17 +177,26 @@ export function registerPtyIpc(deps: {
       // ersten chokidar-add/change ueber `WHERE jsonl_path = ?` in einem einzigen
       // Index-Lookup, und der Polling-Ring weiss sofort, welche Datei er pro
       // Tick anschauen soll.
-      const jsonlPath = expectedJsonlPath(claudeProjectsRoot, cwd, input.sessionId);
+      //
+      // Phase-2 Season-31: Skip-Gate #2 — Terminal-Sessions schreiben keine JSONL,
+      // jsonl_path bleibt also null. Damit ueberspringt der Watcher die Session
+      // implizit (kein Pfad → kein Match).
+      const jsonlPath = isTerminal
+        ? null
+        : expectedJsonlPath(claudeProjectsRoot, cwd, input.sessionId);
 
+      // Phase-2 Season-31: Skip-Gate #3 — claude_session_id + current_model bleiben
+      // bei terminal-Sessions null (keine claude-Spawn-Metadaten). Resume spawnt
+      // die Shell ueber den gespeicherten cwd neu; keine UUID noetig.
       const row = sessions.create({
         id: input.sessionId,
         project_id: input.projectId,
         title: input.title,
         type: input.type,
-        model: input.model,
+        model: isTerminal ? null : input.model,
         cwd,
         season_number: seasonNumber,
-        claude_session_id: input.sessionId,
+        claude_session_id: isTerminal ? null : input.sessionId,
         custom_type_label:
           input.type === 'custom' ? (input.customTypeLabel ?? null) : null,
         jsonl_path: jsonlPath,
@@ -179,10 +210,14 @@ export function registerPtyIpc(deps: {
       //    Damit matcht --resume <sessionId> später 1:1 — ohne dieses Flag schreibt
       //    claude-code die JSONL unter einer eigenen UUID, und Resume scheitert mit
       //    "No conversation found with session ID: ...".
+      // Phase-2 Season-31: Skip-Gate #4 — Terminal-Shell kennt weder --session-id
+      // noch --model. Args bleiben leer, die Shell startet interaktiv im cwd.
       try {
         manager.create(input.sessionId, {
           shell: resolvedBinary,
-          args: ['--session-id', input.sessionId, '--model', input.model],
+          args: isTerminal
+            ? []
+            : ['--session-id', input.sessionId, '--model', input.model],
           cwd,
           cols: input.cols,
           rows: input.rows,
@@ -204,7 +239,13 @@ export function registerPtyIpc(deps: {
       // Phase-2 Season-15: Polling-Ring an die frische Session koppeln, damit
       // die Token-Bars in Echtzeit pushen statt erst am 100-ms-awaitWriteFinish.
       // Detach laeuft ueber den SessionLifecycle bei terminalen Statuswechseln.
-      pollingRing?.attach(input.sessionId, jsonlPath);
+      //
+      // Phase-2 Season-31: Skip-Gate #5 — Terminal-Sessions haben kein JSONL,
+      // also auch nichts zu pollen. jsonlPath ist hier bereits null bei isTerminal,
+      // der Guard macht den Skip lesbar.
+      if (!isTerminal && jsonlPath !== null) {
+        pollingRing?.attach(input.sessionId, jsonlPath);
+      }
 
       // Phase-2 Season-29 (Multi-Tab-Diff): Baseline-SHA fuer den Session-Diff-
       // Modus fixieren. Fire-and-forget — der DiffViewer fragt erst bei Tab-
@@ -226,7 +267,11 @@ export function registerPtyIpc(deps: {
           });
       }
 
-      log.info(`[pty] erstellt sessionId=${input.sessionId} model=${input.model}`);
+      log.info(
+        `[pty] erstellt sessionId=${input.sessionId} ${
+          isTerminal ? `shell=${resolvedBinary}` : `model=${input.model}`
+        }`,
+      );
       return ok(row);
     } catch (e) {
       return errFromUnknown(e, 'PTY_CREATE');

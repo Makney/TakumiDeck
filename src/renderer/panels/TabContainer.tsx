@@ -219,7 +219,7 @@ export function TabContainer({ settings }: Props) {
   const handleNewSession = useCallback(
     (input: {
       title: string;
-      type: 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom';
+      type: 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom' | 'terminal';
       model: string;
       // Phase-2 Season-5: bei type='custom' Pflicht-Bezeichnung, sonst null.
       customTypeLabel?: string | null;

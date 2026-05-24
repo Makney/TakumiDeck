@@ -110,7 +110,10 @@ export interface CreateSessionInput {
   project_id: string;
   title: string;
   type: SessionType;
-  model: string;
+  // Phase-2 Season-31: 'terminal'-Sessions schreiben current_model=null in die DB
+  // (keine claude-Spawn-Metadaten). Fuer alle anderen Typen ist der String der
+  // gewaehlte Modell-Identifier (claude-opus-4-7 etc.).
+  model: string | null;
   cwd: string;
   // Sprint 6: vom pty:create-Handler gesetzt — atomar aus projects.next_season_number
   // alloziert (nur für type='feature'). Für Bug/Review/Docs-Sync/Custom immer null.
@@ -164,7 +167,7 @@ export class SessionRepository {
       type: input.type,
       season_number: input.season_number ?? null,
       status: 'running',
-      current_model: input.model,
+      current_model: input.model ?? null,
       worktree_branch: null,
       notes_md: '',
       cwd: input.cwd,

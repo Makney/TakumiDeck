@@ -25,7 +25,17 @@ import { estimateTerminalCols } from '../components/estimateTerminalCols';
 // mit einem Hinweis-Banner — der TECH_SCHULDEN-Eintrag „Sprint-2/3-Legacy
 // UI-blind bis Sprint 6" wird damit aufgelöst.
 
-const TYPE_OPTIONS: SessionType[] = ['feature', 'bug', 'review', 'docs-sync', 'custom'];
+const TYPE_OPTIONS: SessionType[] = [
+  'feature',
+  'bug',
+  'review',
+  'docs-sync',
+  'custom',
+  // Phase-2 Season-31: 'terminal' als sechster Filter-Bucket — Quick-Shells
+  // sollen im Verlauf auffindbar bleiben (Resume spawnt die Shell im
+  // gespeicherten cwd neu).
+  'terminal',
+];
 const TYPE_LABELS: Record<SessionType, string> = {
   feature: 'Feature',
   bug: 'Bug',
@@ -35,6 +45,7 @@ const TYPE_LABELS: Record<SessionType, string> = {
   // ohne `custom_type_label` in der DB landet (sollte durch zod-Schema verhindert
   // sein, ist aber defensives Rendering).
   custom: 'Eigene Art',
+  terminal: 'Terminal',
 };
 
 // Phase-2 Season-5: für 'custom'-Sessions zeigt der Verlauf die freie

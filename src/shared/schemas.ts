@@ -125,7 +125,18 @@ export const AppPickFolderInputSchema = z
 
 // Phase-2 Season-5: 'custom' fuer User-definierte Session-Arten; die freie
 // Bezeichnung liegt im PtyCreate-Payload separat unter customTypeLabel.
-export const SessionTypeSchema = z.enum(['feature', 'bug', 'review', 'docs-sync', 'custom']);
+// Phase-2 Season-31: 'terminal' spawnt eine PowerShell statt der claude-Binary —
+// kein --session-id, kein --model, kein JSONL. Title bleibt Pflicht; alle
+// claude-spezifischen Skip-Pfade werden im pty:create-Handler ueber Inline-
+// Gates gezogen (siehe src/main/ipc/pty.ts).
+export const SessionTypeSchema = z.enum([
+  'feature',
+  'bug',
+  'review',
+  'docs-sync',
+  'custom',
+  'terminal',
+]);
 
 export const SessionStatusSchema = z.enum([
   'running',

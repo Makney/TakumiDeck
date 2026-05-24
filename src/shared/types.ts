@@ -121,7 +121,11 @@ export interface AppSettings {
 // Phase-2 Season-5: 'custom' fuer User-definierte Session-Arten; die freie
 // Bezeichnung lebt in `custom_type_label` (nullable), damit der Verlauf-Filter
 // alle 'custom'-Sessions in einem Bucket halten kann.
-export type SessionType = 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom';
+// Phase-2 Season-31: 'terminal' spawnt direkt eine PowerShell (kein claude),
+// fuer Quick-Shells / git-Operationen / ad-hoc-Befehle ohne Token-Verbrauch.
+// claude_session_id, jsonl_path und current_model bleiben fuer terminal-Sessions
+// dauerhaft NULL — Resume spawnt die Shell im gespeicherten cwd neu.
+export type SessionType = 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom' | 'terminal';
 // Phase-2 Season-1 ergänzt `permission-prompt`. Treiber ist die volle
 // TUI-State-Detection (siehe src/shared/tui-patterns.ts). DB-Layer ist Text-
 // Column und braucht keine Migration; das Schema-Update in `schemas.ts` reicht.

@@ -65,7 +65,7 @@ Einmaliger Migrations-Pass für resume-tote Sessions mit mehrdeutigem encodeCwd.
 
 **Trigger:** Wenn der User vor dem Sprint-6-Resume-Hotfix mehrfach im selben Projekt Sessions ohne JSONL-Antwort gespawnt hat. Edge-Case ist eng — 3+ Sessions im selben cwd ohne erste claude-Antwort.
 
-### Feature: Terminal-Session ohne Claude
+### Feature: Terminal-Session ohne Claude ✅
 
 Neue Session-Art, die statt der claude-Binary direkt eine PowerShell spawnt — fuer Quick-Shells, ad-hoc-Befehle, Git-Operationen ohne unnoetigen Claude-Spawn.
 

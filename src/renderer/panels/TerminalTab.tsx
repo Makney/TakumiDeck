@@ -60,7 +60,7 @@ interface Props {
   // hergeleitet — Renderer übergibt keine Working-Directory mehr.
   projectId: string;
   title: string;
-  type: 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom';
+  type: 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom' | 'terminal';
   model: string;
   // Phase-2 Season-5: bei type='custom' die User-Bezeichnung — wird an pty:create
   // durchgereicht und vom Main in die sessions.custom_type_label-Spalte gespeichert.

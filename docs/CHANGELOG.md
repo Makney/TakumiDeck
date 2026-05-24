@@ -17,6 +17,25 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-24 — Season 31: Terminal-Session ohne Claude
+
+### Was jetzt geht
+
+- **Sechster Session-Typ „Terminal" im New-Session-Modal.** Spawnt direkt eine PowerShell statt der claude-Binary — fuer Quick-Shells, ad-hoc-Befehle, `git status`/`npm run lint`/schnelle PowerShell-Snippets. Kein Token-Verbrauch, kein JSONL, keine Modell-Wahl. Das externe Windows-Terminal-Fenster aufmachen, das aus dem TakumiDeck-Workflow heraus reisst, entfaellt damit fuer die haeufigste Klasse von Shell-Bedarf.
+- **Bevorzugt `pwsh.exe` (PowerShell 7+), faellt sauber auf `powershell.exe` zurueck.** Wer pwsh installiert hat, kriegt die modernen Operatoren (`&&`/`||`/`?:`/`??`), wer nicht, kriegt die Win11-Built-in — beides ist immer erreichbar, weil `powershell.exe` zum OS gehoert.
+- **Resume + Verlauf funktionieren wie bei den anderen Typen.** Eine Terminal-Session im Verlauf-Panel zeigt eine eigene Pille „Terminal", Resume startet die Shell im gespeicherten `cwd` neu. Modell-Spalte bleibt leer, Token-Aggregat ist Null — die Stats-Pane mischt Terminal-Sessions nicht in die Token-Statistik.
+- **Im Modal ist die Aufgaben-Reihe optisch homogen.** Kein separater „Ohne Agent"-Block: der Skip-Charakter ergibt sich aus dem Wegfall des Modell-Dropdowns und des On-Demand-Kontext-Blocks, sobald „Terminal" gewaehlt ist.
+
+### Architektur-Notiz
+
+Drei A-Empfehlungen aus dem Variants-Brief, in einem Schwung: **(1) Inline-Gates** im bestehenden `pty:create`-Handler statt komplett separater Sub-Funktion — fuenf `isTerminal`-Checks am Ort ihres Geschehens (Shell-Resolution, `jsonl_path`, DB-Row-`model`/`claude_session_id`, `manager.create`-Args, `pollingRing.attach`-Skip). Liest sich linear; jede Skip-Logik ist sichtbar dort, wo der claude-Pfad sonst lebt. **(2) Pure-Helper `resolveTerminalShell`** in `src/main/pty/terminalShell.ts` mit zweistufigem Lookup (pwsh → powershell) statt eines aufgepumpten `preSpawnCheck` mit Mode-Parameter — isoliert testbar, drei Tests decken Praeferenz/Fallback/Beide-fehlen ab. **(3) Modell-Sentinel `'none'`** beim Submit aus dem Modal statt Schema-Aufweichung — die zod-Pflicht `model: z.string().min(1)` bleibt unangetastet, der Spawn-Branch in `pty.ts` ignoriert den Wert (DB-Row schreibt `current_model: null`).
+
+Zwei Skip-Pfade leben im Resume-Handler in `src/main/ipc/session.ts`: der `SESSION_NO_CLAUDE_UUID`-Check uebersteigt terminal-Sessions (die haben per Design keine UUID), und die Spawn-Args bleiben leer (kein `--resume`/`--model`). Der TUI-Pattern-Match in `TerminalTab.tsx` greift fuer Shells nicht — die Pattern-Library detektiert Claude-Code-Input-Boxen (`╭───╮│ > …`), PowerShell-Prompts (`PS C:\…> `) matchen nichts, der Loop pusht nichts. Kein expliziter Skip noetig, daher TerminalTab-Code-Touch minimal (nur Type-Union erweitert).
+
+`CreateSessionInput.model` ist auf `string | null` relaxiert; das ist die einzige Aenderung am Repo-Vertrag — alle bestehenden Caller (Tests + claude-Pfad) bleiben unveraendert, weil sie weiter Strings uebergeben. 6 neue Tests in zwei Files (3 `terminal-shell.test.ts` fuer den Pure-Helper mit `vi.mock('pty/binary')`, 3 `terminal-session-create.test.ts` fuer die Repo-Vertraege bei null-Werten plus Regression-Guard fuer den claude-Pfad). Suite-Sanity-Check auf vier angrenzenden Files (`sessions-repo`, `claude-session-id`, `session-history`, `pty-manager` — 67/67 gruen, unveraendert). Typecheck + lint sauber.
+
+---
+
 ## 2026-05-24 — Season 30 UI-Overhaul (Block 1): symmetrische Sidebars + einheitliches 36-px-Header-Band
 
 ### Was jetzt geht

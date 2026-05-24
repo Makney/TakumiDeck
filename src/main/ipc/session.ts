@@ -8,12 +8,14 @@ import {
   SessionHistoryInputSchema,
   SessionArchiveInputSchema,
 } from '@shared/schemas';
+import fs from 'node:fs';
 import type { SessionRepository } from '../db/repos/sessions';
 import type { SessionLifecycle } from '../sessions/lifecycle';
 import type { PtyManager } from '../pty/manager';
 import type { SettingsStore } from '../settings/store';
 import type { Logger } from '../logger';
 import { preSpawnCheck } from '../pty/preSpawnCheck';
+import { resolveTerminalShell } from '../pty/terminalShell';
 import { assertFromMainWindow } from './sender-guard';
 import type { JsonlPollingRing } from '../jsonl/polling-ring';
 
@@ -107,19 +109,37 @@ export function registerSessionIpc(deps: {
         return err<never>(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
       }
 
-      // Bereich-4-Review (W-1): Pre-Spawn-Check via gemeinsamem Helper (Binary
-      // + cwd). Bei Sessions, deren Ordner zwischen den Sessions umbenannt
-      // wurde, kommt PTY_CWD_NOT_FOUND mit passendem Hint zurück.
+      // Phase-2 Season-31: Terminal-Sessions resumen via Shell-Resolution statt
+      // des claude-Binary-Pfads — und sie haben per Design keine claude-Session-
+      // UUID, also greift der Sprint-6-Hotfix-Check unten nicht. Beides wird
+      // ueber einen frueh gesetzten isTerminal-Branch erschlagen.
+      const isTerminal = session.type === 'terminal';
       const current = settings.read();
-      const pre = preSpawnCheck({
-        binaryPath: current.claude_binary_path,
-        cwd: session.cwd,
-        log,
-        label: 'session:resume',
-        cwdMissingHint: 'Der Ordner wurde umbenannt oder gelöscht.',
-      });
-      if (!pre.ok) return pre;
-      const { resolvedBinary } = pre.data;
+      let resolvedBinary: string;
+      if (isTerminal) {
+        const shellResult = resolveTerminalShell(log);
+        if (!shellResult.ok) return shellResult;
+        if (!fs.existsSync(session.cwd)) {
+          return err<never>(
+            `Working-Directory existiert nicht: ${session.cwd}. Der Ordner wurde umbenannt oder gelöscht.`,
+            'PTY_CWD_NOT_FOUND',
+          );
+        }
+        resolvedBinary = shellResult.data.resolvedShell;
+      } else {
+        // Bereich-4-Review (W-1): Pre-Spawn-Check via gemeinsamem Helper (Binary
+        // + cwd). Bei Sessions, deren Ordner zwischen den Sessions umbenannt
+        // wurde, kommt PTY_CWD_NOT_FOUND mit passendem Hint zurück.
+        const pre = preSpawnCheck({
+          binaryPath: current.claude_binary_path,
+          cwd: session.cwd,
+          log,
+          label: 'session:resume',
+          cwdMissingHint: 'Der Ordner wurde umbenannt oder gelöscht.',
+        });
+        if (!pre.ok) return pre;
+        resolvedBinary = pre.data.resolvedBinary;
+      }
 
       // Sprint-6-Hotfix: Resume nutzt die claude-eigene Session-UUID. Bei
       // Sessions ab dem Hotfix ist das gleich `session.id` (weil pty:create
@@ -129,8 +149,10 @@ export function registerSessionIpc(deps: {
       // Sprint-3-Pfad — der für diese Session nicht funktioniert. Wir geben
       // einen sprechenden Fehler zurück, statt den Spawn ins Leere laufen zu
       // lassen.
+      // Phase-2 Season-31: Terminal-Sessions sind per Design ohne UUID — der
+      // Check uebersteigt sie.
       const claudeSessionId = session.claude_session_id;
-      if (claudeSessionId === null) {
+      if (!isTerminal && claudeSessionId === null) {
         // Bereich-4-Review (I-1): Result der Lifecycle-Transition prüfen
         // und loggen, falls sie scheitert.
         const tr = lifecycle.transition(input.sessionId, 'error', 'spawn-error');
@@ -156,17 +178,25 @@ export function registerSessionIpc(deps: {
       // noch null sein — dann bleibt nur der Chokidar-Pfad. Watcher-Backfill
       // wuerde den Pfad bei der naechsten Antwort eintragen, aber der erste
       // Resume-Run profitiert dann noch nicht vom Polling.
+      // Phase-2 Season-31: Terminal-Sessions haben dauerhaft jsonl_path=null —
+      // der Truthy-Check skippt sie hier automatisch.
       if (transitionResult.data.jsonl_path) {
         pollingRing?.attach(input.sessionId, transitionResult.data.jsonl_path);
       }
 
       // 2. PTY mit --resume <claude-session-id> spawnen. Modell aus session.current_model
       //    (Architektur 6.2: gleiches Modell wie ursprünglich, kein Picker beim Resume).
+      // Phase-2 Season-31: Terminal-Sessions spawnen die Shell ohne Args — kein
+      // --resume, kein --model. Der gespeicherte cwd reicht, um die Session am
+      // gewohnten Ort fortzusetzen.
       const model = session.current_model ?? current.default_model;
+      const resumeArgs = isTerminal
+        ? []
+        : ['--resume', claudeSessionId as string, '--model', model];
       try {
         manager.create(input.sessionId, {
           shell: resolvedBinary,
-          args: ['--resume', claudeSessionId, '--model', model],
+          args: resumeArgs,
           cwd: session.cwd,
           cols: input.cols,
           rows: input.rows,
@@ -185,7 +215,9 @@ export function registerSessionIpc(deps: {
       }
 
       log.info(
-        `[session:resume] sessionId=${input.sessionId} claudeSessionId=${claudeSessionId} model=${model}`,
+        isTerminal
+          ? `[session:resume] sessionId=${input.sessionId} shell=${resolvedBinary}`
+          : `[session:resume] sessionId=${input.sessionId} claudeSessionId=${claudeSessionId} model=${model}`,
       );
       return ok(transitionResult.data);
     } catch (e) {

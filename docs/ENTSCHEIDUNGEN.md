@@ -24,6 +24,40 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Season-31 Terminal-Session: Inline-Gates, Pure-Helper-Shell-Resolver, Modell-Sentinel
+
+**Entscheidung:** Drei Achsen-Entscheidungen fuer den neuen `'terminal'`-Session-Typ, in einem Eintrag, weil sie sich gegenseitig stuetzen. (1) Spawn-Branch-Struktur: **fuenf Inline-Gates** im bestehenden `pty:create`-Handler, statt komplett separater Sub-Funktion `spawnTerminalSession` oder eines Strategy-Pattern. (2) Shell-Resolution: **Pure-Helper `resolveTerminalShell`** in `src/main/pty/terminalShell.ts` mit zweistufigem PATH-Lookup (pwsh → powershell), statt Inline-Block im Handler oder Erweiterung des bestehenden `preSpawnCheck` um einen Mode-Parameter. (3) Modell-Pflicht im Schema: **Sentinel-Wert `'none'`** beim Modal-Submit fuer terminal-Sessions, der vom Spawn-Branch ignoriert wird, statt das Schema mit `superRefine` oder einer Discriminated Union aufzulockern.
+
+**Varianten (Spawn-Branch-Struktur):**
+
+- **A** Inline-Gates an jeder Stelle: ein gemeinsamer Handler mit fuenf expliziten `isTerminal`-Bypass-Stellen (Pre-Spawn-Check, jsonl_path, DB-Row, manager-Args, pollingRing). (Gewaehlt)
+- **B** Frueh-Verzweigung in eigene Sub-Funktion `spawnTerminalSession`, die nur die noetigen Schritte macht (Project-Lookup, DB-Insert, Shell-Resolution, manager.create).
+- **C** Strategy-Pattern mit zwei Implementierungen `ClaudeSpawnStrategy` vs. `TerminalSpawnStrategy`, dispatched per Type.
+
+**Varianten (Shell-Resolution):**
+
+- **D** Pure-Helper `resolveTerminalShell(log)` in eigenem File, der `resolveExecutable` aus `binary.ts` zweimal ruft (pwsh, fallback powershell). (Gewaehlt)
+- **E** Inline-Block im `pty:create`-Handler, ~10 Zeilen direkt im `isTerminal`-Branch.
+- **F** `preSpawnCheck` um einen Mode-Parameter `'claude' | 'terminal'` erweitern, der intern entscheidet.
+
+**Varianten (Modell-Pflicht):**
+
+- **G** Schema bleibt unangetastet, Modal sendet Sentinel `'none'` (oder den Shell-Pfad selbst); Spawn-Branch ignoriert den Wert und schreibt `current_model: null` in die DB. (Gewaehlt)
+- **H** `model` wird `.nullish()`, `superRefine` erzwingt es nur fuer `type !== 'terminal'` — analog zum bestehenden `customTypeLabel`-Refine.
+- **I** Eigenes `PtyCreateTerminalInputSchema` plus Discriminated Union ueber `type`.
+
+**Grund (Spawn-Branch-Struktur):** A liest sich linear; jede Skip-Logik (Pre-Spawn-Check, jsonl_path, claude_session_id, manager-Args, pollingRing) ist sichtbar dort, wo der claude-Pfad sonst lebt, und mit einem klaren `Phase-2 Season-31: Skip-Gate #N`-Kommentar versehen. Bei nur zwei Spawn-Varianten (claude + terminal) ist die Inline-Form klarer als eine Sub-Funktion, die den DB-Insert + Project-Lookup duplizieren wuerde. B haette die Project-Lookup-/cwd-Resolution-Logik gedoppelt und beim naechsten Spawn-Typ (z.B. wenn irgendwann ein Bash-Spawn dazukommt) die Frage „wieder neue Funktion oder hier wachsen lassen" aufgeworfen. C ist Overkill fuer zwei Faelle und verstoesst gegen die CODING_RULES-Maxime „No abstractions for single-use code".
+
+**Grund (Shell-Resolution):** D ist isoliert testbar — die drei Faelle (pwsh-Praeferenz, powershell-Fallback, beide-fehlen) lassen sich mit `vi.mock('pty/binary')` durchspielen, ohne dass die echten PATH-Inhalte des Test-Runners reinspielen. E haette die gleichen Tests nur ueber den vollen pty.ts-Handler-Pfad mit DB- + Manager-Mocks moeglich gemacht — deutlich mehr Setup fuer dieselbe Verhalts-Pruefung. F haette `preSpawnCheck` mit zwei Verantwortlichkeiten ueberladen (claude-Binary-Lookup aus Settings vs. Standard-Shell-Lookup mit Fallback); die beiden Pfade lesen unterschiedliche Quellen (`settings.claude_binary_path` vs. statischer PATH-Lookup `pwsh.exe`/`powershell.exe`) und scheitern an unterschiedlichen Stellen — die Trennung ist sauber so.
+
+**Grund (Modell-Pflicht):** G ist minimaler Schema-Touch fuer einen lokalen Modal-Effect — die zod-Pflicht `model: z.string().min(1)` bleibt unangetastet, alle bestehenden Caller (Tests, Resume-Pfade, claude-Spawns) sehen das Schema unveraendert. Der Sentinel lebt nur als ein-Wort-String an einer Modal-Submit-Stelle und ist als „terminal-spawnt-keine-claude"-Marker selbsterklaerend. H haette einen zweiten `superRefine`-Block neben dem bestehenden `customTypeLabel`-Refine eingefuehrt — die Schema-Datei waechst, ohne dass der Handler-Code dadurch klarer wird (er muss `input.model` weiter pruefen, weil bei `nullish()` ein `undefined` durchkommen koennte). I haette die ganze IPC-Boundary gedoppelt (zwei Schemas, zwei Type-Inferenzen, zwei Channel-Handler-Branches) fuer eine kleine Feld-Asymmetrie — kein bestehender Drift, der das rechtfertigt.
+
+**Konsequenz:** Drei Stellen wissen vom Sentinel `'none'`: das Modal-Submit in `NewSessionModal.tsx`, der Spawn-Branch in `pty.ts` (ignoriert ihn, schreibt `current_model: null`), und der Repo-Vertrag `CreateSessionInput.model: string | null` (akzeptiert null und mapped es 1:1). Ein expliziter Test im Repo-Test (`terminal-session-create.test.ts`) verifiziert die null-Durchreichung; ein Regression-Guard im selben File pruft, dass der claude-Pfad mit echtem Modell unveraendert bleibt. Der Resume-Pfad in `session:resume` bekommt einen eigenen `isTerminal`-Branch mit derselben Shell-Resolution; der `SESSION_NO_CLAUDE_UUID`-Check uebersteigt terminal-Sessions, weil deren `claude_session_id` per Design null ist. TUI-Pattern-Match in `TerminalTab.tsx` bleibt unangetastet — PowerShell-Prompts (`PS C:\…> `) matchen keine der Claude-Code-Patterns (`╭───╮│ > …`), der Loop pusht nichts, kein expliziter Skip noetig.
+
+**Implementierungsdetail:** Der Sentinel-Wert `'none'` wurde gewaehlt, weil er kurz, nicht-leer (zod-Pflicht) und semantisch klar ist; alternativ haette der Shell-Pfad selbst funktioniert, aber „none" macht im Logging eindeutig sichtbar, dass keine Modell-Wahl stattgefunden hat. Die `fs.existsSync(cwd)`-Pruefung wird im terminal-Pfad inline dupliziert (zwei Zeilen) statt `preSpawnCheck` zu extrahieren — die Kosten der Duplizierung sind niedrig, eine geteilte Helper-Funktion haette die Mode-Trennung wieder verwaessert. `resolveTerminalShell` haengt nur an `resolveExecutable` aus `binary.ts` und am `Logger`-Interface — keine Settings-Abhaengigkeit, weil pwsh/powershell standortunabhaengige Konventionen sind (im Gegensatz zum claude-Binary-Pfad, der projekt-spezifisch in den Settings konfigurierbar bleiben muss).
+
+---
+
 ## Season-30-UI-Overhaul (Block 1): symmetrische Sidebars + Single-Source-Header-Band
 
 **Entscheidung:** Drei Achsen-Entscheidungen fuer den ersten Block der UI-Symmetrierung, in einem Eintrag gebuendelt, weil sie sich gegenseitig stuetzen. (1) Sidebars beidseitig **300 px** breit, statt der ungleichen 240/232 oder dem initial vorgeschlagenen 400/400. (2) Einheitliche Bandhoehe aller Top-Bars ueber **`--td-section-head-h: 36px`** als Single-Source-Token, statt pro Klasse individuelle `padding`-Stacks zu pflegen. (3) Den Sprint-7-`border-left` an `.td-plan-pane` **ersatzlos entfernen**, weil das Grid-Gap die Trennlinie ohnehin liefert.
