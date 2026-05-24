@@ -7,6 +7,7 @@ import type {
   ProjectRow,
 } from '@shared/types';
 import { findSensitiveFiles } from '../components/sensitiveFiles';
+import { canSendCommitTrigger } from '../components/preCommitGate';
 import { useUiStore } from '../stores/ui';
 
 // PreCommitModal (Sprint 7, Phase 7, Architektur 6.7).
@@ -60,6 +61,10 @@ export function PreCommitModal({
     hasGit: true,
   });
   const [sent, setSent] = useState(false);
+  // Phase-2 Season-29.5: harter Confirm-Gate fuer sensitive Files. User muss
+  // die Checkbox explizit anhaken, bevor der Send-Button entsperrt. Bei
+  // Modal-Re-Open ist der State automatisch auf false (frischer useState).
+  const [sensitiveConfirmed, setSensitiveConfirmed] = useState(false);
   // Auto-Close-Timer-Handle nach erfolgreichem Trigger-Send. Cleanup beim
   // Unmount, sonst kann der Timer ein neu geoeffnetes Modal versehentlich
   // schliessen.
@@ -133,13 +138,16 @@ export function PreCommitModal({
     [changedFiles, sensitivePatterns],
   );
 
-  const canSend =
-    state.hasGit &&
-    !state.loading &&
-    state.loadError === null &&
-    hasActiveTerminal &&
-    changedFiles.length > 0 &&
-    !sent;
+  const canSend = canSendCommitTrigger({
+    hasGit: state.hasGit,
+    loading: state.loading,
+    loadError: state.loadError,
+    hasActiveTerminal,
+    changedFileCount: changedFiles.length,
+    sensitiveFileCount: sensitive.length,
+    sensitiveConfirmed,
+    sent,
+  });
 
   const handleSend = (): void => {
     // Trigger-Phrase ans aktive Terminal schicken via Bracketed-Paste-Event.
@@ -226,6 +234,18 @@ export function PreCommitModal({
                   </ul>
                   Prüfe, ob diese Dateien wirklich committed werden sollen, bevor
                   du den Trigger sendest.
+                  {/* Phase-2 Season-29.5: harter Confirm-Gate. Send disabled,
+                      bis der User die sensitive-Liste explizit bestaetigt. */}
+                  <label className="td-precommit-confirm">
+                    <input
+                      type="checkbox"
+                      checked={sensitiveConfirmed}
+                      onChange={(e) => setSensitiveConfirmed(e.target.checked)}
+                    />
+                    <span>
+                      Ich habe diese Dateien geprueft und moechte sie trotzdem committen.
+                    </span>
+                  </label>
                 </div>
               )}
 
@@ -269,6 +289,8 @@ export function PreCommitModal({
                 ? 'Keine aktive Terminal-Session'
                 : changedFiles.length === 0
                 ? 'Keine geänderten Dateien'
+                : sensitive.length > 0 && !sensitiveConfirmed
+                ? 'Bitte sensitive Dateien zuerst bestaetigen'
                 : 'Trigger-Phrase ans aktive Terminal senden'
             }
           >

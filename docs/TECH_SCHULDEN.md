@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Datei-Browser-Tree refresht nicht bei Struktur-Aenderungen (2026-05-24)
+
+**Bereich:** `src/renderer/panels/RightPaneFilesPanel.tsx` (Phase-2 Season-29.5). Konkret: der `fs:changed`-Push aus `ProjectFilesWatcher` (Season 29) bumpt zwar den `gitRefreshKey` fuer den Git-Status-Pull, triggert aber bewusst KEINEN Tree-Reload via `fs:list-tree`. Wenn extern (durch ein Claude-Pty, einen externen Editor oder ein git checkout) eine neue Datei angelegt, eine bestehende geloescht oder ein Ordner umbenannt wird, faellt das im Datei-Browser erst beim naechsten Projekt-Wechsel auf.
+
+**Was:** Heutiges Verhalten — Tree wird nur einmal beim Projekt-Wechsel geladen. Git-Status pro File wird live ueber `fs:changed` aktualisiert (eine neue, geloeschte oder umbenannte Datei kriegt den passenden Marker — falls die Datei im Tree existiert). Eine neu erzeugte Datei zeigt aber gar keinen Tree-Knoten, also auch keinen Marker — sie ist im Browser unsichtbar, bis der User das Projekt umschaltet und wieder zurueck.
+
+**Warum so:** Im Season-29-Variants-Brief war das die Default-Wahl, weil ein automatischer Tree-Reload bei jedem `fs:changed`-Push den User-Scroll-Zustand und die `expanded`-Set-Wahl resetten oder mit hohem Aufwand erhalten muesste — beides ein UX-Pain, der den marginalen Mehrwert (neue Files erscheinen automatisch) nicht aufwiegt. Im Daily-Use entstehen neue Files entweder beim Claude-Lauf (User merkt es ohnehin) oder bei expliziten User-Aktionen im Editor (User weiss, dass es jetzt da ist).
+
+**Risiko:** Niedrig. Im Daily-Use spuerbar nur, wenn ein externer Prozess (z.B. ein Claude-Tab in einem anderen Projekt, ein Git-Checkout eines Feature-Branches mit anderen Files) den Tree-Bestand veraendert und der User direkt danach den Datei-Browser konsultiert. Mitigation: Projekt-Wechsel + zurueck triggert immer einen frischen Tree.
+
+**Aufloesung:** **Trigger:** wenn die Klage „warum sehe ich die neue Datei nicht im Browser" zweimal im Daily-Use auftaucht. Drei Aufloesungs-Pfade: (a) `fs:changed`-Push enthaelt `add`/`unlink`-Events bereits in `ProjectFilesWatcher` (chokidar liefert die Diff-Events); Tree-Reload nur dann triggern, wenn ein Event tatsaechlich `add`/`unlink`/`addDir`/`unlinkDir` ist. `expanded`-Set ist Pfad-basiert, ueberlebt einen Tree-Re-Render. Scroll-Position ueber `ref.scrollTop` snapshotten und nach dem Re-Render zurueckschreiben. (b) Manueller Refresh-Button rechts oben im Datei-Browser-Header — explizit, ohne Auto-Magie. (c) `expand_changed_paths`-Aufloesung: nur die spezifischen Eltern-Ordner des `add`/`unlink`-Events neu laden, statt den ganzen Tree (komplizierter, aber stoert den User-State minimal). Variante (a) ist der wahrscheinlich gewaehlte Pfad, weil chokidar die Events ohnehin liefert und der Implementations-Aufwand klein bleibt.
+
+---
+
 ## Brand-Logo-Quell-PNGs leben extern auf dem Desktop, nicht im Repo (2026-05-24)
 
 **Bereich:** Asset-Pipeline. Konkret: `build/icon.ico` lebt im Repo (committet), aber die Quell-PNGs (`16.png`, `24.png`, ..., `1024.png`, `1254.png`) leben unter `C:\Users\makne\Desktop\Logos\TakumiDeck\ICOs2\`. Build-Skript: `D:\Projekte\Scripts\build-icon.py` (auch nicht im TakumiDeck-Repo, sondern projekt-uebergreifend abgelegt).

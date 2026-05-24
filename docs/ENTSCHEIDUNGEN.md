@@ -24,6 +24,47 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Right-Pane-Polish (Season 29.5): localStorage statt Settings, Toggle-Pillen, Watcher-Reuse
+
+**Entscheidung:** Vier Achsen-Entscheidungen fuer den Right-Pane-Polish, bewusst in einem Eintrag gebuendelt, weil sie sich gegenseitig stuetzen. (1) Filter-UI als Toggle-Pillen-Reihe unter dem Suchfeld, statt Dropdown-Popover oder Smart-Suchfeld. (2) Persistenz der Filter-Wahl in `localStorage('td.fileBrowserFilter')`, statt im `AppSettings`-Schema. (3) Sensitive-Warning-Gate als eine Pflicht-Confirm-Checkbox, statt Per-File-Checkboxen. (4) Git-Status-Marker via Reuse des Season-29-`fs:changed`-Watcher-Pushs plus `git:status`-Pull, statt eigenem simple-git-Polling-Loop. Konflikt-Regel beim Marker: Editor-Dirty schlaegt Git-Status auf dem gleichen UI-Slot.
+
+**Varianten (Filter-UI):**
+
+- **A** Toggle-Pillen-Reihe unter dem Suchfeld mit kurzen Endungs-Labels, Multi-Select als OR, kombiniert mit Suchtext als AND. (Gewaehlt)
+- **B** Filter-Icon mit Dropdown-Checkbox-Popover. Spart Platz im 232-px-Stack, aber versteckt die Aktion.
+- **C** Smart-Suchfeld: `.ts` als Substring matched heute schon, Multi-Endung ist mit einem Textfeld aber nicht ausdrueckbar.
+
+**Varianten (Persistenz):**
+
+- **D** `localStorage('td.fileBrowserFilter')` mit defensivem `normalize` (Schrott → Defaults). Folgt der Repo-Konvention `td.heatmapWeeks` / `td.statsRange` fuer reinen UI-Memory-State. (Gewaehlt)
+- **E** `AppSettings.file_browser_filter` mit Schema-Migration auf Version 3. Wuerde den Roadmap-Wortlaut „Persistiert in Settings" buchstaeblich erfuellen.
+
+**Varianten (Sensitive-Gate):**
+
+- **F** Eine Pflicht-Confirm-Checkbox „Ich habe diese Dateien geprueft" ueber dem Send-Button, Reset beim Modal-Re-Open. (Gewaehlt)
+- **G** Per-File-Confirm-Checkboxen — jede sensitive Datei einzeln abhaken.
+- **H** Send-Button-Label wechselt zu „⚠ Trotzdem senden" als Soft-Warning, kein echtes Gate.
+
+**Varianten (Status-Quelle):**
+
+- **I** `git:status`-IPC ueber das `fs:changed`-Push-Event aus Season 29 reusen. (Gewaehlt)
+- **J** Eigener simple-git-Polling-Loop im Main alle 2 s — wortwoertlich Roadmap, aber duplizierter Pfad zu `git:status`.
+- **K** Renderer-`setInterval(git:status, 2s)` — gleiche Nachteile wie J plus Background-Tab-Drosselung.
+
+**Grund (Filter-UI):** A ist im Daily-Use sichtbar entdeckbar und folgt dem `td-dash-tab`-Wortschatz aus der Stats-Pane — der User erkennt Multi-Select-Pillen wieder. B verlangt einen Klick mehr und einen versteckten State (welche Endungen sind aktiv?), C scheitert an der Multi-Endungs-Anforderung der Roadmap.
+
+**Grund (Persistenz):** D nutzt die Tatsache, dass der Filter UX-Memory ist — „wo war ich zuletzt", kein Konfigurations-State. Der Repo hat dafuer ein etabliertes Pattern (`td.heatmapWeeks`, `td.statsRange`) und keinen Drift-Druck (das `td.`-Prefix isoliert sauber). E haette die Settings-Schema-Migrations-Pipeline fuer reinen UI-Erinnerungs-Wert angesteuert, plus Settings-Modal-Slot, plus IPC-Roundtrip pro Filter-Aenderung — Overengineering fuer den Use-Case. Der Roadmap-Wortlaut „persistiert in Settings" wird als „bleibt erhalten" gelesen, nicht buchstaeblich.
+
+**Grund (Sensitive-Gate):** F ist die richtige Friktions-Stufe — eine Checkbox, ein Klick zur Bestaetigung. Sensitive-Listen sind typisch 1–2 Files, Per-File-Checkboxen (G) waeren bei jedem zweiten Commit-Trigger sieben Klicks Aufwand fuer Null Mehrwert (User liest die Liste sowieso vor dem Haekchen). H ist kein Gate, sondern bloss kosmetisches Re-Labeling — der bestehende Phase-1-Pfad „Soft-Warning + Send geht durch" ist genau das, was die Roadmap explizit nicht mehr will.
+
+**Grund (Status-Quelle):** I nutzt die Tatsache, dass `ProjectFilesWatcher` (Season 29) bereits chokidar auf den Projekt-Root abonniert und Push-Events liefert — kein zweiter Watcher noetig, kein Polling-Loop, der bei Idle umsonst pollt. `git:status` als Pull-Pfad existiert seit Sprint 7 und liefert genau die richtigen Statuscodes. J haette einen zweiten Pfad geschaffen, der das gleiche IPC anders ausloest — duplizierter Code mit langsamerer Reaktion (Push vs. 2-s-Tick). K hat zusaetzlich das Background-Tab-Throttling-Problem.
+
+**Konsequenz:** Vier neue Pure-Helper plus ein Component-Refactor: `treeFilter.filterTree` bekommt einen optionalen `ReadonlySet<string>`-Parameter (Default leer = Phase-1-Verhalten), `fileBrowserPrefs.ts` (neu) kapselt localStorage-Round-Trip + `TOGGLEABLE_EXTENSIONS`-Konstante, `fileMarker.ts` (neu) liefert die `pickFileMarker(isDirty, gitStatus)`-Funktion mit fixer Konflikt-Regel, `preCommitGate.ts` (neu) extrahiert die `canSendCommitTrigger`-Pure-Funktion aus dem Modal-Body. Marker-Konflikt: Editor-Dirty wird im gleichen UI-Slot dargestellt wie Git-Modified — kein Doppel-Marker — weil der 232-px-Stack visuell sonst laut wird; die Dirty-Information ist aktueller (lokale, ungespeicherte Edits) und schlaegt deshalb. Sobald der User speichert, ist die Dirty-Flag weg und der Git-Marker uebernimmt nahtlos.
+
+**Implementierungsdetail:** `TOGGLEABLE_EXTENSIONS` ist eine curated Liste (`md`/`ts`/`tsx`/`json`/`css`/`html`/`py`/`yml`) — bewusst nicht exhaustiv, sondern auf den TakumiDeck-Stack ausgerichtet. Der User kann ueber das Suchfeld trotzdem jede beliebige Endung matchen (`.rs`, `.toml`), die Pillen sind der Schnellzugriff, nicht das Limit. Endungs-Filter wirkt auch bei Dir-Self-Match strikt: ein Such-Query, das den Ordner-Namen matched, zieht NICHT versehentlich alle Endungs-fremden Children mit — sonst wuerde ein Endungs-Toggle durch jeden Such-Treffer ausgehebelt. `pickFileMarker` mappt sieben Git-Status-Werte auf vier Farb-Buckets (`dirty`/`added`/`deleted`/`info`) — Renames/Copies/Unmerged landen alle im neutralen `info`-Bucket, weil sie im Daily-Use selten sind und keine eigene Farbtonung rechtfertigen. `fs:changed`-Subscription bumpt einen `gitRefreshKey`-State (Counter), der den `useEffect`-Re-Fetch-Block triggert — gleiches Pattern wie der Diff-Viewer-Auto-Refresh in `EditorPane.tsx` aus Season 29. `sensitiveConfirmed`-State ist `useState` ohne Persistenz — beim Modal-Schliessen + Neu-Oeffnen ist die Quittung automatisch wieder weg, was die Sicherheits-Friktion bewahrt (kein „ich hab das letzte Mal schon abgenickt, das gilt jetzt fuer immer").
+
+---
+
 ## App-Icon und Brand-Logo: Logo ersetzt Kanji, Build-Skript in zentralem Scripts-Ordner
 
 **Entscheidung:** Zwei zusammenhaengende Entscheidungen in einem Eintrag. (1) Das Brand-Element oben links in der Titlebar wechselt vom Kanji `匠` auf ein eigenes Logo-Asset (`src/renderer/assets/logo.png`, 128 px). Die Wortmarke `**Takumi**Deck` und die Versions-Pille bleiben unveraendert daneben. (2) Der ICO-Generator (`build-icon.py`) lebt nicht projekt-lokal unter `scripts/` im TakumiDeck-Repo, sondern in einem neuen projekt-uebergreifenden Ordner `D:\Projekte\Scripts\` parallel zu den eigentlichen Projekt-Repos.

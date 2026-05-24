@@ -231,9 +231,9 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 | Feature                              | Status | Bemerkung |
 | ------------------------------------ | ------ | --------- |
-| `Datei-Browser-Filter`               | ⛔      | Live-Filter + File-Type-Toggles |
-| `Pre-Commit-Sensitive-Warning`       | ⛔      | Pattern-Liste in Settings konfigurierbar, Verfeinerung der hartcodierten Phase-1-Liste |
-| `Datei-Browser-Status-Indikatoren`   | ⛔      | M/A/D-Marks via simple-git status-Polling |
+| `Datei-Browser-Filter`               | ✅      | 2026-05-24 (Phase-2 Season-29.5) — Endungs-Toggle-Pillen `.md`/`.ts`/`.tsx`/`.json`/`.css`/`.html`/`.py`/`.yml` unter dem Suchfeld; Multi-Select wirkt als OR, kombiniert mit Suchtext als AND. Persistenz in `localStorage('td.fileBrowserFilter')` analog `td.heatmapWeeks`. Phase-1-Default `.md` bleibt im Suchfeld vorbelegt; leere Endungs-Auswahl = wie vorher. |
+| `Pre-Commit-Sensitive-Warning`       | ✅      | 2026-05-24 (Phase-2 Season-29.5) — Pflicht-Confirm-Checkbox im Warn-Block bei erkannten sensitive Files (`.env`, `*.key`, `*.pem`, `secret*` plus User-Patterns aus Sprint 8). Send-Button disabled bis Haekchen; bei Modal-Re-Open zurueckgesetzt. Send-Logik als Pure-Helper `canSendCommitTrigger` mit 10 Tests; hartcodierte Phase-1-Patterns plus konfigurierbare `sensitive_file_patterns`-Settings-Liste (seit Sprint 8) unveraendert. |
+| `Datei-Browser-Status-Indikatoren`   | ✅      | 2026-05-24 (Phase-2 Season-29.5) — `M`/`A`/`D`/`R`/`C`/`U`-Marker via `git:status`; Refresh ueber den Season-29-`fs:changed`-Push (kein zusaetzlicher Polling-Loop). Pure-Helper `pickFileMarker(isDirty, gitStatus)` mit vier Farb-Buckets (`dirty`/`added`/`deleted`/`info`). Konflikt-Regel: Editor-Dirty schlaegt Git-Status. NOT_A_GIT_REPO laeuft still in eine leere Map — Browser bleibt voll funktional. |
 
 ### Diff-Viewer (Phase 2)
 

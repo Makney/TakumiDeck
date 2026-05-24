@@ -1,18 +1,30 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import type { FsTreeNode } from '@shared/types';
+import type { FsTreeNode, GitFileStatus } from '@shared/types';
 import { filterTree } from '../components/treeFilter';
+import { pickFileMarker, type FileMarker } from '../components/fileMarker';
+import {
+  loadFileBrowserPrefs,
+  saveFileBrowserPrefs,
+  TOGGLEABLE_EXTENSIONS,
+} from '../components/fileBrowserPrefs';
 
 // Datei-Browser-Sektion im Right-Pane (Sprint 7, Phase 5).
 //
 // - Hierarchische Anzeige des aktiven Projekts (fs:list-tree, Driver-injected im Main).
-// - Filter-Suchfeld vorbelegt mit „.md" (Q2 Variante B).
-// - M-Indikator pro File, dessen relPath in dirtyRelPaths liegt (kommt aus dem
-//   FileTabs-Store via Eltern-Komponente).
+// - Filter-Suchfeld + Phase-2 Season-29.5 Endungs-Toggle-Pillen.
+// - Persistenz der Filter-Wahl in localStorage (td.fileBrowserFilter) — UI-State,
+//   nicht Settings; folgt der Konvention `td.heatmapWeeks` / `td.statsRange`.
+// - File-Marker pro Datei: Editor-Dirty (`M`) hat Vorrang vor Git-Status
+//   (M/A/D/R/?), Phase-2 Season-29.5; reine Phase-1-Quelle war nur Dirty.
 // - Klick auf File → onOpenFile(relPath, label). Klick auf Dir → expand/collapse.
 //
-// Lade-Trigger: bei jedem projectId-Wechsel re-fetch via fs:list-tree. Das ist
-// kein Server-Side-Effect (read-only IPC) → kein useRef-Guard nötig (Memory:
-// Guard nur für Server-Mutationen).
+// Lade-Trigger: bei jedem projectId-Wechsel re-fetch via fs:list-tree und
+// git:status. Beide sind read-only IPCs → kein useRef-Guard nötig (Memory:
+// Guard nur für Server-Mutationen). fs:changed-Push bumpt einen refreshKey
+// und stoesst den git:status-Re-Fetch an; der Tree selbst wird nur beim
+// Projekt-Wechsel neu geladen (chokidar-Push bringt nur Datei-Aenderungen,
+// keine Strukturaenderungen — und ein neuer/geloeschter File macht keinen
+// Tree-Refresh im Phase-1-Verhalten; das bleibt so).
 
 interface Props {
   projectId: string | null;
@@ -28,13 +40,27 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, selectedRelPath,
   const [tree, setTree] = useState<FsTreeNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Default-Filter „.md" (Q2 Variante B). Beim Project-Wechsel NICHT zurücksetzen,
-  // damit der User seinen Filter behält, wenn er zwischen Projekten zappt.
-  const [filter, setFilter] = useState('.md');
+  // Phase-2 Season-29.5: Filter-Prefs aus localStorage seeden. Default
+  // `.md`-Query (Phase-1, Q2-B) bleibt, plus leere Endungs-Auswahl.
+  const initialPrefs = useMemo(() => loadFileBrowserPrefs(), []);
+  const [filter, setFilter] = useState(initialPrefs.query);
+  const [activeExtensions, setActiveExtensions] = useState<Set<string>>(
+    () => new Set(initialPrefs.extensions),
+  );
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['docs']));
 
-  // Per-Project-Reload. Wenn der User schnell zwischen Projekten wechselt, gewinnt
-  // immer die jüngste Antwort — wir tracken das per Ref-Sequence.
+  // Persist filter + extensions in localStorage. Wir serialisieren synchron;
+  // localStorage ist klein und im Renderer-Hot-Path billig.
+  useEffect(() => {
+    saveFileBrowserPrefs({
+      query: filter,
+      extensions: Array.from(activeExtensions),
+    });
+  }, [filter, activeExtensions]);
+
+  // Per-Project-Reload des Trees. Wenn der User schnell zwischen Projekten
+  // wechselt, gewinnt immer die juengste Antwort — wir tracken das per
+  // Ref-Sequence.
   const seq = useRef(0);
   useEffect(() => {
     if (!projectId) {
@@ -58,12 +84,74 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, selectedRelPath,
     });
   }, [projectId]);
 
-  const filtered = useMemo(() => filterTree(tree, filter), [tree, filter]);
+  // Phase-2 Season-29.5: Git-Status pro File als Map<relPath, GitFileStatus>.
+  // Initial-Fetch beim Projekt-Wechsel, Re-Fetch bei jedem fs:changed-Push
+  // aus dem Season-29-Watcher. NOT_A_GIT_REPO → leere Map (keine Marker).
+  const [gitStatusMap, setGitStatusMap] = useState<ReadonlyMap<string, GitFileStatus>>(EMPTY_GIT_MAP);
+  const [gitRefreshKey, setGitRefreshKey] = useState(0);
+  useEffect(() => {
+    if (!projectId) {
+      setGitStatusMap(EMPTY_GIT_MAP);
+      return;
+    }
+    let cancelled = false;
+    void window.api.git.status({ projectId }).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        // NOT_A_GIT_REPO + jede andere Fehler-Quelle laufen still — File-
+        // Browser ist auch ohne Git voll funktional.
+        setGitStatusMap(EMPTY_GIT_MAP);
+        return;
+      }
+      const next = new Map<string, GitFileStatus>();
+      for (const file of result.data.files) {
+        // Worktree-Status hat Vorrang vor Index-Status: was im Working-Tree
+        // sichtbar ist, ist auch im File-Browser sichtbar. Nur wenn Worktree
+        // = unchanged (also vollstaendig gestaged), fallen wir auf den
+        // Index-Status zurueck — sonst sieht ein voll-gestagter neuer File
+        // gar keinen Marker.
+        const status = file.worktreeStatus !== 'unchanged' ? file.worktreeStatus : file.indexStatus;
+        if (status !== 'unchanged') next.set(file.path, status);
+      }
+      setGitStatusMap(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, gitRefreshKey]);
 
-  // Wenn der Filter aktiv ist, soll der Tree komplett aufgeklappt sein (sonst
-  // sieht der User nicht, was matched). Wir setzen einen virtuellen „expand all"-
-  // Flag basierend auf der Filter-Aktivität.
-  const expandAll = filter.trim() !== '';
+  // Subscribe auf fs:changed-Push aus dem Main. Wir bumpen den
+  // gitRefreshKey, der den useEffect oben re-triggert. Tree-Reload
+  // bewusst nicht — chokidar pusht Datei-Aenderungen, keine
+  // Strukturaenderungen, und ein „neuer File faellt aus dem Tree" wuerde
+  // den User irritieren ohne klaren Mehrwert. (Tree-Refresh bei
+  // Strukturaenderungen waere ein Phase-3-Thema.)
+  useEffect(() => {
+    if (!projectId) return;
+    const unsubscribe = window.api.fs.onChanged((event) => {
+      if (event.projectId !== projectId) return;
+      setGitRefreshKey((k) => k + 1);
+    });
+    return unsubscribe;
+  }, [projectId]);
+
+  const filtered = useMemo(
+    () => filterTree(tree, filter, activeExtensions),
+    [tree, filter, activeExtensions],
+  );
+
+  // Wenn ein Filter aktiv ist (Text ODER Endungen), soll der Tree komplett
+  // aufgeklappt sein, sonst sieht der User nicht, was matched.
+  const expandAll = filter.trim() !== '' || activeExtensions.size > 0;
+
+  const toggleExtension = (ext: string): void => {
+    setActiveExtensions((prev) => {
+      const next = new Set(prev);
+      if (next.has(ext)) next.delete(ext);
+      else next.add(ext);
+      return next;
+    });
+  };
 
   return (
     <div className="td-panel td-files">
@@ -98,6 +186,35 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, selectedRelPath,
             </button>
           )}
         </div>
+        {/* Phase-2 Season-29.5: Endungs-Toggle-Pillen. Multi-Select als OR,
+            kombiniert mit dem Suchfeld als AND. */}
+        <div className="td-files-pills" role="group" aria-label="Dateityp-Filter">
+          {TOGGLEABLE_EXTENSIONS.map((ext) => {
+            const active = activeExtensions.has(ext);
+            return (
+              <button
+                key={ext}
+                type="button"
+                className={`td-files-pill${active ? ' active' : ''}`}
+                onClick={() => toggleExtension(ext)}
+                aria-pressed={active}
+                title={active ? `Filter "${ext}" entfernen` : `Nur ${ext}-Dateien zeigen`}
+              >
+                {ext}
+              </button>
+            );
+          })}
+          {activeExtensions.size > 0 && (
+            <button
+              type="button"
+              className="td-files-pill td-files-pill-clear"
+              onClick={() => setActiveExtensions(new Set())}
+              title="Alle Endungs-Filter entfernen"
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
       <div className="td-files-list">
         {!projectId && (
@@ -111,7 +228,9 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, selectedRelPath,
         )}
         {projectId && !loading && !loadError && filtered.length === 0 && (
           <div className="td-skeleton">
-            {filter === '' ? 'Keine Dateien gefunden.' : `Keine Treffer für „${filter}".`}
+            {filter === '' && activeExtensions.size === 0
+              ? 'Keine Dateien gefunden.'
+              : 'Keine Treffer für die aktuellen Filter.'}
           </div>
         )}
         {projectId && filtered.map((node) => (
@@ -122,6 +241,7 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, selectedRelPath,
             expanded={expanded}
             expandAll={expandAll}
             dirtyRelPaths={dirtyRelPaths}
+            gitStatusMap={gitStatusMap}
             selectedRelPath={selectedRelPath}
             onToggle={(p) => {
               setExpanded((prev) => {
@@ -139,6 +259,8 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, selectedRelPath,
   );
 }
 
+const EMPTY_GIT_MAP: ReadonlyMap<string, GitFileStatus> = new Map();
+
 // ============================================================ TreeNode
 
 interface TreeNodeProps {
@@ -147,6 +269,7 @@ interface TreeNodeProps {
   expanded: Set<string>;
   expandAll: boolean;
   dirtyRelPaths: Set<string>;
+  gitStatusMap: ReadonlyMap<string, GitFileStatus>;
   selectedRelPath: string | null;
   onToggle: (relPath: string) => void;
   onOpenFile: (relPath: string, label: string) => void;
@@ -158,6 +281,7 @@ function TreeNode({
   expanded,
   expandAll,
   dirtyRelPaths,
+  gitStatusMap,
   selectedRelPath,
   onToggle,
   onOpenFile,
@@ -184,6 +308,7 @@ function TreeNode({
               expanded={expanded}
               expandAll={expandAll}
               dirtyRelPaths={dirtyRelPaths}
+              gitStatusMap={gitStatusMap}
               selectedRelPath={selectedRelPath}
               onToggle={onToggle}
               onOpenFile={onOpenFile}
@@ -196,6 +321,7 @@ function TreeNode({
   const isDirty = dirtyRelPaths.has(node.relPath);
   const isSelected = selectedRelPath === node.relPath;
   const kind = fileKind(node.name);
+  const marker = pickFileMarker(isDirty, gitStatusMap.get(node.relPath) ?? null);
   return (
     <div
       className={`td-file ${kind}${isSelected ? ' selected' : ''}`}
@@ -205,8 +331,20 @@ function TreeNode({
     >
       <span className="gl">{kindGlyph(kind)}</span>
       <span>{node.name}</span>
-      {isDirty && <span className="td-file-dirty">M</span>}
+      {marker !== null && <FileMarkerPill marker={marker} />}
     </div>
+  );
+}
+
+function FileMarkerPill({ marker }: { marker: FileMarker }) {
+  return (
+    <span
+      className={`td-file-mark td-file-mark-${marker.kind}`}
+      title={marker.title}
+      aria-label={marker.title}
+    >
+      {marker.label}
+    </span>
   );
 }
 

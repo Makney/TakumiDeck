@@ -17,6 +17,29 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-24 — Right-Pane-Polish: Datei-Browser-Filter, Sensitive-Confirm-Gate, Git-Status-Indikatoren
+
+### Was jetzt geht
+
+- **Endungs-Toggle-Pillen im Datei-Browser.** Unter dem Suchfeld liegt jetzt eine kompakte Pillen-Reihe (`.md` `.ts` `.tsx` `.json` `.css` `.html` `.py` `.yml`). Klick aktiviert/deaktiviert eine Endung; mehrere Pillen wirken als OR-Verknuepfung. Suchtext und Endungs-Filter werden mit AND kombiniert. `×`-Button rechts neben den Pillen raeumt alle Endungs-Filter wieder ab. Im 232-px-Stack wrappen die Pillen in eine zweite Reihe, wenn sie nicht alle in eine Zeile passen.
+- **Filter-Wahl bleibt ueber App-Restarts erhalten.** Suchtext und aktive Endungen leben in `localStorage` unter `td.fileBrowserFilter` — gleiche Konvention wie `td.heatmapWeeks` / `td.statsRange`. Wer beim naechsten Start wieder nur `.md`-Files sehen will, findet seinen Filter genauso vor, wie er ihn verlassen hat. Bewusst nicht in `settings.json`, weil UX-Memory kein Konfigurations-State ist (siehe ENTSCHEIDUNGEN-Eintrag).
+- **Datei-Browser zeigt jetzt M/A/D/R-Marker pro File aus dem Git-Status.** Modifizierte Dateien (Working-Tree) tragen ein warn-gelbes `M`, neu hinzugefuegte oder untracked Dateien ein accent-gruenes `A`, geloeschte ein rotes `D`, Renames ein `R` (gedaempft). Sind im Editor-Tab ungespeicherte Aenderungen offen, gewinnt das `M` der Dirty-Flag — auf den gleichen Slot, damit der 232-px-Stack visuell ruhig bleibt. Refresh erfolgt automatisch ueber den Season-29-`fs:changed`-Watcher; kein zusaetzliches Polling.
+- **Pre-Commit-Modal blockiert den Send-Button, wenn sensitive Files erkannt sind.** Tauchen `.env`, `*.key`, `*.pem`, `secret*` oder vom User in den Settings konfigurierte Patterns im Working-Tree auf, erscheint im Warn-Block eine Pflicht-Checkbox „Ich habe diese Dateien geprueft und moechte sie trotzdem committen". Bis das Haekchen sitzt, ist der Trigger-Send disabled — versehentliches Mitcommitten eines `.env` via Trigger-Phrase ist damit eine bewusste Zwei-Klick-Aktion statt eines Ein-Klick-Reflexes. Beim Modal-Re-Open ist die Checkbox wieder leer.
+
+### Architektur-Notiz
+
+Drei Achsen-Entscheidungen, alle mit klarer Empfehlung im Variants-Brief, in einem Schwung umgesetzt: **(1) Toggle-Pillen-Reihe** statt Dropdown-Popover oder Smart-Suchfeld — sichtbar, entdeckbar, gleicher visueller Wortschatz wie `td-dash-tab` aus der Stats-Pane. **(2) Persistenz in `localStorage`** statt im Settings-Schema — der Datei-Browser-Filter ist UX-Memory („wo war ich zuletzt"), kein Konfigurations-State; der Roadmap-Wortlaut „persistiert in Settings" wird als „bleibt erhalten" gelesen, was die Repo-Konvention fuer reine UI-Erinnerungs-Werte ist. **(3) Datenquelle Git-Status** reusen statt eigenen Polling-Loop: der Season-29-`fs:changed`-Push aus `ProjectFilesWatcher` ist schon da, der Renderer subscribiert via `window.api.fs.onChanged` und bumpt einen `gitRefreshKey`, der den `git:status`-Re-Fetch ausloest. Kein neuer Main-Pfad, kein neues Polling.
+
+Pure-Helper-Aufteilung: `treeFilter.ts` bekommt ein optionales `ReadonlySet<string>`-Argument fuer Endungen (Default leer = wie vorher); `fileBrowserPrefs.ts` (neu) kapselt `loadFileBrowserPrefs`/`saveFileBrowserPrefs`/`normalize` plus die `TOGGLEABLE_EXTENSIONS`-Konstante; `fileMarker.ts` (neu) liefert `pickFileMarker(isDirty, gitStatus): FileMarker | null` mit fester Konflikt-Regel „Dirty schlaegt Git" und vier Marker-Buckets (`dirty`/`added`/`deleted`/`info`); `preCommitGate.ts` (neu) extrahiert die `canSendCommitTrigger`-Pure-Funktion aus dem Modal-Body — sieben Eingangsfelder, eine Boolean-Ausgabe, vollstaendig isoliert testbar.
+
+`RightPaneFilesPanel.tsx` zieht `git:status` parallel zum `fs:list-tree` beim Projekt-Wechsel, baut eine `Map<relPath, GitFileStatus>` (Worktree-Status hat Vorrang vor Index-Status — was im Working-Tree sichtbar ist, soll auch im Browser sichtbar sein) und reicht sie pro `TreeNode` durch. NOT_A_GIT_REPO und alle anderen `git:status`-Fehler laufen still in eine leere Map — der Datei-Browser ist auch ohne Git voll funktional. `fs:changed`-Subscription bumpt nur den Git-Refresh, NICHT den Tree-Reload — chokidar pusht Datei-Aenderungen, keine Strukturaenderungen, und ein „neuer File faellt aus dem Tree" wuerde den User irritieren ohne klaren Mehrwert (siehe TECH_SCHULDEN-Eintrag).
+
+`PreCommitModal.tsx` traegt `sensitiveConfirmed: boolean` im Component-State (frischer `useState` beim Mount = Reset bei jedem Re-Open); `canSendCommitTrigger`-Pure-Helper bekommt das Feld + alle bisherigen Gates und liefert das `disabled`-Flag des Send-Buttons. Tooltip-Switch im Send-Button erkennt den neuen Block ueber `sensitive.length > 0 && !sensitiveConfirmed`. Checkbox lebt visuell im `td-precommit-warning`-Block (gleiche Warn-Tonung, gestrichelte Trennlinie nach oben), damit der visuelle Cluster „Warnung + Quittung" klar bleibt.
+
+33 neue Tests in vier Files: `tree-filter.test.ts` +7 (Endungs-Filter ohne Query, OR-Kombination, Endung+Query als AND, case-insensitive, mit/ohne fuehrendem Punkt, Dir-Self-Match respektiert Endungs-Filter, Leerfall-Identitaet), `pre-commit-gate.test.ts` 10 (jede Gate-Bedingung positiv + negativ, Confirm-Toggle wirkt nur bei vorhandenen sensitive Files), `file-marker.test.ts` 10 (jeder Git-Status-Pfad plus Dirty-Vorrang plus Null-Fall), `file-browser-prefs.test.ts` 6 (Defaults bei Schrott-Werten, Partial-Object, falsche Feldtypen, gemischte Array-Inhalte). Pre-Check `lint` + `typecheck` + die vier neuen/erweiterten Suites gruen; angrenzende `sensitive-files.test.ts` zur Sanity-Pruefung mitgelaufen (13/13 gruen, unveraendert).
+
+---
+
 ## 2026-05-24 — App-Icon + Brand-Logo in der Titlebar
 
 ### Was jetzt geht

@@ -371,7 +371,7 @@ CI für Releases.
 
 Verbesserungen am Right-Pane-Layout aus dem MVP.
 
-### Feature: Datei-Browser-Filter
+### Feature: Datei-Browser-Filter ✅
 
 Erweiterte Filter-Funktion für den Datei-Browser.
 
@@ -380,7 +380,7 @@ Erweiterte Filter-Funktion für den Datei-Browser.
 - File-Type-Toggles (`.md`, `.json`, `.ts`, etc.)
 - Persistiert in Settings
 
-### Feature: Pre-Commit-Sensitive-Warning
+### Feature: Pre-Commit-Sensitive-Warning ✅
 
 Warnung vor versehentlichem Commit von sensiblen Files.
 
@@ -389,7 +389,7 @@ Warnung vor versehentlichem Commit von sensiblen Files.
 - Optional: Commit-Button disabled bis User die Files explizit bestätigt
 - Pattern-Liste in Settings konfigurierbar
 
-### Feature: Datei-Browser-Status-Indikatoren
+### Feature: Datei-Browser-Status-Indikatoren ✅
 
 Visuelle Markierung von Files mit Änderungen.
 

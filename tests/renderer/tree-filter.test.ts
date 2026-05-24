@@ -92,4 +92,56 @@ describe('filterTree', () => {
     filterTree(tree, '.md');
     expect(JSON.stringify(tree)).toBe(before);
   });
+
+  // Phase-2 Season-29.5: Endungs-Filter ueber File-Type-Toggle-Pillen.
+
+  it('Endungs-Filter ohne Query laesst nur passende Endungen durch', () => {
+    const result = filterTree(tree, '', new Set(['.ts']));
+    expect(result.map((n) => n.name)).toEqual(['src']);
+    expect(result[0]!.children!.map((c) => c.name)).toEqual(['main.ts']);
+  });
+
+  it('Endungs-Filter kombiniert mehrere Endungen als OR', () => {
+    const result = filterTree(tree, '', new Set(['.ts', '.html']));
+    expect(result.map((n) => n.name)).toEqual(['src']);
+    expect(result[0]!.children!.map((c) => c.name)).toEqual([
+      'main.ts',
+      'index.html',
+    ]);
+  });
+
+  it('Endungs- und Text-Filter wirken als AND', () => {
+    // .md + Query „phase" → nur PHASE1.md (kein CHANGELOG.md, kein main.ts)
+    const result = filterTree(tree, 'phase', new Set(['.md']));
+    expect(result).toHaveLength(1);
+    const docs = result[0]!;
+    expect(docs.children!.map((c) => c.name)).toEqual(['roadmap']);
+    const roadmap = docs.children![0]!;
+    expect(roadmap.children!.map((c) => c.name)).toEqual(['PHASE1.md']);
+  });
+
+  it('Endungs-Filter case-insensitive (Pille .TS == File .ts)', () => {
+    const result = filterTree(tree, '', new Set(['.TS']));
+    expect(result[0]!.children!.map((c) => c.name)).toEqual(['main.ts']);
+  });
+
+  it('Endungs-Filter akzeptiert Endungen mit und ohne fuehrenden Punkt', () => {
+    const withDot = filterTree(tree, '', new Set(['.json']));
+    const withoutDot = filterTree(tree, '', new Set(['json']));
+    expect(withoutDot.map((n) => n.name)).toEqual(withDot.map((n) => n.name));
+    expect(withDot.map((n) => n.name)).toEqual(['package.json']);
+  });
+
+  it('Dir-Self-Match respektiert Endungs-Filter strikt', () => {
+    // Query „src" matched den Ordner selbst → ohne Endungs-Filter alle
+    // Children. Mit Endungs-Filter .ts: nur die .ts-File im Ordner.
+    const result = filterTree(tree, 'src', new Set(['.ts']));
+    expect(result.map((n) => n.name)).toEqual(['src']);
+    expect(result[0]!.children!.map((c) => c.name)).toEqual(['main.ts']);
+  });
+
+  it('Leere Query + leeres extensions-Set: Original-Ref zurueck', () => {
+    const result = filterTree(tree, '', new Set());
+    expect(result).toBe(tree);
+  });
 });
