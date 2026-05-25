@@ -28,6 +28,7 @@ import {
   safeDisposeTerminal,
   type DisposableLike,
 } from '../components/safeDispose';
+import { trimBufferSnapshot } from '@shared/buffer-snapshot';
 import { useProjectStore } from '../stores/projects';
 import { useSessionStore } from '../stores/sessions';
 
@@ -268,7 +269,13 @@ export function TerminalTab({
     const searchAddon = new SearchAddon();
     searchAddonRef.current = searchAddon;
     terminal.loadAddon(searchAddon);
-    terminal.loadAddon(new SerializeAddon());
+    // Phase-2 Season-32: SerializeAddon liefert beim Tab-Close die ANSI-haltige
+    // Buffer-Repraesentation, die wir bei Terminal-Sessions persistieren. Wir
+    // halten die Instanz, weil der anonyme Constructor-Aufruf von vorher keine
+    // Referenz hinterliess — Season 28 hat das Addon nur fuer Pattern-Match-
+    // Snapshots geladen, ohne den Persist-Pfad zu adressieren.
+    const serializeAddon = new SerializeAddon();
+    terminal.loadAddon(serializeAddon);
     terminal.loadAddon(new WebLinksAddon());
 
     // Phase-2 Season-5 Bugfix: terminal.open + Renderer-Addon erst im naechsten
@@ -365,10 +372,58 @@ export function TerminalTab({
     // schaden dem StrictMode-Pfad nicht.
     tuiControlRef.current = { start: startTui, pause: pauseTui };
 
+    // Phase-2 Season-32: Pre-Frame-Queue fuer den Restore-Pfad. Bei resumed
+    // Terminal-Sessions (type='terminal' && !needsSpawn) laden wir den
+    // persistierten xterm-Buffer per IPC und schreiben ihn vor dem ersten
+    // PTY-Frame in xterm. Die Queue puffert pty:data-Events, die der Renderer
+    // empfaengt, bevor der Restore-IPC zurueck ist — sonst landen pwsh-Welcome-
+    // Zeilen vor dem alten Verlauf, und die Reihenfolge ist kaputt. Bei allen
+    // anderen Faellen (Spawn-Mount, claude-Sessions) ist `restoreReady` sofort
+    // true, der Queue-Pfad ist no-op.
+    const isTerminalSession = type === 'terminal';
+    const shouldRestoreBuffer = isTerminalSession && !needsSpawn;
+    const pendingFrames: string[] = [];
+    let restoreReady = !shouldRestoreBuffer;
+
+    const flushPendingFrames = (): void => {
+      if (pendingFrames.length === 0) return;
+      for (const data of pendingFrames) terminal.write(data);
+      pendingFrames.length = 0;
+    };
+
+    if (shouldRestoreBuffer) {
+      // Fire-and-forget IPC. Wenn der Tab unmounted, bevor der Snapshot
+      // zurueckkommt (terminalRef-Check schuetzt), verwerfen wir das Ergebnis
+      // still — der naechste Mount ruft sowieso erneut.
+      void window.api.terminal
+        .loadBuffer({ sessionId })
+        .then((result) => {
+          if (terminalRef.current !== terminal) return;
+          if (result.ok && result.data.snapshot !== null) {
+            terminal.write(result.data.snapshot);
+          }
+        })
+        .catch((e) => {
+          console.warn('[TerminalTab] terminal:load-buffer fehlgeschlagen', e);
+        })
+        .finally(() => {
+          if (terminalRef.current !== terminal) return;
+          restoreReady = true;
+          flushPendingFrames();
+        });
+    }
+
     // PTY-Events filtern hart auf sessionId, sodass bei N Tabs jeder nur seine eigenen
     // Daten schreibt. Der Renderer-Bus sendet sonst ein pty:data-Event an alle Tabs.
+    //
+    // Phase-2 Season-32: solange der Restore noch laeuft (nur bei resumed
+    // terminal-Sessions ueberhaupt true), landen Frames in der Queue.
     const offData = window.api.pty.onData((event) => {
       if (event.sessionId !== sessionId) return;
+      if (!restoreReady) {
+        pendingFrames.push(event.data);
+        return;
+      }
       terminal.write(event.data);
     });
     const offExit = window.api.pty.onExit((event) => {
@@ -541,6 +596,43 @@ export function TerminalTab({
     });
 
     return () => {
+      // Phase-2 Season-32: Buffer-Snapshot persistieren, BEVOR der Terminal
+      // disposed wird (serialize() braucht den lebenden Buffer). Nur fuer
+      // terminal-Sessions: claude-Sessions skippen den Save komplett, weil
+      // claude beim Resume seinen Verlauf aus der JSONL selbst rendert. Der
+      // StrictMode-Schutz `terminalRef.current === terminal` verhindert,
+      // dass ein verfruehter Cleanup1 in der Dev-Double-Mount-Sequenz den
+      // Snapshot mit Leer-Buffer ueberschreibt — der erste Cleanup laeuft
+      // vor terminal.open (RAF), die Pre-Cleanup-Pruefung darunter ist die
+      // sichtbare Boundary.
+      if (
+        isTerminalSession &&
+        terminalRef.current === terminal &&
+        terminal.buffer.active.length > 0
+      ) {
+        try {
+          const raw = serializeAddon.serialize();
+          const snapshot = trimBufferSnapshot(raw);
+          if (snapshot.length > 0) {
+            void window.api.terminal
+              .saveBuffer({ sessionId, snapshot })
+              .then((result) => {
+                if (!result.ok) {
+                  console.warn(
+                    `[TerminalTab] terminal:save-buffer abgelehnt code=${result.code}`,
+                  );
+                }
+              })
+              .catch((e) => {
+                console.warn('[TerminalTab] terminal:save-buffer fehlgeschlagen', e);
+              });
+          }
+        } catch (e) {
+          // SerializeAddon kann bei Render-Race oder GPU-Loss in Edge-Cases
+          // werfen — den Cleanup nicht reissen, der Snapshot ist Nice-to-have.
+          console.warn('[TerminalTab] serialize() im Cleanup fehlgeschlagen', e);
+        }
+      }
       if (initRafHandle !== null) cancelAnimationFrame(initRafHandle);
       // Phase-2 Season-21: Auto-Send-Timer abbrechen, falls Cleanup zwischen
       // Spawn-Success und Warmup-Ende laeuft (Tab geschlossen vor Send).

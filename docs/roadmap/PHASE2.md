@@ -82,7 +82,7 @@ Aufwand-Schaetzung: ~150 Zeilen über 6 Dateien, plus 3-5 targeted Tests fuer de
 
 **Trigger:** Akuter User-Wunsch aus Daily-Use: oft soll der naechste Tab keinen Claude-Spawn ausloesen (Token-Verbrauch sinnlos fuer `git status`, `npm run lint`, `ls`, schnelle PowerShell-Snippets). Heute muss man dafuer ein externes Windows-Terminal-Fenster oeffnen, was aus dem TakumiDeck-Workflow herausreisst.
 
-### Feature: Terminal-Buffer-Persistierung ueber Resume
+### Feature: Terminal-Buffer-Persistierung ueber Resume ✅
 
 Wiederherstellung des xterm-Buffers nach `session:resume`, damit die Resume-Session optisch nicht „leer" startet.
 

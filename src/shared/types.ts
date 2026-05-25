@@ -215,6 +215,26 @@ export interface PtyTuiStateInput {
   state: 'running' | 'waiting' | 'idle' | 'permission-prompt';
 }
 
+// Phase-2 Season-32: Terminal-Buffer-Persistierung. Renderer serialisiert
+// im Cleanup via @xterm/addon-serialize und schickt den getrimten Snapshot
+// (Pure-Helper `trimBufferSnapshot`) ans Main. Beim Mount eines resumed
+// Terminal-Tabs ruft der Renderer Load und schreibt das Ergebnis vor dem
+// ersten PTY-Frame zurueck in xterm. `snapshot` ist null, wenn die
+// Session noch keinen persistierten Buffer hat (Neu-Spawn oder noch nie
+// resumed) bzw. wenn der Save vom Handler abgelehnt wurde (claude-Typ).
+export interface TerminalSaveBufferInput {
+  sessionId: string;
+  snapshot: string;
+}
+
+export interface TerminalLoadBufferInput {
+  sessionId: string;
+}
+
+export interface TerminalLoadBufferResult {
+  snapshot: string | null;
+}
+
 // Events Main → Renderer.
 export interface PtyDataEvent {
   sessionId: string;
@@ -1043,6 +1063,14 @@ export interface RendererApi {
     // Phase-2 Season-1: Main pushed Status-Änderungen aktiv; Renderer-Store
     // abonniert und ruft setStatus auf, ohne selbst pollen zu müssen.
     onStatusPush: (handler: (event: SessionStatusPushEvent) => void) => () => void;
+  };
+  // Phase-2 Season-32: Terminal-Buffer-Persistierung — eigener Namespace,
+  // damit `sessions.*` nicht mit type-spezifischen Calls vermischt wird.
+  // Beide Pfade werden im Renderer auf type='terminal' gegated; der Main
+  // doppelt das Gate als Defense-in-Depth.
+  terminal: {
+    saveBuffer: (input: TerminalSaveBufferInput) => Promise<IpcResult<null>>;
+    loadBuffer: (input: TerminalLoadBufferInput) => Promise<IpcResult<TerminalLoadBufferResult>>;
   };
   templates: {
     // Phase-2 Season-4: Auto-Variablen, die DB- oder FS-Zugriff brauchen.

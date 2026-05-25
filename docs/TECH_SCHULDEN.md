@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Terminal-Buffer-Persistierung: App-Crash zwischen Tab-Sessions verliert den Snapshot (2026-05-25)
+
+**Bereich:** `src/renderer/panels/TerminalTab.tsx` (Phase-2 Season-33). Konkret: der `terminal:save-buffer`-IPC wird ausschliesslich im React-Cleanup-Pfad gefeuert (`useEffect`-Return-Funktion beim sessionId-Effekt). Cleanup laeuft bei `closeTab` aus dem Sessions-Store (× auf der Tab-Pille, Projekt-Wechsel mit Tab-Cleanup, Sidebar-Project-Switch), aber NICHT bei einem App-Crash oder einem Windows-Force-Quit. In dem Fall bleibt der zuletzt persistierte Snapshot stehen (oder es gibt keinen, wenn die Session brandneu war) — der naechste Resume zeigt entweder den vorletzten Stand oder leeres Terminal.
+
+**Was:** Heutiges Verhalten — Save-Trigger ist Tab-Close (× / Project-Switch / Sidebar-Remove). Live-Output zwischen Snapshot und Crash geht verloren. Erst der naechste „saubere" Tab-Close (z.B. der User schliesst den Tab via × bevor er die App quittiert) commitet den Snapshot. Bei einer langen Terminal-Session mit viel Output ohne zwischendurch zu schliessen ist der Snapshot also potentiell deutlich aelter als der aktuelle Buffer.
+
+**Warum so:** Bewusste Wahl der Achse J (im ENTSCHEIDUNGEN-Eintrag „Season-33 Terminal-Buffer-Persistierung", Persist-Trigger). K (debounced `serialize()` alle 5 s) loest ein Problem, das im Daily-Use empirisch nicht belegt ist — App-Crashes sind selten, und der Crash-Verlust trifft nur den laufenden Terminal-Tab (claude-Sessions sind nicht betroffen, weil sie ihren Verlauf aus der JSONL re-rendern). Crash-Schutz-Aufwand waere eine Timer-Loop pro N Tabs plus pause-bei-inaktiv-Logik analog zum TUI-Poll — Code-Wachstum und Renderer-CPU-Last fuer einen Modus, der vielleicht zweimal im Jahr passiert.
+
+**Risiko:** Niedrig. Konkretes Worst-Case: User laesst eine PowerShell-Session 30 Minuten laufen mit vielen `git log`-Ausgaben und Build-Outputs, App stuerzt (oder Windows-Force-Quit / Stromausfall) — beim Restart-Resume sieht der User nur den Snapshot vor der 30-Minuten-Session-Eroeffnung (oder leeres Terminal, wenn die Session frisch war). Mitigation aktuell: User kann den Tab bewusst per × schliessen vor jedem Mittagspause-Lock, dann ist der Snapshot frisch. App-Crashes in der Daily-Use-Empirie waren bisher selten genug, um das Risiko zu rechtfertigen — der Live-Save-Pfad wartet auf empirischen Bedarf.
+
+**Aufloesung:** **Trigger:** wenn der Schmerz „mein Terminal-Buffer war beim Crash weg" zweimal im Daily-Use auftaucht oder wenn ein anderes Crash-Recovery-Feature (z.B. Session-State-Recovery) ohnehin eine Live-Save-Infrastruktur einfuehrt. Zwei Aufloesungs-Pfade: (a) Debounced `serialize()` alle 5 s waehrend der Session laeuft (Achse K aus dem ENTSCHEIDUNGEN-Eintrag) mit Pause-bei-inaktiv-Logik analog zum TUI-Poll-Loop aus Season 28 — der Poll-Code-Pfad ist schon da, das Save-Pendant wuerde analog daneben sitzen. (b) Save zusaetzlich beim `pty:exit`-Renderer-Push (vor der Lifecycle-Transition auf `completed`/`interrupted`/`error`) — kein Live-Schutz, aber faengt die Mehrzahl der „Session beendet sich von selbst"-Faelle ab, die heute nur ueber den Cleanup laufen. Variante (a) ist die robuste Loesung, (b) waere ein billiger Zwischenschritt falls (a) im Daily-Use vorerst nicht noetig ist.
+
+---
+
 ## Datei-Browser-Tree refresht nicht bei Struktur-Aenderungen (2026-05-24)
 
 **Bereich:** `src/renderer/panels/RightPaneFilesPanel.tsx` (Phase-2 Season-29.5). Konkret: der `fs:changed`-Push aus `ProjectFilesWatcher` (Season 29) bumpt zwar den `gitRefreshKey` fuer den Git-Status-Pull, triggert aber bewusst KEINEN Tree-Reload via `fs:list-tree`. Wenn extern (durch ein Claude-Pty, einen externen Editor oder ein git checkout) eine neue Datei angelegt, eine bestehende geloescht oder ein Ordner umbenannt wird, faellt das im Datei-Browser erst beim naechsten Projekt-Wechsel auf.

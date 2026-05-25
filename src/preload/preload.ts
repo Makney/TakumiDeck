@@ -60,6 +60,9 @@ import type {
   SessionResumeInput,
   SessionRow,
   SessionUpdateInput,
+  TerminalLoadBufferInput,
+  TerminalLoadBufferResult,
+  TerminalSaveBufferInput,
   TemplateFile,
   TemplatesAllocateSeasonForSessionInput,
   TemplatesAllocateSeasonForSessionResult,
@@ -145,6 +148,19 @@ const api: RendererApi = {
       ipcRenderer.on(Channels.SessionStatusPush, wrapped);
       return () => ipcRenderer.removeListener(Channels.SessionStatusPush, wrapped);
     },
+  },
+  // Phase-2 Season-32: Terminal-Buffer-Persistierung. Beide Calls werden im
+  // Renderer nur fuer type='terminal' gefeuert; der Main lehnt fremde Typen
+  // ab (save: Error-Code, load: liefert null).
+  terminal: {
+    saveBuffer: (input: TerminalSaveBufferInput) =>
+      ipcRenderer.invoke(Channels.TerminalSaveBuffer, input) as Promise<
+        IpcResult<null>
+      >,
+    loadBuffer: (input: TerminalLoadBufferInput) =>
+      ipcRenderer.invoke(Channels.TerminalLoadBuffer, input) as Promise<
+        IpcResult<TerminalLoadBufferResult>
+      >,
   },
   templates: {
     resolveAutoVars: (input: TemplatesResolveAutoVarsInput) =>

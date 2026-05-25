@@ -9,6 +9,7 @@ import { registerSettingsIpc } from './ipc/settings';
 import { registerAppIpc } from './ipc/app';
 import { registerPtyIpc } from './ipc/pty';
 import { registerSessionIpc } from './ipc/session';
+import { registerTerminalBufferIpc } from './ipc/terminal-buffer';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
 import { createUsagePusher, registerUsageIpc } from './ipc/usage';
 import { registerStatsIpc } from './ipc/stats';
@@ -30,6 +31,10 @@ import {
   DEFAULT_PROJECT_ID,
 } from './db/repos/projects';
 import { MessageRepository, SqliteMessageDriver } from './db/repos/messages';
+import {
+  SessionBufferRepository,
+  SqliteSessionBufferDriver,
+} from './db/repos/session-buffer';
 import { UsageRepository, SqliteUsageDriver } from './db/repos/usage';
 import { StatsRepository, SqliteStatsDriver } from './db/repos/stats';
 import { HeatmapRepository, SqliteHeatmapDriver } from './db/repos/heatmap';
@@ -149,6 +154,11 @@ void app.whenReady().then(async () => {
     // nachliefern kann. Reihenfolge daher tauschen — MessageRepo zuerst.
     const messageRepo = new MessageRepository(new SqliteMessageDriver(db));
     const sessions = new SessionRepository(new SqliteSessionDriver(db), messageRepo);
+    // Phase-2 Season-32: Terminal-Buffer-Snapshots. Eigene Tabelle, damit
+    // Sessions-Listings den Snapshot nicht durch SELECT s.* mitziehen.
+    const sessionBufferRepo = new SessionBufferRepository(
+      new SqliteSessionBufferDriver(db),
+    );
     // Logger fürs Lifecycle-Debug-Tracing: jeder Statusübergang wird mit Reason
     // im Log nachvollziehbar (debug-Level, daher im Default-Loglevel still).
     const lifecycle = new SessionLifecycle(sessions, undefined, logger);
@@ -235,6 +245,14 @@ void app.whenReady().then(async () => {
       settings,
       log: logger,
       pollingRing: jsonlPollingRing,
+    });
+    // Phase-2 Season-32: Terminal-Buffer-Persistierung. Beide Handler haben
+    // ein hartes type='terminal'-Skip-Gate; claude-Sessions koennen den Save
+    // gar nicht erst durchschieben.
+    registerTerminalBufferIpc({
+      sessions,
+      buffers: sessionBufferRepo,
+      log: logger,
     });
     registerPtyIpc({
       manager: ptyManager,

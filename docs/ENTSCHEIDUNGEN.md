@@ -24,6 +24,60 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Season-33 Terminal-Buffer-Persistierung: Scope-Cut, Trim-Strategie, Tabellen-Form, Persist-Trigger
+
+**Entscheidung:** Vier Achsen-Entscheidungen fuer die Terminal-Buffer-Persistierung, alle aus einem zusammenhaengenden User-Pivot waehrend der Variants-Diskussion. (1) **Scope-Cut auf nur `type='terminal'`** statt aller Session-Typen — User-Reality-Check „bei Claude-Resume sehe ich den Verlauf doch eh wieder" hat den 80%-Use-Case raus-amputiert. (2) **Last-N-Zeilen-Trim mit Byte-Cap** (2000 Zeilen + 256 KiB), kein Voll-Buffer. (3) **Eigene Tabelle `session_buffer_snapshots`** mit FK-Cascade, kein BLOB-Feld auf `sessions`. (4) **Persist beim React-Cleanup**, kein debounced Live-Save.
+
+**Varianten (Scope):**
+
+- **A** Buffer-Persist fuer alle Session-Typen (Original-Roadmap-Vorschlag). Maximal informativ; Race-Risiko gegen claude-eigenen Re-Render beim `--resume`, doppelter Pfad fuer claude-Sessions ohne echten Mehrwert.
+- **B** Streichen — Roadmap-Eintrag als „obsolet weil claude den Verlauf selbst rendert" markieren. Ehrlich aber laesst pwsh-Sessions weiter blank starten.
+- **C** Nur `type='terminal'`. Liefert Buffer-Restore dort wo es keinen Ersatz-Pfad gibt, claude-Sessions bleiben unangetastet. (Gewaehlt)
+
+**Varianten (Inhalt/Trim):**
+
+- **D** Voller Buffer (kein Cap). Maximal informativ; bei langen TUI-Outputs schnell ueber 1 MiB pro Session.
+- **E** Last-N-Zeilen plus defensiver Byte-Cap. Pure-Helper `trimBufferSnapshot`, UTF-8-safe via TextEncoder. (Gewaehlt)
+- **F** Snapshot-Last-N-Bytes (vom Ende rueckwaerts, ohne Zeilen-Awareness). Kann mitten in einer ANSI-Sequenz schneiden — Restore-Pfad sieht dann halben Color-Code, xterm interpretiert fehlerhaft.
+
+**Varianten (Ablage):**
+
+- **G** Neue Spalte `sessions.terminal_buffer_serialized TEXT NULL`. Minimal-Touch; aber `listHistoryForProject` macht `SELECT s.*` und wuerde bei 50+ Sessions mehrere MB pro Verlauf-Klick durch SQLite ziehen.
+- **H** Datei pro Session unter `<userData>/terminal-buffers/<sessionId>.snap`. DB klein, FS handhabt Volumen; zwei Persistenz-Stellen (DB + FS) bei einer einzigen logischen Beziehung, Cleanup-Drift bei `DELETE FROM sessions`.
+- **I** Eigene Tabelle `session_buffer_snapshots` mit `session_id PK`, `snapshot TEXT`, `updated_at INTEGER`, FK ON DELETE CASCADE. (Gewaehlt)
+
+**Varianten (Persist-Trigger):**
+
+- **J** Save im React-Cleanup beim Tab-Close. (Gewaehlt) Minimaler Code-Touch, ein einziger Trigger-Punkt. Verlust bei App-Crash.
+- **K** Debounced `serialize()` alle 5 s waehrend Session laeuft. Crash-Resistent; kostet Disk-Writes und CPU-Tick pro N Tabs.
+- **L** Save erst im Main-Handler bei `session:close`/`session:archive`. Saubere Lifecycle-Boundary, aber der xterm-Buffer lebt im Renderer — Main hat keinen direkten Zugriff. Implementierung wuerde den Save-Befehl via Push an den Renderer zurueckschicken, was komplexer ist als direkt im Cleanup.
+
+**Grund:**
+
+C statt A/B: A baut Code fuer eine UX-Verbesserung, die claude bereits selbst loest (JSONL-Re-Render beim `--resume`). B opfert pwsh-Sessions, wo der Verlust real ist (PowerShell hat keinen Verlauf — eine resumed pwsh-Instanz weiss nichts vom vorherigen Run). C ist die ehrliche Antwort auf den Reality-Check des Users: persistieren wo es einen echten Verlust-Pfad gibt, claude-Sessions weiter ihren bestehenden Re-Render-Pfad gehen lassen.
+
+E statt D/F: D kann pro Session auf 1 MiB+ wachsen; bei 50 archivierten Terminal-Sessions sind das spuerbare DB-Groessen ohne klaren UX-Mehrwert (die alten 4000 Zeilen schaut sich niemand an, die Action passiert in den letzten 2000). F bricht ANSI-Sequenzen; Restore-Pfad wuerde dann mit halbem Color-Code anfangen und xterm interpretiert das als sichtbare Garbage. E ist UTF-8-safe via TextEncoder, behaelt die letzten 2000 Zeilen am Stueck, und der defensive Byte-Cap fangt pathologische Faelle (lange TUI-Escape-Sequenzen) auf.
+
+I statt G/H: G ist die Minimal-Touch-Variante (eine Migration-Zeile, kein neues Repo), aber `listHistoryForProject` zieht bei 50+ Sessions mehrere MB pro Verlauf-Klick durch SQLite — der UX-Polish-Mehrwert wird durch die Listings-Latenz aufgefressen. Ein zusaetzlicher Refactor (explizite Spaltenliste im Listing-SELECT) wuerde die Aufwand-Einsparung wieder fressen. H teilt die Wahrheit auf DB + FS, was bei `project:remove`-Pfaden zu Cleanup-Drift fuehrt (FK-Cascade greift nur in der DB). I ist die klare Ein-Pfad-Loesung: separate Tabelle mit FK-Cascade, `session_id` als PK liefert atomare Upserts ueber `ON CONFLICT DO UPDATE`, der Listing-SELECT ist davon unberuehrt.
+
+J statt K/L: K loest ein Problem, das im Daily-Use nicht empirisch belegt ist — App-Crashes sind selten, und der Crash-Verlust trifft nur den Buffer der gerade laufenden Tabs (die meisten Terminal-Sessions sind ad-hoc und kurz). Der Crash-Schutz-Aufwand ist eine Timer-Loop pro N Tabs plus pause-bei-inaktiv-Logik analog zum TUI-Poll — Code-Wachstum und Renderer-CPU-Last fuer einen Crash-Modus, der vielleicht zweimal im Jahr passiert. L wuerde den Renderer-Buffer ueber einen zusaetzlichen Push-Mechanismus an den Main schicken, was die Cleanup-Boundary unnoetig verteilt. J ist der minimale Pfad mit dem akzeptablen Verlust-Modus, der explizit als TECH_SCHULDEN dokumentiert ist mit K als Aufloesungs-Pfad.
+
+**Konsequenz:**
+
+Drei neue Code-Pfade: Pure-Helper `trimBufferSnapshot` in `src/shared/buffer-snapshot.ts`, Repository `SessionBufferRepository` in `src/main/db/repos/session-buffer.ts` (analog `MessageRepository`-Pattern mit Driver-Interface + Sqlite-/InMemory-Implementierung), IPC-Modul `src/main/ipc/terminal-buffer.ts` mit zwei Handlern (Save mit hartem Skip-Gate, Load mit defensivem null-Return bei fremdem Typ). TerminalTab im Renderer bekommt SerializeAddon-Ref festgehalten (Constructor war anonym), Cleanup-Save mit StrictMode-Guard (`terminalRef.current === terminal` + `buffer.active.length > 0`), Mount-Restore mit Pre-Frame-Queue gegen Reihenfolge-Race. Migration 0010 ist additiv ohne Bestands-Daten-Migration; FK-Cascade bedeutet `project:remove` raeumt Snapshots automatisch mit (kein neuer Cleanup-Pfad noetig).
+
+Eigener `terminal`-Namespace in `RendererApi` (`window.api.terminal.*`) — bewusst nicht in `sessions.*` oder `pty.*` eingegliedert, weil die zwei Calls type-spezifisch (`terminal` only) sind und sich nicht mit dem allgemeinen Session-Lifecycle vermischen sollen.
+
+**Implementierungsdetail:**
+
+Pre-Frame-Queue im Restore-Pfad ist die subtile Architektur-Wahl. Bei resumed terminal-Sessions startet das Mount: `terminal = new Terminal()` synchron, `pty.onData`-Listener wird sofort registriert, `terminal:load-buffer`-IPC laeuft async. Wenn die Reihenfolge nicht geguardet wird, kommen die ersten pwsh-Welcome-Frames in xterm an, BEVOR der Snapshot zurueck ist — Restore wuerde dann den Snapshot HINTER die Welcome-Zeile schreiben. Loesung: solange `restoreReady === false`, pusht der `onData`-Handler die Frames in eine `pendingFrames`-Liste; nach Load-Result-Eintreffen wird zuerst der Snapshot geschrieben, dann die Queue geflusht, dann normaler Live-Pfad. `restoreReady` startet bei Spawn-Mounts und bei claude-Sessions sofort auf `true` — Queue-Pfad ist no-op fuer alle ausser dem resumed-terminal-Pfad.
+
+Cleanup-StrictMode-Schutz: React-Dev mountet Effects doppelt (Mount1 → Cleanup1 → Mount2). Der erste Cleanup laeuft VOR `terminal.open(container)` (das in RAF passiert) — `serialize()` wuerde dort einen leeren Buffer liefern und den eventuell existierenden Snapshot mit `''` ueberschreiben. Der Guard `terminalRef.current === terminal` + `buffer.active.length > 0` filtert Cleanup1 raus, weil im Cleanup1-Tick der Buffer noch leer ist und `terminalRef` noch auf dem aktuellen Terminal steht (Mount2 hat den Ref noch nicht ueberschrieben). Bei einem echten Tab-Close ist der Buffer voll und der Ref steht — Save laeuft.
+
+Sentinel-Pattern aus Season 31 nicht wiederverwendbar hier — Buffer-Snapshot ist keine zod-Schema-Pflicht, sondern eine FS/DB-Persist-Wahl. `terminal.saveBuffer({sessionId, snapshot})` ist der einfache Vertrag, der Server-Skip-Gate prueft `session.type !== 'terminal'` als reine Boundary-Check.
+
+---
+
 ## Season-32 LeftSidebar-Polish: Marker-Definition, Verlauf-Counter-Quelle, Kontextmenu-Implementierung, Sub-Projekt-Vertagung
 
 **Entscheidung:** Vier Achsen-Entscheidungen fuer den LeftSidebar-Polish, in einem Eintrag, weil sie aus einem zusammenhaengenden User-Brief stammen. (1) **Aufmerksamkeits-Marker** kombiniert zwei Sub-Eimer in einer Marker-Sprache: orange `waiting` = `SessionStatus 'waiting' | 'permission-prompt'`, gelb `attention` = `'interrupted' | 'error'`. (2) **Verlauf-Counter-Quelle** ist `historyEntries.length` (Server-gefiltert auf `completed`/`interrupted`/`error`), nicht das DB-Feld `projects.session_count`. (3) **Kontextmenu-Implementierung** als eigenes React-Floating-Component statt Electron-`Menu.popup()`. (4) **Sub-Projekt-Hierarchie** wird nicht jetzt gebaut — Roadmap-Eintrag in Phase 3 mit konkretem Schnitt.

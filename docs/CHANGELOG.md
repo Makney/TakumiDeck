@@ -17,6 +17,30 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-25 — Season 33: Terminal-Buffer-Persistierung ueber Resume
+
+### Was jetzt geht
+
+- **Resume einer Terminal-Session zeigt den vorherigen Output wieder.** Schliesst du einen Terminal-Tab (× oder Tab-Wechsel auf eine andere Session) und resumest ihn spaeter aus dem Verlauf-Panel, schreibt TakumiDeck den letzten xterm-Buffer in das neue Tab zurueck, bevor die frische PowerShell ihren Welcome-Prompt rendert. Vorher war das resumed Terminal optisch leer und der ganze frueher gesehene `git log`/`ls`/`Set-Location`-Verlauf war weg, obwohl die Shell denselben cwd wieder bekam. Last-2000-Zeilen + 256-KiB-Byte-Cap pro Session — bei 50 archivierten Terminal-Sessions sind das max. ~12 MiB DB-Wachstum.
+- **Claude-Sessions bleiben unveraendert.** Bewusster Scope-Cut: `claude --resume` rendert seinen Verlauf ohnehin neu aus der JSONL (User-/Assistant-Nachrichten, Tool-Use-Blocks, Plan-Mode-Output — alles drin). Buffer-Persistierung waere fuer claude-Sessions ein zusaetzlicher Pfad mit minimalem Mehrwert und mit Race-Risiko gegen den claude-eigenen Re-Render. Nur Terminal-Sessions (`type='terminal'`, Phase-2 Season-31) durchlaufen den neuen Save/Restore-Pfad — der Save-IPC lehnt fremde Typen mit `TERMINAL_BUFFER_TYPE_MISMATCH` aktiv ab.
+- **App-Crash zwischen Tab-Sessions verliert den Buffer.** Dokumentierter Tradeoff: Persist passiert im React-Cleanup-Pfad beim Tab-× und beim Tab-Schliessen via Sidebar — ein hartes `process.exit` oder Windows-Force-Quit feuert den Cleanup nicht. Der naechste Resume zeigt dann den vorletzten Snapshot (falls vorhanden) oder leeres Terminal. Wenn das im Daily-Use zu schmerzhaft wird, ist der Aufloesungs-Pfad ein debounced Save alle 5 s waehrend der Session laeuft — TECH_SCHULDEN-Eintrag mit den Trigger-Bedingungen.
+
+### Architektur-Notiz
+
+Vier Achsen-Entscheidungen in einem Schwung. Details in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md).
+
+**(1A) Scope-Cut auf nur Terminal-Sessions** statt aller Session-Typen — vom User selbst getriggert mit dem Reality-Check „bei Claude-Resume sehe ich den Verlauf doch eh wieder". Stimmt: claude-code liest beim `--resume` die JSONL und rendert die komplette Konversation neu (Tool-Calls inklusive). Verlust-Faelle bei claude sind ephemer (Welcome-Banner, Permission-Prompt-Texte nach User-Antwort, transiente TUI-Zustaende) — alles nicht-essentiell. Bei terminal-Sessions ist der Verlust total, weil pwsh keinen Session-Verlauf hat.
+
+**(2B) Last-N-Zeilen-Snapshot mit Byte-Cap** statt Voll-Buffer oder Disk-Datei. 2000 Zeilen × ~200 Zeichen ≈ 400 KB Worst-Case; defensiver Byte-Cap bei 256 KiB schneidet pathologische Faelle (lange ANSI-Color-Stacks, riesige TUI-Escape-Sequenzen) von vorne weg. UTF-8-safe via TextEncoder. Pure-Helper `trimBufferSnapshot` in `src/shared/buffer-snapshot.ts` ist context-frei (testbar ohne xterm-Setup) und liefert `''` bei leerem oder whitespace-only Input — der Renderer feuert den Save-IPC dann gar nicht erst.
+
+**(3E) Eigene SQLite-Tabelle `session_buffer_snapshots`** statt einer Spalte auf `sessions`. `listHistoryForProject` macht `SELECT s.* FROM sessions` — eine Snapshot-Spalte waere bei 50+ Verlauf-Eintraegen mehrere MB pro History-Klick durch SQLite gezogen, obwohl die Anzeige die Daten nie braucht. FK mit `ON DELETE CASCADE` haengt am `sessions.id`: ein DELETE auf die Session raeumt den Snapshot automatisch mit (kein manuelles Cleanup, kein Drift).
+
+**(4G) Save beim TerminalTab-Cleanup, kein debounced Live-Save** — minimaler Code-Touch, ein einziger Trigger-Punkt (React-Cleanup vor `terminal.dispose()`), kein laufender Timer, der pro Tick die Renderer-CPU belastet. Persist passiert bei × auf der Tab-Pille, bei Tab-Wechsel mit Session-Kill, bei Sidebar-Project-Switch. Bewusster Verlust bei App-Crash — als TECH_SCHULDEN dokumentiert. Restore-Pfad nutzt eine Pre-Frame-Queue: bei resumed terminal-Sessions puffert der `pty.onData`-Listener Frames so lange, bis der `terminal:load-buffer`-IPC zurueck ist, dann werden Snapshot und Queue in Reihenfolge in xterm geschrieben — sonst kaeme pwshs Welcome-Zeile vor dem alten Verlauf.
+
+Migration 0010 fuegt nur die neue Tabelle hinzu (drei Spalten plus FK), keine Bestands-Daten betroffen. 22 neue Tests in drei Files: `tests/shared/buffer-snapshot.test.ts` (9 — Leerfall/Line-Cap/Byte-Cap/Multi-Byte-UTF-8/Kombination), `tests/main/session-buffer-repo.test.ts` (6 — CRUD-Vertrag, Upsert-Replace, Session-Isolation), `tests/main/terminal-buffer-ipc.test.ts` (7 — Skip-Gate fuer beide Handler bei fremdem Session-Typ, SESSION_NOT_FOUND, Defense-in-Depth gegen Renderer-Misuse). Suite 1012/1012 in 73 Files gruen (vorher 990/990 in 70; +3 Files +22 Tests). Typecheck + lint sauber.
+
+---
+
 ## 2026-05-25 — Season 32: LeftSidebar-Polish (Aufmerksamkeits-Marker · Verlauf-Counter · Rechtsklick-Menu)
 
 ### Was jetzt geht

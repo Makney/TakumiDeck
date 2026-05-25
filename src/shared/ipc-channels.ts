@@ -35,6 +35,17 @@ export const Channels = {
   // keinen Traffic.
   PtyTuiState: 'pty:tui-state',
 
+  // Terminal (Phase-2 Season-32): Buffer-Persistierung fuer terminal-Sessions.
+  // Save wird im TerminalTab-Cleanup gefeuert (Renderer serialisiert via
+  // @xterm/addon-serialize und trimmt vorher pure mit `trimBufferSnapshot`).
+  // Load wird beim TerminalTab-Mount fuer resumed terminal-Sessions gerufen,
+  // bevor der erste PTY-Frame in xterm geschrieben wird — der Pre-Frame-
+  // Restore haengt eine kleine Queue auf den onData-Listener, damit die
+  // Reihenfolge stimmt. Claude-Sessions skippen beide Pfade im Renderer
+  // (claude rendert seinen Verlauf beim `--resume` selbst aus der JSONL).
+  TerminalSaveBuffer: 'terminal:save-buffer',
+  TerminalLoadBuffer: 'terminal:load-buffer',
+
   // Git (Sprint 7)
   GitStatus: 'git:status',
   GitDiff: 'git:diff',

@@ -208,6 +208,20 @@ export const PtyTuiStateInputSchema = z.object({
   state: z.enum(['running', 'waiting', 'idle', 'permission-prompt']),
 });
 
+// Phase-2 Season-32: terminal:save-buffer / terminal:load-buffer fuer die
+// Buffer-Persistierung von terminal-Sessions. Snapshot-Cap auf 1 MiB als
+// defensive Trust-Boundary — der Pure-Helper im Renderer trimt auf 256 KiB,
+// aber das Schema schluckt etwas Puffer fuer kuenftige Anpassungen ohne
+// Schema-Bruch. Bei type !== 'terminal' lehnt der Handler den Save ab.
+export const TerminalSaveBufferInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  snapshot: z.string().max(1024 * 1024),
+});
+
+export const TerminalLoadBufferInputSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
 // SessionUpdate-Patch: nur Felder, die in Sprint 2 vom Renderer geschrieben werden dürfen.
 // Bereich-4-Review (B-1): ended_at ist NICHT mehr patchbar — die SessionLifecycle
 // setzt/nullt das Feld als Status-Side-Effect. Ein Renderer-Patch würde diese
