@@ -51,6 +51,9 @@ workbench:
     - path: docs/release/REVIEW_TEMPLATE.md
       trigger: "Read when preparing a release code-review across all files changed since the last version"
       auto_inject: false
+    - path: docs/COMMANDS.md
+      trigger: "Read before running any shell command, npm script, or CLI tool in this project"
+      auto_inject: false
 ---
 
 # TakumiDeck – Agent Context

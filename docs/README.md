@@ -27,6 +27,7 @@ Sie wird nicht automatisch von Claude geladen — sie ist für Menschen gedacht,
 | Season abgeschlossen — Rückblick schreiben    | `SEASON_LOG.md`                                                                  |
 | Begriff oder Abkürzung unklar                 | `GLOSSAR.md`                                                                     |
 | Umgebung einrichten / Installationsproblem    | `DEV_SETUP.md`                                                                   |
+| npm-Script oder CLI-Befehl nachschlagen       | `COMMANDS.md`                                                                    |
 | Code-Review starten                           | `code-review/TEMPLATE.md` + passende `code-review/OFFEN_<BEREICH>.md`            |
 | Architektur-Detail nachschlagen               | `TAKUMIDECK_ARCHITEKTUR.md` (Master-Referenz, viele Kapitel)                     |
 

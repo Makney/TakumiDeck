@@ -81,6 +81,10 @@ Code-Signing und Auto-Update kommen erst in Phase 5+ (Architektur 12), wenn die 
 
 ---
 
+Alle npm-Scripts auf einen Blick → [COMMANDS.md](./COMMANDS.md)
+
+---
+
 ## Schnellstart-Skripte
 
 Im Repo gibt es zwei `.bat`-Dateien für Windows-Schnellstart (analog zum Workflow bei TanaLib/ZenValuation):
