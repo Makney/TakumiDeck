@@ -84,6 +84,19 @@ Erweiterte Git-Integration.
 
 **Trigger:** Bei Co-Dev oder Branch-heavy Workflows.
 
+### Feature: Ueber-Projekte mit Sub-Projekten in der Sidebar
+
+Hierarchie-Ebene oberhalb der heutigen flachen Projektliste. Aktuell stehen alle Projekte aus dem Workspace gleichberechtigt nebeneinander (Scripts, TakumiDeck, TanaLib, Vorlage, ZenValuation). Sobald die Liste waechst, fehlt eine Gruppierung — z.B. "Tools" (Scripts, Vorlage) vs. "Apps" (TakumiDeck, ZenValuation). Die Aufklapp-Pfeile `▸` neben jedem Projekt-Eintrag in der LeftSidebar stehen seit Sprint 6 da, klappen aber nichts auf — sie suggerieren die Hierarchie, die dieses Feature dann tatsaechlich liefert.
+
+- Schema-Migration: `projects.parent_id TEXT NULL` mit Self-FK auf `projects.id` plus Index
+- Workspace-Scanner muss zwei Ordner-Tiefen abdecken: Ein `CLAUDE.md`-Ordner als direktes Kind des Workspace-Roots bleibt Top-Level-Projekt, ein `CLAUDE.md`-Ordner innerhalb eines anderen Projekt-Ordners wird Sub-Projekt
+- Sidebar-Rendering rekursiv: Pfeil-Toggle pro Eintrag mit parent_id, Children werden eingerueckt; Toggle-State persistiert in localStorage (Key z.B. `td.projectTree.expanded`)
+- Drag&Drop oder Settings-UI fuer manuelles Verschachteln (Projekte aus dem Workspace-Scanner sind oft schon strukturell verschachtelt, aber haendisches Re-Parenting ohne FS-Aenderung soll moeglich sein)
+- Aktive-Sessions-Aggregation: Counts werden vom Sub-Projekt aufs Ueber-Projekt rolled up, damit ein zugeklappter Ueber-Projekt-Knoten den orange/gelben Aufmerksamkeits-Marker eines Sub-Projekts uebernimmt (sonst geht die Sichtbarkeit aus Phase-2-Season-32 verloren, sobald die Hierarchie eingeklappt ist)
+- HistoryPanel und ActiveSessionsPanel bleiben unveraendert (sie laufen pro `activeProjectId`, das immer ein Leaf-Projekt ist)
+
+**Trigger:** Wenn die Projektliste so lang wird, dass Scrollen oder Suche noetig waere. Aktuell mit 5 Projekten noch ertraeglich.
+
 ---
 
 ## Bereich: Brainstorming

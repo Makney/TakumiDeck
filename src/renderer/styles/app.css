@@ -410,10 +410,54 @@ body,
   color: var(--td-accent);
 }
 
+/* Phase-2 Season-32 — Aufmerksamkeits-Marker fuer Projekte in der Sidebar.
+   waiting (orange) ist hoeher prior als attention (gelb), beide stehen rechts
+   neben dem running-Badge im selben Slot, in dem vorher der Hover-Muelleimer
+   sass. Auf einem aktiven Projekt-Item bleiben die Farben sichtbar — die
+   .active-Regel weiter unten ueberschreibt nur das neutrale Default-Badge. */
+.td-list-item .td-badge.waiting {
+  background: rgba(255, 138, 60, 0.16);
+  border-color: rgba(255, 138, 60, 0.42);
+  color: var(--td-orange);
+}
+.td-list-item .td-badge.attention {
+  background: rgba(240, 180, 0, 0.14);
+  border-color: rgba(240, 180, 0, 0.38);
+  color: var(--td-warn);
+}
+
 .td-list-item.active .td-badge {
   background: var(--td-accent-soft);
   border-color: var(--td-accent-line);
   color: var(--td-accent);
+}
+/* Aktive-Item-Override darf die Aufmerksamkeits-Badges NICHT auf gruen kippen —
+   sonst geht die Warn-Information beim Anklicken verloren. */
+.td-list-item.active .td-badge.waiting {
+  background: rgba(255, 138, 60, 0.16);
+  border-color: rgba(255, 138, 60, 0.42);
+  color: var(--td-orange);
+}
+.td-list-item.active .td-badge.attention {
+  background: rgba(240, 180, 0, 0.14);
+  border-color: rgba(240, 180, 0, 0.38);
+  color: var(--td-warn);
+}
+
+/* Verlauf-Header-Total-Badge: neutrales Look wie das alte Default-Badge,
+   sitzt in td-panel-actions rechts vom Titel. Steht ausserhalb von td-list-item,
+   daher eigener Selector. */
+.td-panel-actions .td-badge.total {
+  font-family: var(--td-mono);
+  font-size: 10px;
+  background: var(--td-bg);
+  border: 1px solid var(--td-line-2);
+  color: var(--td-text-dim);
+  padding: 1px 6px;
+  border-radius: 2px;
+  min-width: 18px;
+  text-align: center;
+  display: inline-block;
 }
 
 /* Row-Actions (Resume + Close) auf einem aktiven Session-Item */
@@ -456,6 +500,43 @@ body,
 .td-list-item:hover .td-row-hover,
 .td-row-hover:focus-visible {
   opacity: 1;
+}
+
+/* Phase-2 Season-32 — Rechtsklick-Kontextmenu fuer Projekte (und potenziell
+   spaeter weitere Listen). Floating-Layer in fixed-Position, Styling lehnt
+   sich an td-panel-Optik an: dunkler Hintergrund, Linien-Border, Mono-Font.
+   Z-Index hoch genug, dass auch beim Modal-Overlap das Menu sichtbar bleibt. */
+.td-context-menu {
+  background: var(--td-bg);
+  border: 1px solid var(--td-line-2);
+  border-radius: 3px;
+  padding: 4px 0;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  font-family: var(--td-mono);
+  font-size: 12px;
+}
+.td-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--td-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: background .12s, color .12s;
+}
+.td-context-menu-item:hover:not(:disabled) {
+  background: var(--td-line);
+}
+.td-context-menu-item.danger:hover:not(:disabled) {
+  color: var(--td-red);
+}
+.td-context-menu-item:disabled {
+  color: var(--td-text-mute);
+  cursor: not-allowed;
 }
 
 /* Action-Buttons (Add Project / Neue Session) im Panel-Foot */

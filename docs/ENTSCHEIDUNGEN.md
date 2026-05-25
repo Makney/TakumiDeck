@@ -24,6 +24,58 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Season-32 LeftSidebar-Polish: Marker-Definition, Verlauf-Counter-Quelle, Kontextmenu-Implementierung, Sub-Projekt-Vertagung
+
+**Entscheidung:** Vier Achsen-Entscheidungen fuer den LeftSidebar-Polish, in einem Eintrag, weil sie aus einem zusammenhaengenden User-Brief stammen. (1) **Aufmerksamkeits-Marker** kombiniert zwei Sub-Eimer in einer Marker-Sprache: orange `waiting` = `SessionStatus 'waiting' | 'permission-prompt'`, gelb `attention` = `'interrupted' | 'error'`. (2) **Verlauf-Counter-Quelle** ist `historyEntries.length` (Server-gefiltert auf `completed`/`interrupted`/`error`), nicht das DB-Feld `projects.session_count`. (3) **Kontextmenu-Implementierung** als eigenes React-Floating-Component statt Electron-`Menu.popup()`. (4) **Sub-Projekt-Hierarchie** wird nicht jetzt gebaut — Roadmap-Eintrag in Phase 3 mit konkretem Schnitt.
+
+**Varianten (Marker-Definition):**
+
+- **A** Nur Resume-Kandidaten (`interrupted`/`error`) als gelber Marker. Klare Definition, kein neuer Cross-Tab-State.
+- **B** Nur „wartet auf Input" (`waiting`/`permission-prompt`) als oranger Marker. Genau der User-Schmerz, aber Resume-offene Sessions bleiben unsichtbar.
+- **C** Beide kombiniert mit zwei Marker-Farben, orange dominiert gelb. (Gewaehlt)
+
+**Varianten (Verlauf-Counter-Quelle):**
+
+- **D** `historyEntries.length` aus dem bereits in der Sidebar geladenen Server-Result. (Gewaehlt)
+- **E** DB-Count aller Sessions im Projekt (= heutiges `p.session_count`). Inkl. archived — inkonsistent mit der Liste darunter.
+- **F** „X / Y"-Format (`10 / 40`) wenn die Quickliste limitiert ist. Maximale Information, aber Display-Kosten.
+
+**Varianten (Kontextmenu-Implementierung):**
+
+- **G** Eigenes React-`ProjectContextMenu` als Floating-Layer mit Click-Outside-/Esc-Close und Viewport-Klemmung. (Gewaehlt)
+- **H** Electron-Native `Menu.popup()` ueber IPC. Native Look bricht mit dem Custom-Theme.
+- **I** Browser-Default `<menu>`-Element mit `popover`-API. Browser-Support quirky, Styling unflexibel.
+
+**Varianten (Sub-Projekt-Hierarchie):**
+
+- **J** Pfeile `▸` ersatzlos entfernen, weil sie nichts aufklappen. Ehrlichste Loesung.
+- **K** Pfeile bleiben, aktivieren Active-Sessions-Liste pro Projekt als Inline-Children (Sidebar wird zur Baum-Ansicht). Grosser Umbau, loest das gerade in Season 30 stabilisierte 3-Sektionen-Layout auf.
+- **L** Pfeile bleiben sichtbar, neue Hierarchie-Ebene „Ueber-Projekt" mit Sub-Projekten als Phase-3-Roadmap. (Gewaehlt)
+
+**Grund:**
+
+C statt A/B: Der User-Schmerz ist primaer „wartet auf Input" (orange), aber Resume-offene Sessions sind ein zweiter, niedrigfrequenter Schmerz, den der gelbe Marker kostenlos abdeckt — die Daten sind ohnehin im SessionStore. Prioritaets-Regel (orange dominiert gelb) verhindert visuelles Rauschen: bei gleichzeitig laufenden Waiting- und Interrupted-Sessions gewinnt das dringendere Signal den Slot.
+
+D statt E/F: Das alte dunkle Top-Badge mit `session_count` war ein Sprint-6-Sub-Optimum — es zeigte eine Zahl, die nirgendwo sonst in der UI auftaucht (inkl. archived). Die Sidebar-Quickliste zeigt 10 Eintraege, „→ Alle anzeigen" filtert auch nur die drei aktiven Status — der Counter sollte zu beiden konsistent sein. F waere informativer, aber Header-Slot ist schmal; die Zahl 40 allein ist klar genug, weil sie als „Gesamtzahl der Liste, die der → Alle anzeigen-Klick oeffnet" lesbar ist.
+
+G statt H/I: TakumiDeck hat **kein einziges natives Kontextmenu** im UI; ein H-Native-Popup waere der erste Stilbruch. I scheidet aus, weil die `popover`-Browser-API noch zu wenig durchgereiftes Stillen bietet (insbes. Position-Anchoring auf `clientX/Y`). G ist ein 70-Zeilen-Component das spaeter generalisierbar ist (z.B. fuer Tab-Rechtsklick).
+
+L statt J/K: J waere ehrlich, aber der User signalisierte explizit Hierarchie-Bedarf („dass sie eine Funktion bekommen werden"). K loest das gerade in Season 30 stabilisierte 3-Sektionen-Layout auf und vermischt Projekt- mit Session-Liste — das ist ein groesserer Umbau als das eigentliche Sub-Projekt-Feature. L parkt den konkreten Schnitt (parent_id-Migration, Tiefe-2-Scanner, Count-Rollup) in Phase 3, ohne Phase-2-Scope zu spreizen.
+
+**Konsequenz:**
+
+Vier Pure-Helper-/Component-Pfade aufgemacht: `aggregateProjectStatusCounts`, `pickAttentionMarker`, `ProjectContextMenu`, `td-context-menu`-CSS-Block. Drei davon sind testbar (Helpers), das Menu-Component ist im Renderer-Smoke-Test mit gepruefter Click-Outside-Logik abgedeckt. Marker-Sprache (orange > gelb) wird zur Konvention fuer kuenftige Multi-Aufmerksamkeits-Indikatoren in der UI — z.B. wenn der Tab-Bell-Pulse aus Season 28 spaeter um eine zweite Pulse-Farbe erweitert wird.
+
+**Implementierungsdetail:**
+
+ProjectContextMenu-Listener registrieren erst im naechsten Tick via `setTimeout(_, 0)` — sonst schliesst das initiale `mousedown`, das das Menu geoeffnet hat, es sofort wieder. Subtile aber typische Falle bei Floating-Menus, hier explizit dokumentiert weil der Bug ohne den Trick sofort sichtbar waere und der Trick ohne Kommentar wie eine Race-Condition aussieht.
+
+Im LeftSidebar bleibt der bestehende `RemoveProjectModal`-Flow unangetastet — das Kontextmenu ruft lediglich `onRequestRemove(id)` statt eines Hover-Klicks. Damit ist die Migration vom Muelleimer zum Kontextmenu eine reine UI-Schicht-Aenderung; das Modal, der DB-Pfad und die Tab-Cleanup-Logik aus Phase-2-Season-8 bleiben unveraendert. Legacy-Bucket bekommt das Menu mit `disabled`-Eintrag (canRemove=false) — das verhindert dass die UI die Aktion verspricht, obwohl die Server-Boundary sie ablehnen wuerde.
+
+`--td-orange`/`--td-warn` Token waren in `tokens.css` bereits vorhanden (Phase-1-Foundation), keine neuen Farbwerte. RGBA-Wrapping in `app.css` (`rgba(255,138,60,0.16)` etc.) statt CSS-`color-mix()` weil der Custom-Theme keine modernen Color-Functions verwendet — Konsistenz mit den bestehenden `--td-accent-soft`-/`--td-accent-line`-Mustern.
+
+---
+
 ## Season-31 Terminal-Session: Inline-Gates, Pure-Helper-Shell-Resolver, Modell-Sentinel
 
 **Entscheidung:** Drei Achsen-Entscheidungen fuer den neuen `'terminal'`-Session-Typ, in einem Eintrag, weil sie sich gegenseitig stuetzen. (1) Spawn-Branch-Struktur: **fuenf Inline-Gates** im bestehenden `pty:create`-Handler, statt komplett separater Sub-Funktion `spawnTerminalSession` oder eines Strategy-Pattern. (2) Shell-Resolution: **Pure-Helper `resolveTerminalShell`** in `src/main/pty/terminalShell.ts` mit zweistufigem PATH-Lookup (pwsh → powershell), statt Inline-Block im Handler oder Erweiterung des bestehenden `preSpawnCheck` um einen Mode-Parameter. (3) Modell-Pflicht im Schema: **Sentinel-Wert `'none'`** beim Modal-Submit fuer terminal-Sessions, der vom Spawn-Branch ignoriert wird, statt das Schema mit `superRefine` oder einer Discriminated Union aufzulockern.

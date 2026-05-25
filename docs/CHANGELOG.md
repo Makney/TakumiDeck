@@ -17,6 +17,31 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-25 — Season 32: LeftSidebar-Polish (Aufmerksamkeits-Marker · Verlauf-Counter · Rechtsklick-Menu)
+
+### Was jetzt geht
+
+- **Aufmerksamkeits-Marker pro Projekt in der Sidebar.** Wenn eine Session in einem anderen Projekt auf User-Eingabe wartet (`waiting` oder `permission-prompt`), erscheint rechts im Projekt-Eintrag ein **oranger** Badge mit der Anzahl betroffener Sessions. Wenn eine Session unterbrochen oder mit Fehler liegen geblieben ist (`interrupted`/`error`), ein **gelber** Badge. Orange dominiert gelb, weil „jetzt auf Input warten" dringender ist als „Resume offen". Der grueneR `running`-Badge bleibt links davon stehen, falls gleichzeitig aktive Sessions laufen. Loest den Schmerz, beim Multi-Projekt-Arbeiten nicht zu sehen, dass ein anderes Projekt gerade Aufmerksamkeit braucht — die Information war schon im State-Detection-Loop, wurde aber nicht in die Projekt-Liste durchgereicht.
+- **Verlauf-Counter im Panel-Header.** Rechts neben „Verlauf" zeigt ein kleines Badge die Gesamtzahl der Verlauf-Eintraege im aktiven Projekt (gefiltert auf `completed`/`interrupted`/`error`, archived ausgeblendet). Die alte Anzeige der Gesamtzahl als dunkles Badge oben im Projekt-Eintrag ist weg — die Zahl gehoert dorthin, wo der Verlauf gerendert wird, nicht in den Top-Block.
+- **Rechtsklick-Kontextmenu auf Projekt-Eintraegen.** Der Hover-Muelleimer ist verschwunden; die Aktion „Projekt entfernen…" lebt jetzt im Rechtsklick-Menu. Befreit den Hover-Slot fuer den neuen Aufmerksamkeits-Marker und reduziert die visuelle Last der Standard-Ansicht. Esc schliesst, Klick ausserhalb schliesst, Position klemmt sich ans sichtbare Fenster.
+- **Pfeile bleiben sichtbar, bekommen aber eine Funktion.** Die `▸`-Glyphen neben jedem Projekt suggerieren seit Sprint 6, dass man Projekte aufklappen koenne — bisher tat das nichts. Phase-3-Roadmap-Eintrag „Ueber-Projekte mit Sub-Projekten" ist jetzt formell gesetzt mit konkretem Schnitt (parent_id-Migration, Workspace-Scanner-Tiefe 2, rekursives Rendering, Count-Rollup damit Marker beim Einklappen nicht verschwindet). Bis dahin: bewusst belassen, weil der User explizit signalisiert hat „kann damit leben, ich weiss dass sie nichts tun, aber dass sie eine Funktion bekommen werden".
+
+### Architektur-Notiz
+
+Vier Achsen-Entscheidungen in einem Schwung — drei umgesetzt (1C·2D·3G), eine als Roadmap geparkt (4L). Details in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md).
+
+**(1C) Marker-Definition als Vereinigung zweier Sub-Eimer.** Orange `waiting` fasst `SessionStatus 'waiting'` und `'permission-prompt'` zusammen, weil sie aus Nutzer-Sicht denselben Zustand bedeuten („Claude wartet auf mich"). Gelb `attention` fasst `'interrupted'` und `'error'` zusammen, weil beide einen Resume-Klick brauchen. Aggregations-Helper `aggregateProjectStatusCounts` in `src/renderer/components/projectStatusCounts.ts` macht den Pass ueber alle Tabs in O(n) und produziert eine `Map<projectId, {running, waiting, attention}>`. Pure Funktion ohne Store-Bezug — 9 Black-Box-Tests in `tests/renderer/project-status-counts.test.ts` decken Mapping, Bucket-Zusammenfassung, Status-Ignore (completed/archived/idle), Multi-Projekt-Aggregation und die Prioritaets-Regel (orange > gelb) ab.
+
+**(2D) Verlauf-Counter aus `historyEntries.length`, nicht aus `p.session_count`.** Die DB-Zahl `projects.session_count` zaehlt **alle** Sessions des Projekts inklusive `archived`. Das alte dunkle Top-Badge zeigte diese Zahl — nuetzlich war sie nie, weil sie nicht mit dem Verlauf-Panel uebereinstimmte. Der neue Counter zieht aus dem bereits geladenen `historyEntries`-Result der Sidebar (HISTORY_STATUSES = `['completed', 'interrupted', 'error']`), ist also exakt die Zahl der Eintraege, die der User per „→ Alle anzeigen" zu sehen kriegt. Keine neue IPC-Roundtrip noetig.
+
+**(3G) Rechtsklick als eigenes React-Component, nicht Electron-Native-Menu.** Neuer `ProjectContextMenu` in `src/renderer/components/ProjectContextMenu.tsx` rendert ein Floating-Layer in `position: fixed` mit Esc-/Click-Outside-Close und Viewport-Klemmung (verhindert dass das Menu am Rand abgeschnitten wird). Stil-konsistent zur td-panel-Optik. Electrons `Menu.popup()` haette einen Native-Look gebracht der mit dem Custom-Theme der App bricht. Setup-Timer-Trick (Listener erst im naechsten Tick registrieren) verhindert dass das initiale `mousedown`, das das Menu geoeffnet hat, es sofort wieder schliesst. Erst nur „Projekt entfernen…", aber die Komponente ist tab/tablist-faehig vorbereitet — die naechste Aktion (z.B. „Pfad kopieren", „Im Explorer oeffnen") kommt als weiterer Button.
+
+**(4L) Ueber-/Sub-Projekte als Phase-3-Roadmap.** Neuer Eintrag im Bereich Workflow von `docs/roadmap/PHASE3.md` mit konkretem Implementierungs-Schnitt: `projects.parent_id`-Schema-Migration, Workspace-Scanner-Tiefe 2 (verschachtelte CLAUDE.md werden Sub-Projekte), rekursives Sidebar-Rendering mit Toggle-State in localStorage, Drag&Drop oder Settings-UI fuer manuelles Re-Parenting, **Count-Rollup vom Sub- aufs Ueber-Projekt** (sonst geht die Sichtbarkeit aus Season 32 verloren, sobald die Hierarchie eingeklappt ist).
+
+CSS-Token `--td-orange` (`#ff8a3c`) und `--td-warn` (`#f0b400`) waren bereits in `tokens.css` definiert — keine neuen Farbwerte noetig. Suite 990/990 in 70 Files gruen (vorher 981/981 in 69; +1 Test-File +9 Tests). Typecheck + lint sauber.
+
+---
+
 ## 2026-05-24 — Season 31: Terminal-Session ohne Claude
 
 ### Was jetzt geht

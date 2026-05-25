@@ -11,6 +11,12 @@ import { useSessionStore, type SessionTab } from '../stores/sessions';
 import { DEFAULT_PROJECT_ID } from '@shared/constants';
 import { displayProjectName } from '../components/displayProjectName';
 import { estimateTerminalCols } from '../components/estimateTerminalCols';
+import {
+  aggregateProjectStatusCounts,
+  pickAttentionMarker,
+  type ProjectStatusCounts,
+} from '../components/projectStatusCounts';
+import { ProjectContextMenu } from '../components/ProjectContextMenu';
 import { RemoveProjectModal } from '../modals/RemoveProjectModal';
 
 // LeftSidebar — Sprint-6-UI-Fix mit 3-Sektionen-Layout aus dem Design-Handoff
@@ -131,14 +137,11 @@ export function LeftSidebar({ settings }: Props) {
     // weil Status-Änderungen ohnehin den Tab nicht aus dem Store entfernen.
   }, [activeProjectId, tabs.length]);
 
-  const runningCountByProject = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of tabs) {
-      if (t.status !== 'running') continue;
-      map.set(t.projectId, (map.get(t.projectId) ?? 0) + 1);
-    }
-    return map;
-  }, [tabs]);
+  // Phase-2 Season-32: drei Counts pro Projekt in einem Pass — running (gruen),
+  // waiting (orange, inkl. permission-prompt), attention (gelb: interrupted/error).
+  // Loest den Sprint-6-Mismatch auf, bei dem das dunkle session_count-Badge die
+  // grueneR running-Anzeige verdraengte, sobald keine running-Tabs offen waren.
+  const statusCountsByProject = useMemo(() => aggregateProjectStatusCounts(tabs), [tabs]);
 
   const visibleProjects = projects.filter((p) => {
     if (p.id !== DEFAULT_PROJECT_ID) return true;
@@ -273,7 +276,7 @@ export function LeftSidebar({ settings }: Props) {
           setRemoveError(null);
           setRemoveTargetId(id);
         }}
-        runningCountByProject={runningCountByProject}
+        statusCountsByProject={statusCountsByProject}
       />
 
       {/* === Aktive Sessions ===================================================== */}
@@ -293,6 +296,7 @@ export function LeftSidebar({ settings }: Props) {
       {/* === Verlauf ============================================================= */}
       <HistoryPanel
         entries={historySnapshot}
+        totalCount={historyEntries.length}
         onPick={(entry) => setHistoryActionEntry(entry)}
         onOpenAll={() => setMainView('history')}
       />
@@ -320,13 +324,14 @@ interface ProjectsPanelProps {
   adding: boolean;
   error: string | null;
   workspaceMissing: boolean;
-  runningCountByProject: Map<string, number>;
+  statusCountsByProject: Map<string, ProjectStatusCounts>;
   onPick: (id: string) => void;
   onAdd: () => void;
   onRefresh: () => void;
-  // Phase-2 Season-8: Trash-Icon im Hover-Slot eines echten Projekts.
-  // Legacy-Bucket (DEFAULT_PROJECT_ID) bekommt kein Icon — die Aktion ist
-  // dort serverseitig verboten und soll auch UI-seitig nicht angeboten werden.
+  // Phase-2 Season-32: Remove-Aktion wandert vom Hover-Muelleimer ins
+  // Rechtsklick-Kontextmenu (ProjectContextMenu). Der Hover-Slot ist jetzt
+  // fuer den Aufmerksamkeits-Marker reserviert. Legacy-Bucket bekommt das
+  // Menu zwar angeboten, aber den Eintrag disabled (canRemove=false).
   onRequestRemove: (id: string) => void;
 }
 
@@ -337,12 +342,17 @@ function ProjectsPanel({
   adding,
   error,
   workspaceMissing,
-  runningCountByProject,
+  statusCountsByProject,
   onPick,
   onAdd,
   onRefresh,
   onRequestRemove,
 }: ProjectsPanelProps) {
+  // Phase-2 Season-32: Rechtsklick-Menu-State. x/y in Viewport-Koordinaten,
+  // targetId identifiziert das Projekt. Bewusst lokal im Panel, weil kein
+  // anderes Renderer-Surface darauf reagieren muss.
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+
   return (
     <div className="td-panel">
       <div className="td-panel-head">
@@ -376,34 +386,38 @@ function ProjectsPanel({
         <div className="td-list">
           {projects.map((p) => {
             const isLegacy = p.id === DEFAULT_PROJECT_ID;
-            const runningCount = runningCountByProject.get(p.id) ?? 0;
+            const counts = statusCountsByProject.get(p.id);
+            const runningCount = counts?.running ?? 0;
+            const attentionMarker = pickAttentionMarker(counts);
             return (
               <div
                 key={p.id}
                 className={`td-list-item${activeId === p.id ? ' active' : ''}${isLegacy ? ' legacy' : ''}`}
                 onClick={() => onPick(p.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY, id: p.id });
+                }}
                 title={p.path}
               >
                 <span className="td-folder">▸</span>
                 <span className="td-name">{displayProjectName(p)}</span>
-                {runningCount > 0 ? (
-                  <span className="td-badge running">{runningCount}</span>
-                ) : (
-                  p.session_count > 0 && <span className="td-badge">{p.session_count}</span>
+                {runningCount > 0 && (
+                  <span className="td-badge running" title={`${runningCount} aktive Session(s)`}>
+                    {runningCount}
+                  </span>
                 )}
-                {!isLegacy && (
-                  <button
-                    type="button"
-                    className="td-row-x td-row-hover"
-                    title="Projekt aus Liste entfernen"
-                    aria-label={`Projekt ${displayProjectName(p)} aus Liste entfernen`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRequestRemove(p.id);
-                    }}
+                {attentionMarker && (
+                  <span
+                    className={`td-badge ${attentionMarker.kind}`}
+                    title={
+                      attentionMarker.kind === 'waiting'
+                        ? `${attentionMarker.count} Session(s) warten auf Eingabe`
+                        : `${attentionMarker.count} Session(s) unterbrochen oder mit Fehler`
+                    }
                   >
-                    🗑
-                  </button>
+                    {attentionMarker.count}
+                  </span>
                 )}
               </div>
             );
@@ -420,6 +434,15 @@ function ProjectsPanel({
           + Add Project
         </button>
       </div>
+      {menu && (
+        <ProjectContextMenu
+          x={menu.x}
+          y={menu.y}
+          canRemove={menu.id !== DEFAULT_PROJECT_ID}
+          onRemove={() => onRequestRemove(menu.id)}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </div>
   );
 }
@@ -519,15 +542,30 @@ function ActiveSessionsPanel({
 
 interface HistoryPanelProps {
   entries: SessionHistoryEntry[];
+  // Phase-2 Season-32: Gesamtzahl der Verlauf-Eintraege im aktiven Projekt
+  // (gefiltert auf completed/interrupted/error wie HISTORY_STATUSES). Die
+  // Quickliste oben zeigt nur die ersten HISTORY_QUICKLIST_LIMIT Eintraege,
+  // das Badge im Header zeigt die volle Zahl — passend zu "→ Alle anzeigen".
+  totalCount: number;
   onPick: (entry: SessionHistoryEntry) => void;
   onOpenAll: () => void;
 }
 
-function HistoryPanel({ entries, onPick, onOpenAll }: HistoryPanelProps) {
+function HistoryPanel({ entries, totalCount, onPick, onOpenAll }: HistoryPanelProps) {
   return (
     <div className="td-panel td-panel-history">
       <div className="td-panel-head">
         <div className="td-panel-title">Verlauf</div>
+        {totalCount > 0 && (
+          <div className="td-panel-actions">
+            <span
+              className="td-badge total"
+              title={`${totalCount} Eintraege im Verlauf dieses Projekts`}
+            >
+              {totalCount}
+            </span>
+          </div>
+        )}
       </div>
       <div className="td-panel-body">
         {entries.length === 0 && (

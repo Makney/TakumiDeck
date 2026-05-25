@@ -47,7 +47,7 @@ Projekt-Erkennung und -Verwaltung.
 | ------------------------------- | ------ | --------- |
 | `Workspace-Scanner`             | ✅      | 2026-05-09 — Async-Walk mit Konkurrenz-Limit (Variante A), max-depth 5, Stop bei `CLAUDE.md` / `.git`, FsLikeDriver für Tests |
 | `CLAUDE.md-Parser`              | ✅      | 2026-05-09 — `gray-matter` + zod-Validierung, strict für `trigger_phrases`, locker für `on_demand_files` |
-| `Project-Sidebar`               | ✅      | 2026-05-09 — 240 px Sidebar mit Active-Highlight + Running-Badge, `+`/`↻`-Buttons, Per-Projekt-Tab-Filter, Sprint-2/3-Legacy-Bucket sichtbar bei `session_count > 0` |
+| `Project-Sidebar`               | ✅      | 2026-05-09 — 300 px Sidebar (Season 30 Symmetrierung) mit Active-Highlight + Running-Badge, `+`/`↻`-Buttons, Per-Projekt-Tab-Filter, Sprint-2/3-Legacy-Bucket sichtbar bei `session_count > 0`. **Season 32:** Aufmerksamkeits-Marker pro Projekt (orange `waiting`+`permission-prompt`, gelb `interrupted`+`error`, orange dominiert gelb); Verlauf-Counter rechts im Panel-Header statt Top-Block; Rechtsklick-Kontextmenu fuer „Projekt entfernen…" statt Hover-Muelleimer. |
 
 ## Token-Dashboard (Sprint 5)
 
