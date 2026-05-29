@@ -20,6 +20,29 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 34 — User-erweiterbare Modell-Liste + Auto-Refresh (Variante D)
+
+**Ziel:** Ausgangsfrage des Users: Anthropic hat Opus 4.8 released, TakumiDeck kennt es nicht und zeigt noch 4.7 als Top-Modell. Wie kann die App automatisch erkennen, welche Modelle verfügbar sind, und wie passt der User sie an, wenn sie sich ändern? Im Working Tree lag bereits eine halbfertige Season-34-Arbeit (statische Built-in-Liste + `custom_models`-Settings-Feld + Settings-Tab „Modelle"), die den manuellen Teil zu ~90 % abdeckte, aber 4.7 als Top hatte und keine Auto-Erkennung kannte.
+
+**Ergebnis:** Variante D (Hybrid) umgesetzt: (1) Sofort-Fix — `claude-opus-4-8` an die Spitze der Built-ins + 200k-Default-Limit. (2) Die manuelle Pflege rundgezogen (war schon da). (3) Optionaler Auto-Refresh gegen `GET /v1/models` als neuer Aufsatz: Pure-Helper `parseAnthropicModelsResponse` + `diffNewModels` in `src/shared/models.ts`, injizierbare Netzwerk-Schicht `src/main/models/fetchAvailableModels.ts`, IPC `models:fetch-available`, Preload-Bridge `window.api.models.fetchAvailable`, UI-Block „Verfuegbare Modelle abrufen" im Settings-Modelle-Tab. Der `available=false`-Zweig (kein API-Key) ist ein eigener Erfolgs-Zustand, kein Fehler — entscheidend, weil der User per Abo arbeitet. 24 neue Tests (19 shared für Parser/Diff/buildModelOptions/Validator, 5 main mit gemocktem `fetch` für die drei Ausgänge kein-Key/Erfolg/HTTP-Fehler). Typecheck + lint sauber; angrenzende Settings-/Schema-Tests (119) grün.
+
+**Gut gelaufen:**
+
+- **User-Sub-Frage zur Auth hat die Varianten-Wahl geschärft.** Auf die Variante-D-Empfehlung kam die Rückfrage „Abo jetzt, aber vielleicht API-Key in Zukunft" — genau das Signal, das D von A-solo trennt. Statt ein Feature zu bauen, das beim Abo-User dauerhaft leer/fehlerhaft ist, wurde der `available=false`-Zustand als sauberer Degradations-Pfad eingebaut, der sich bei späterem Key-Setzen von selbst aktiviert. Lehre: bei Features mit externer Auth-Abhängigkeit früh den konkreten Auth-Modus des Users erfragen — er entscheidet oft zwischen „Vollautomatik" und „optionaler Aufsatz".
+- **Halbfertige Working-Tree-Arbeit zuerst gelesen, nicht überschrieben.** Vor jedem Vorschlag wurde der vorhandene Season-34-Stand (models.ts, Settings-Tab, Schema, Migration 3) komplett gesichtet. Dadurch war klar, dass „User kann anpassen" schon fast fertig war und die echte Lücke nur „4.8 fehlt" + „keine Auto-Erkennung" hieß — der Scope blieb additiv statt redundant.
+- **Pure/Impure-Trennung machte die Season-Test-Scope-Regel mühelos.** Parsing + Diff als context-freie Pures, Netzwerk mit injiziertem `fetch` — beide ohne echten Call testbar. Genau die „nur das neue Feature"-Abdeckung, die CODING_RULES verlangt, ohne Integration-Test-Apparat.
+
+**Gebremst durch:**
+
+- **Anthropic-API-Realität gegen die Wunsch-Erwartung.** Die naheliegende Annahme „ein Endpoint liefert alle Modelle samt Kontextfenster" stimmt nicht: `/v1/models` gibt nur ID + Anzeigename. Das musste in der Varianten-Begründung explizit werden, sonst hätte A-solo verlockend gewirkt. Lehre: bei „kann die App X automatisch erkennen?" früh prüfen, *welche Felder* die Quelle wirklich liefert — die halbe Wahrheit (IDs ohne Limits) ändert die Architektur-Empfehlung.
+
+**Für nächste Season:**
+
+- **OAuth-Pfad + Pagination sind als TECH_SCHULDEN geparkt mit klaren Triggern.** Wenn der User auf API-Key-Nutzung wechselt, ist der env-Key-Pfad ggf. um `CLAUDE_API_KEY`/OAuth zu erweitern; Pagination erst, wenn Anthropic real > 100 Modelle listet. Bis dahin kein Handlungsbedarf.
+- **Built-in-Liste bleibt code-gepflegt — bei jedem neuen Anthropic-Release einen Eintrag + 200k-Limit nachziehen.** Der Auto-Refresh ersetzt das nicht (Default-Pfeil-Wert + Abo-User ohne Key). Ein kleiner wiederkehrender Wartungs-Handgriff, der bewusst so bleibt.
+
+---
+
 ## Phase 2 Season 33 — Terminal-Buffer-Persistierung ueber Resume (Scope-Cut auf nur terminal-Sessions)
 
 **Ziel:** Phase-2-Roadmap-Feature `Terminal-Buffer-Persistierung ueber Resume` aus dem Bereich Sessions umsetzen. Roadmap-Brief war detailliert: `@xterm/addon-serialize` ist seit Season 28 geladen, naechster Schritt waere `serialize.serialize()` beim Tab-Close, Persist in eine neue Spalte/Tabelle, Restore beim Resume vor dem ersten PTY-Frame. Offene Fragen im Brief: max. Buffer-Groesse pro Session (Volumen-Sorge bei 50+ archivierten Sessions × 1 MB) und Persistenz-Trigger (Tab-Close vs. debounced vs. session:close).

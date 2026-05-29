@@ -33,6 +33,17 @@ export const LimitBarSchema = z.object({
   aggregation_mode: z.enum(['rolling', 'session_block']).optional(),
 });
 
+// Phase-2 Season-34: User-definierte Modelle ueber die Settings-UI.
+// Built-in-IDs wandern in src/shared/models.ts; CustomModel ergaenzt die Liste
+// pro Benutzer um neue Anthropic-Releases ohne Code-Push. `context_limit`
+// optional — fehlt der Wert, faellt der Verbrauch-Resolver auf
+// settings.default_limit zurueck.
+export const CustomModelSchema = z.object({
+  id: z.string().min(1).max(100),
+  label: z.string().min(1).max(100),
+  context_limit: z.number().positive().optional(),
+});
+
 export const AppSettingsSchema = z.object({
   // Phase-2 Season-25: Schema-Versionsfeld fuer die Settings-Migrations-Pipeline.
   // `SettingsStore.read()` ruft `runSettingsMigrations()` zwischen JSON-Parse
@@ -49,6 +60,10 @@ export const AppSettingsSchema = z.object({
   workspace_wizard_completed: z.boolean(),
   default_model: z.string(),
   claude_binary_path: z.string().min(1),
+  // Phase-2 Season-34: User-erweiterbare Modell-Liste. Built-ins bleiben in
+  // src/shared/models.ts hardcoded, damit das App-Update neue Anthropic-Modelle
+  // mitliefert; dieses Feld ist die User-Erweiterung fuer ad-hoc neue IDs.
+  custom_models: z.array(CustomModelSchema),
   model_limits: z.record(z.string(), z.number().positive()),
   default_limit: z.number().positive(),
   limit_bars: z.array(LimitBarSchema),

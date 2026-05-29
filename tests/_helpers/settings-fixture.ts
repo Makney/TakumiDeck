@@ -18,6 +18,7 @@ export function buildTestSettings(overrides: Partial<AppSettings> = {}): AppSett
     workspace_wizard_completed: true,
     default_model: 'claude-sonnet-4-6',
     claude_binary_path: 'claude',
+    custom_models: [],
     model_limits: {
       'claude-sonnet-4-6': 1_000_000,
       'claude-opus-4-7': 1_000_000,

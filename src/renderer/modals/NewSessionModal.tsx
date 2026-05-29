@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import type {
+  CustomModel,
   SessionType,
   DocsSyncFileStatus,
   DocsOnDemandFileStatus,
@@ -11,6 +12,7 @@ import {
   type DocsSyncFileDescriptor,
   type ContextPreambleItem,
 } from '@shared/docs-sync';
+import { buildModelOptions } from '@shared/models';
 
 // NewSessionModal: Sprint-3-Pflicht aus Architektur 6.0.1.
 //
@@ -61,18 +63,13 @@ const TYPE_LABELS: Record<SessionType, string> = {
 // würde nur per Tooltip lesbar.
 const CUSTOM_TYPE_LABEL_MAX = 60;
 
-// Modell-Dropdown-Optionen: human-readable Labels + interne Model-IDs.
-// Reihenfolge bewusst vom „Daily Driver" (Sonnet 4.6) absteigend zu speziellen Modellen.
-const MODEL_OPTIONS: Array<{ id: string; label: string }> = [
-  { id: 'claude-opus-4-7', label: 'Opus 4.7' },
-  { id: 'claude-opus-4-6', label: 'Opus 4.6' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
-];
-
 interface Props {
   defaultModel: string;
+  // Phase-2 Season-34: User-erweiterte Modell-Liste aus den Settings. Die
+  // Built-in-IDs liefert `buildModelOptions` selbst; hier reicht der Custom-
+  // Slot durch, damit das Modal dieselbe Vereinigung wie der Settings-Tab
+  // anzeigt.
+  customModels: ReadonlyArray<CustomModel>;
   // Sprint 6 (Q6 Variante B): Vorschau der nächsten Season-Nummer für das aktive Projekt.
   // Kommt aus useProjectStore (project.next_season_number) — im Modal nur für die
   // Anzeige, der echte Increment passiert atomar im Main beim pty:create. Lücken
@@ -99,6 +96,7 @@ interface Props {
 
 export function NewSessionModal({
   defaultModel,
+  customModels,
   nextSeasonPreview,
   projectId,
   onCancel,
@@ -107,6 +105,7 @@ export function NewSessionModal({
   const [title, setTitle] = useState('');
   const [type, setType] = useState<SessionType>('feature');
   const [model, setModel] = useState(defaultModel);
+  const modelOptions = useMemo(() => buildModelOptions(customModels), [customModels]);
   // Phase-2 Season-5: separates State-Feld, damit ein Wechsel zwischen 'custom'
   // und einem festen Typ den eingegebenen Label-Text nicht verliert.
   const [customLabel, setCustomLabel] = useState('');
@@ -460,9 +459,9 @@ export function NewSessionModal({
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
               >
-                {MODEL_OPTIONS.map((opt) => (
+                {modelOptions.map((opt) => (
                   <option key={opt.id} value={opt.id}>
-                    {opt.label}
+                    {opt.label}{opt.isCustom ? ' · custom' : ''}
                   </option>
                 ))}
               </select>

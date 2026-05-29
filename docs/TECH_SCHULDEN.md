@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Modell-Auto-Refresh: nur env-API-Key, keine Pagination, kein OAuth-Pfad (2026-05-29)
+
+**Bereich:** `src/main/models/fetchAvailableModels.ts`, `src/main/ipc/models.ts` (Phase-2-Season-34, Variante D).
+
+**Was:** Der Auto-Refresh gegen `GET /v1/models` (1) liest den API-Key ausschliesslich aus `process.env.ANTHROPIC_API_KEY`, (2) fragt mit `?limit=100` eine einzige Seite ab und ignoriert das `has_more`/`last_id`-Pagination-Feld, (3) hat keinen Pfad, der den Claude-Code-OAuth-Token (Abo-Login) verwendet.
+
+**Warum so:** Der User nutzt Claude per Abo und hat heute keinen API-Key — der Refresh ist bewusst ein optionaler Komfort-Aufsatz, nicht der Hauptpfad (manuelle `custom_models`-Pflege deckt den Bedarf ab). Pagination ist heute irrelevant: Anthropic hat eine knappe zweistellige Modell-Zahl, die locker in eine 100er-Seite passt. Den OAuth-Token am Models-Endpoint zu verwenden ist undokumentiert/nicht unterstützt und damit fragiler als der Mehrwert rechtfertigt.
+
+**Risiko:** Niedrig. (1)/(3): Solange kein Key gesetzt ist, zeigt die UI sauber „kein Key, bitte manuell pflegen" — kein Fehler, kein Datenverlust. (2): Erst wenn Anthropic dauerhaft > 100 Modelle gleichzeitig listet, würden Einträge jenseits der ersten Seite fehlen — sehr unwahrscheinlich und ohne Funktionsbruch (die fehlenden ließen sich weiterhin manuell anlegen).
+
+**Auflösung:** (1)/(3) zusammen lösen, sobald der User auf API-Key-Nutzung wechselt: zusätzlich `CLAUDE_API_KEY` o.ä. lesen bzw. — falls Anthropic einen offiziellen OAuth-Pfad für `/v1/models` dokumentiert — den Token-Pfad ergänzen. (2): `has_more`-Schleife mit `after_id`-Cursor in `fetchAvailableModels` nachrüsten (der Pure-Parser ist bereits pro-Seite-stabil), Trigger ist eine real auftauchende zweite Seite.
+
+---
+
 ## Terminal-Buffer-Persistierung: App-Crash zwischen Tab-Sessions verliert den Snapshot (2026-05-25)
 
 **Bereich:** `src/renderer/panels/TerminalTab.tsx` (Phase-2 Season-33). Konkret: der `terminal:save-buffer`-IPC wird ausschliesslich im React-Cleanup-Pfad gefeuert (`useEffect`-Return-Funktion beim sessionId-Effekt). Cleanup laeuft bei `closeTab` aus dem Sessions-Store (× auf der Tab-Pille, Projekt-Wechsel mit Tab-Cleanup, Sidebar-Project-Switch), aber NICHT bei einem App-Crash oder einem Windows-Force-Quit. In dem Fall bleibt der zuletzt persistierte Snapshot stehen (oder es gibt keinen, wenn die Session brandneu war) — der naechste Resume zeigt entweder den vorletzten Stand oder leeres Terminal.

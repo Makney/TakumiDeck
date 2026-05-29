@@ -4715,6 +4715,85 @@ body,
   color: var(--td-text-dim);
 }
 
+/* Phase-2 Season-34 — Custom-Models-Editor im Modelle-Tab. Liste der
+   bereits angelegten Eintraege als Grid-Zeilen, darunter eine Hinzufuegen-
+   Zeile mit ID + Anzeigename + Limit + Button. Layout in einer Spalte,
+   damit Eingabe-Inputs auf engen Modal-Breiten nicht zu schmal werden. */
+.td-custom-models {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Phase-2 Season-34 (Variante D): Auto-Refresh-Block. Button + Ergebnis-Liste
+   untereinander, gleiche Listen-Optik wie die Custom-Models unten. */
+.td-model-refresh {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.td-model-refresh .td-custom-models-list {
+  width: 100%;
+}
+
+.td-custom-models-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.td-custom-models-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  background: var(--td-bg);
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+}
+
+.td-custom-models-id {
+  font-family: var(--td-mono);
+  font-size: 12px;
+  color: var(--td-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-custom-models-label {
+  font-size: 12px;
+  color: var(--td-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-custom-models-limit {
+  font-size: 11px;
+  color: var(--td-text-dim);
+  font-family: var(--td-mono);
+  white-space: nowrap;
+}
+
+.td-custom-models-remove {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.td-custom-models-add {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 1fr) 140px auto;
+  gap: 8px;
+  align-items: center;
+}
+
 /* Phase-2 Season-26 — Update-Status-Block im About-Tab: Status-Text + Re-Check-
    Button in einer Zeile, vertikal zentriert, mit erlaubtem Wrap-Verhalten,
    damit lange Fehler-Messages nicht den Button rausdruecken. */

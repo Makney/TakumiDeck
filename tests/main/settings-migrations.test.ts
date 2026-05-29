@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   CURRENT_SETTINGS_SCHEMA_VERSION,
   LEGACY_SETTINGS_SCHEMA_VERSION,
+  MIGRATION_ADD_CUSTOM_MODELS,
   MIGRATION_DEFAULTS_V0_2_X_DRIFT,
   migrateDefaultsV02xDrift,
   readSchemaVersion,
@@ -275,10 +276,31 @@ describe('migrateDefaultsV02xDrift (Migration 2)', () => {
   });
 });
 
+describe('MIGRATION_ADD_CUSTOM_MODELS (Migration 3)', () => {
+  it('id und name sind gesetzt', () => {
+    expect(MIGRATION_ADD_CUSTOM_MODELS.id).toBe(3);
+    expect(MIGRATION_ADD_CUSTOM_MODELS.name).toBe('add_custom_models_field');
+  });
+
+  it('setzt custom_models auf leeres Array bei Bestandsuser ohne Feld', () => {
+    const result = MIGRATION_ADD_CUSTOM_MODELS.up({ schema_version: 2 });
+    expect(result['custom_models']).toEqual([]);
+  });
+
+  it('laesst vorhandenes custom_models in Ruhe (Idempotenz)', () => {
+    const existing = [{ id: 'claude-future', label: 'Future' }];
+    const result = MIGRATION_ADD_CUSTOM_MODELS.up({
+      schema_version: 2,
+      custom_models: existing,
+    });
+    expect(result['custom_models']).toBe(existing);
+  });
+});
+
 describe('CURRENT_SETTINGS_SCHEMA_VERSION', () => {
   it('passt zur hoechsten ausgelieferten Migration-id', () => {
-    // Guard fuer kuenftige Migrations: wer eine id=3-Migration hinzufuegt, muss
+    // Guard fuer kuenftige Migrations: wer eine id=4-Migration hinzufuegt, muss
     // CURRENT_SETTINGS_SCHEMA_VERSION mit anheben.
-    expect(CURRENT_SETTINGS_SCHEMA_VERSION).toBe(2);
+    expect(CURRENT_SETTINGS_SCHEMA_VERSION).toBe(3);
   });
 });

@@ -34,6 +34,7 @@ import type {
   GitStatusInput,
   GitStatusResult,
   IpcResult,
+  ModelFetchResult,
   ProjectReadCfgInput,
   ProjectRemoveInput,
   ProjectRow,
@@ -311,6 +312,12 @@ const api: RendererApi = {
       ipcRenderer.on(Channels.UpdaterStatePush, wrapped);
       return () => ipcRenderer.removeListener(Channels.UpdaterStatePush, wrapped);
     },
+  },
+  // Phase-2 Season-34 (Variante D): optionaler Modell-Auto-Refresh. Liefert
+  // available=false ohne API-Key (Abo-/OAuth-Pfad).
+  models: {
+    fetchAvailable: () =>
+      ipcRenderer.invoke(Channels.ModelsFetchAvailable) as Promise<IpcResult<ModelFetchResult>>,
   },
 };
 

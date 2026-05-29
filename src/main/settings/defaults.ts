@@ -31,11 +31,16 @@ export function buildDefaultSettings(): AppSettings {
     // wenn die Binary nicht im PATH liegt oder mehrere Installationen koexistieren.
     claude_binary_path: 'claude',
 
+    // Phase-2 Season-34: User-erweiterbare Modell-Liste. Frische Installationen
+    // starten ohne Custom-Eintraege; gepflegt im Settings-Tab „Modelle".
+    custom_models: [],
+
     // Sprint-8-Korrektur (TECH_SCHULDEN „Modell-Limits-Defaults zu hoch"):
     // Standard-Kontextfenster aller Modelle sind 200k. Das ältere 1M war Anthropics
     // Extended-Context-Beta — als Default falsch, weil die Per-Session-Kontext-Bar
     // dann grün bleibt, obwohl /context schon orange wäre.
     model_limits: {
+      'claude-opus-4-8': 200_000,
       'claude-opus-4-7': 200_000,
       'claude-opus-4-6': 200_000,
       'claude-sonnet-4-6': 200_000,

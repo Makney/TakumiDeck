@@ -46,6 +46,11 @@ export const Channels = {
   TerminalSaveBuffer: 'terminal:save-buffer',
   TerminalLoadBuffer: 'terminal:load-buffer',
 
+  // Modelle (Phase-2 Season-34, Variante D): optionaler Auto-Refresh gegen den
+  // Anthropic `/v1/models`-Endpoint. Nur wirksam mit gesetztem API-Key; ohne
+  // Key liefert der Handler `available=false` (Abo-/OAuth-Nutzung).
+  ModelsFetchAvailable: 'models:fetch-available',
+
   // Git (Sprint 7)
   GitStatus: 'git:status',
   GitDiff: 'git:diff',

@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-29 — Season 34: User-erweiterbare Modell-Liste + Auto-Refresh (Variante D)
+
+### Was jetzt geht
+
+- **TakumiDeck kennt Opus 4.8.** Die Built-in-Modell-Liste hat jetzt `claude-opus-4-8` an der Spitze (mit 200k-Default-Limit) — frisch installiert oder per Bestands-Settings taucht es im „Neue Session"-Dropdown und in der Per-Modell-Limit-Tabelle auf, ohne dass man etwas tun muss. Der globale Default bleibt bewusst Sonnet 4.6 (Daily-Driver); 4.8 steht ganz oben zur Auswahl.
+- **Eigene Modelle pflegen, bevor das nächste App-Update kommt.** Im Settings-Tab „Modelle" gibt es einen Block „Eigene Modelle": ID + Anzeigename + optionales Kontext-Limit eintragen, und das Modell erscheint sofort im Default-Dropdown, im „Neue Session"-Modal und in der Limit-Tabelle. So lässt sich ein neues Anthropic-Release sofort nutzen, auch wenn die Built-in-Liste es noch nicht kennt. ID-Kollision mit einem Built-in überschreibt nur dessen Anzeigenamen (z.B. „Opus 4.7" → „Arbeitstier").
+- **Verfügbare Modelle automatisch abrufen — wenn ein API-Key da ist.** Neuer Button „↻ Modelle abrufen" fragt den offiziellen Anthropic-Endpoint `/v1/models` ab und schlägt neue, noch unbekannte Modelle mit einem „+ Übernehmen"-Button vor. Das funktioniert nur mit gesetztem `ANTHROPIC_API_KEY`. Bei Abo-/Login-Nutzung (kein Key) zeigt der Block einen freundlichen Hinweis auf die manuelle Pflege statt eines Fehlers — und „leuchtet" automatisch auf, sobald irgendwann ein Key gesetzt wird. Kontextfenster-Größen liefert die API nicht; die bleiben Default oder eigene Eingabe.
+
+### Architektur-Notiz
+
+Variante D (Hybrid: statische/manuelle Basis + optionaler Auto-Refresh) aus drei Optionen gewählt, weil Anthropic keine Quelle bietet, die ID *und* Kontextfenster zugleich liefert, und Abo-User keinen API-Key haben. Pure-Helper für Parsing/Diff in `src/shared/models.ts`, injizierbare Netzwerk-Schicht in `src/main/models/`, kein Netzwerk beim Start. Details in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md).
+
+---
+
 ## 2026-05-25 — Season 33: Terminal-Buffer-Persistierung ueber Resume
 
 ### Was jetzt geht

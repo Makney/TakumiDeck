@@ -24,6 +24,25 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Season-34 Modell-Erkennung: statische Basis + manuelle Pflege + optionaler Auto-Refresh (Variante D)
+
+**Entscheidung:** Modelle werden über drei Schichten verwaltet: (1) eine im Code gepflegte Built-in-Liste (`BUILT_IN_MODEL_OPTIONS`), die App-Updates mit neuen Anthropic-Modellen mitliefert; (2) eine user-gepflegte `custom_models`-Liste in den Settings für ad-hoc-Releases vor dem nächsten Update; (3) ein **optionaler** Auto-Refresh-Button, der den Anthropic-Endpoint `GET /v1/models` abfragt und neue IDs als Custom-Vorschläge einblendet — aber nur, wenn ein API-Key vorhanden ist.
+
+**Varianten:**
+
+- **A — Auto-Refresh als alleinige Quelle** (`/v1/models` ersetzt die statische Liste): verworfen.
+- **B — `claude`-CLI als Modell-Quelle** (Binary nach bekannten Modellen fragen): verworfen.
+- **C — rein statisch + manuelle Pflege** (kein Netzwerk): Basis, aber allein nicht „automatisch".
+- **D — Hybrid: C als Basis + A als optionaler Aufsatz** ✅ **gewählt.**
+
+**Grund:** A-solo disqualifiziert sich doppelt: Der `/v1/models`-Endpoint liefert **nur ID + Anzeigename, kein Kontextfenster** — die Limits müssten ohnehin manuell/Default bleiben, Vollautomatik wäre also nur die halbe Wahrheit. Und er braucht einen `x-api-key`; der User nutzt **Claude per Abo (OAuth)** und hat heute keinen Key — der OAuth-Token funktioniert am Models-Endpoint nicht (undokumentiert/nicht unterstützt). A-solo wäre für ihn ein dauerhaft totes Feature. B scheitert an der Instabilität: Claude Code hat kein dokumentiertes „list models"-Kommando; jede Lösung würde auf undokumentiertes Verhalten bauen und bei CLI-Updates brechen. D vereint beides: Ohne Key degradiert es sauber zum robusten C (Hinweis statt Fehler); sobald der User künftig einen Key setzt, aktiviert sich der Refresh ohne Umbau. Tür für die API-Key-Zukunft offen, ohne heute ein leeres Feature zu zeigen.
+
+**Konsequenz:** Drei Code-Pfade für Modelle (Built-in-Konstante, Settings-Feld, optionaler IPC). Neue Anthropic-Releases brauchen weiterhin entweder einen Code-Push (Built-in, damit der Default-Pfeil-Wert sinnvoll bleibt) **oder** einen User-Custom-Eintrag — der Auto-Refresh ist Komfort, keine Pflicht. Kontext-Limits bleiben grundsätzlich User-/Default-Sache, unabhängig von der Quelle.
+
+**Implementierungsdetail:** Die context-freie Kernlogik (Antwort-Parsing `parseAnthropicModelsResponse`, Abgleich gegen bekannte IDs `diffNewModels`) liegt als Pure-Helper in `src/shared/models.ts` und ist ohne Netzwerk testbar; die Netzwerk-Schicht `src/main/models/fetchAvailableModels.ts` nimmt `fetch` + API-Key per Injektion entgegen (Tests mit gemocktem `fetch`, kein echter Call). Der `available=false`-Zustand ist bewusst **kein** Fehler-Result, sondern ein eigener Erfolgs-Zweig — so muss die UI „kein Key" nicht von „API kaputt" unterscheiden.
+
+---
+
 ## Season-33 Terminal-Buffer-Persistierung: Scope-Cut, Trim-Strategie, Tabellen-Form, Persist-Trigger
 
 **Entscheidung:** Vier Achsen-Entscheidungen fuer die Terminal-Buffer-Persistierung, alle aus einem zusammenhaengenden User-Pivot waehrend der Variants-Diskussion. (1) **Scope-Cut auf nur `type='terminal'`** statt aller Session-Typen — User-Reality-Check „bei Claude-Resume sehe ich den Verlauf doch eh wieder" hat den 80%-Use-Case raus-amputiert. (2) **Last-N-Zeilen-Trim mit Byte-Cap** (2000 Zeilen + 256 KiB), kein Voll-Buffer. (3) **Eigene Tabelle `session_buffer_snapshots`** mit FK-Cascade, kein BLOB-Feld auf `sessions`. (4) **Persist beim React-Cleanup**, kein debounced Live-Save.

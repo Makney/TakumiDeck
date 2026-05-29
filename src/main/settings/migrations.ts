@@ -14,7 +14,7 @@
 // Aktueller Settings-Schema-Stand. Hier hochziehen, sobald eine neue
 // Migration angelegt wird; `buildDefaultSettings()` schreibt den Wert dann
 // in frisch angelegte settings.json-Dateien.
-export const CURRENT_SETTINGS_SCHEMA_VERSION = 2;
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 3;
 
 // Bestandsuser ohne `schema_version`-Feld werden als Version 1 gelesen
 // (der Phase-1-/Sprint-9-Stand, vor der ersten Drift-Migration).
@@ -165,8 +165,23 @@ function isPreSprint9SonnetBar(bar: unknown): boolean {
   return b['id'] === 'weekly_sonnet' && b['label'] === 'Nur Sonnet';
 }
 
+// Migration 3: add_custom_models_field.
+// Phase-2 Season-34: neues Feld `custom_models: CustomModel[]` fuer die
+// User-erweiterbare Modell-Liste in den Settings. Bestandsuser bekommen das
+// Feld als leeres Array gesetzt; ist `custom_models` schon vorhanden (z.B.
+// weil der User selbst in settings.json experimentiert hat), bleibt der Wert
+// stehen — zod prueft danach im Vollschema-Pass, ob die Eintraege valide sind.
+export const MIGRATION_ADD_CUSTOM_MODELS: SettingsMigration = {
+  id: 3,
+  name: 'add_custom_models_field',
+  up(input) {
+    if ('custom_models' in input) return input;
+    return { ...input, custom_models: [] };
+  },
+};
+
 // Default-Migration-Liste fuer den Produktiv-Pfad. Tests rufen den Runner
 // direkt mit zugeschnittenen Migrations-Arrays auf.
 export function loadSettingsMigrations(): SettingsMigration[] {
-  return [MIGRATION_DEFAULTS_V0_2_X_DRIFT];
+  return [MIGRATION_DEFAULTS_V0_2_X_DRIFT, MIGRATION_ADD_CUSTOM_MODELS];
 }

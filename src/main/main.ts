@@ -10,6 +10,7 @@ import { registerAppIpc } from './ipc/app';
 import { registerPtyIpc } from './ipc/pty';
 import { registerSessionIpc } from './ipc/session';
 import { registerTerminalBufferIpc } from './ipc/terminal-buffer';
+import { registerModelsIpc } from './ipc/models';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
 import { createUsagePusher, registerUsageIpc } from './ipc/usage';
 import { registerStatsIpc } from './ipc/stats';
@@ -237,6 +238,7 @@ void app.whenReady().then(async () => {
     });
 
     registerSettingsIpc(settings);
+    registerModelsIpc();
     registerAppIpc({ settings });
     registerSessionIpc({
       sessions,

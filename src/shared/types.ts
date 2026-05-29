@@ -43,6 +43,33 @@ export interface LimitBar {
   aggregation_mode?: 'rolling' | 'session_block';
 }
 
+// Phase-2 Season-34: User-definiertes Modell. Built-in-Liste lebt in
+// src/shared/models.ts (`BUILT_IN_MODEL_OPTIONS`); CustomModel-Eintraege
+// erweitern die Dropdown-Auswahl in SettingsModal + NewSessionModal.
+// `context_limit` optional — fehlt der Wert, faellt der Verbrauch-Resolver
+// auf settings.default_limit zurueck.
+export interface CustomModel {
+  id: string;
+  label: string;
+  context_limit?: number;
+}
+
+// Phase-2 Season-34 (Variante D): ein vom Anthropic `/v1/models`-Endpoint
+// abgerufenes Modell. Nur ID + Anzeigename — der Endpoint liefert KEIN
+// Kontextfenster, deshalb gibt es hier kein Limit-Feld.
+export interface FetchedModel {
+  id: string;
+  displayName: string;
+}
+
+// Ergebnis des optionalen Modell-Auto-Refresh. `available=false` heisst: kein
+// API-Key gesetzt (z.B. Abo-/OAuth-Nutzung) — der Renderer weist dann auf die
+// manuelle Pflege hin, statt einen Fehler zu zeigen. HTTP-/Netzwerkfehler
+// kommen NICHT hier an, sondern als IpcResult.ok=false.
+export type ModelFetchResult =
+  | { available: true; models: FetchedModel[] }
+  | { available: false; reason: 'no-api-key' };
+
 // Vollständige Settings-Shape laut Architektur Kapitel 4.
 // Wird als settings.json im AppData-Ordner persistiert.
 export interface AppSettings {
@@ -64,6 +91,11 @@ export interface AppSettings {
   default_model: string;
   // Pfad zur claude-Binary. Default 'claude' nutzt PATH; user kann absoluten Pfad setzen.
   claude_binary_path: string;
+  // Phase-2 Season-34: User-erweiterbare Modell-Liste, gepflegt im Settings-
+  // Tab „Modelle". Built-ins (`BUILT_IN_MODEL_OPTIONS` in src/shared/models.ts)
+  // bleiben fix; dieser Slot ergaenzt fuer neue Anthropic-Releases vor dem
+  // naechsten App-Update.
+  custom_models: CustomModel[];
   model_limits: Record<string, number>;
   default_limit: number;
   limit_bars: LimitBar[];
@@ -1071,6 +1103,12 @@ export interface RendererApi {
   terminal: {
     saveBuffer: (input: TerminalSaveBufferInput) => Promise<IpcResult<null>>;
     loadBuffer: (input: TerminalLoadBufferInput) => Promise<IpcResult<TerminalLoadBufferResult>>;
+  };
+  // Phase-2 Season-34 (Variante D): optionaler Abruf der bei Anthropic
+  // verfuegbaren Modelle. Liefert `available=false`, wenn kein API-Key gesetzt
+  // ist (Abo-/OAuth-Pfad) — kein Fehler, sondern ein Hinweis-Zustand.
+  models: {
+    fetchAvailable: () => Promise<IpcResult<ModelFetchResult>>;
   };
   templates: {
     // Phase-2 Season-4: Auto-Variablen, die DB- oder FS-Zugriff brauchen.

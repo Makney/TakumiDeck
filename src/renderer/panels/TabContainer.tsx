@@ -337,6 +337,7 @@ export function TabContainer({ settings }: Props) {
       {showNewSessionModal && canAddSession && (
         <NewSessionModal
           defaultModel={effectiveDefaultModel}
+          customModels={settings.custom_models}
           nextSeasonPreview={activeProject?.next_season_number ?? null}
           projectId={activeProjectId}
           onCancel={() => setShowNewSessionModal(false)}
