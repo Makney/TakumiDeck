@@ -5,10 +5,10 @@ import {
   MAX_BUFFER_SNAPSHOT_BYTES,
 } from '../../src/shared/buffer-snapshot';
 
-// Phase-2 Season-32: Pure-Logik-Tests fuer den Buffer-Snapshot-Trim.
+// Phase-2 Season-33: Pure-Logik-Tests fuer den Buffer-Snapshot-Trim.
 // Deckt die drei Pfade ab — Leerfall (Skip-Persist), Line-Cap (Last-N
 // gewinnt) und Byte-Cap (defensives Vorne-Wegschneiden) — plus die
-// Kombination beider Caps.
+// Kombination beider Caps und das Single-Long-Line-Sicherheitsnetz.
 
 describe('trimBufferSnapshot', () => {
   it('liefert leeren String bei leerer Eingabe', () => {
@@ -69,6 +69,19 @@ describe('trimBufferSnapshot', () => {
     expect(bytes).toBeLessThanOrEqual(5000);
     // Letzte Zeile muss erhalten geblieben sein
     expect(result.endsWith('line4999')).toBe(true);
+  });
+
+  it('haelt den Byte-Cap auch bei einer einzelnen Multi-Byte-Zeile ueber dem Cap (S1)', () => {
+    // Release-Fix v0.4.0: eine einzige Zeile, die allein ueber dem Byte-Cap
+    // liegt, faellt ins Sicherheitsnetz (Byte-Slice von rechts). Liegt der
+    // Cap nicht auf einer UTF-8-Sequenzgrenze (maxBytes % 3 == 1 bei 3-Byte
+    // '한'), ersetzt der Decoder die Teilsequenz durch U+FFFD und das
+    // Re-Encode wuerde ohne Nachkappung knapp ueber den Cap rutschen.
+    const raw = '한'.repeat(50); // 150 UTF-8-Bytes, eine einzige Zeile
+    const maxBytes = 100; // 100 % 3 == 1 → Schnitt mitten in einer Sequenz
+    const result = trimBufferSnapshot(raw, { maxLines: 1000, maxBytes });
+    const bytes = new TextEncoder().encode(result).length;
+    expect(bytes).toBeLessThanOrEqual(maxBytes);
   });
 
   it('exportierte Konstanten haben sinnvolle Defaults', () => {

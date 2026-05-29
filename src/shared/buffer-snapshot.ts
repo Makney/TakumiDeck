@@ -1,4 +1,4 @@
-// Phase 2 Season 32: Pure-Helper fuer Terminal-Buffer-Snapshots.
+// Phase 2 Season 33: Pure-Helper fuer Terminal-Buffer-Snapshots.
 //
 // Verantwortlich fuer das Trimmen eines vom @xterm/addon-serialize
 // produzierten Strings auf zwei Schwellen:
@@ -92,6 +92,13 @@ export function trimBufferSnapshot(
     const encoded = encoder.encode(snapshot);
     const trimmed = encoded.slice(encoded.length - maxBytes);
     snapshot = new TextDecoder('utf-8', { fatal: false }).decode(trimmed);
+    // Schneidet der Byte-Slice mitten in eine Multi-Byte-UTF-8-Sequenz,
+    // ersetzt der Decoder die Teilsequenz durch U+FFFD (3 Bytes beim
+    // Re-Encode) — das Ergebnis kann dadurch wieder knapp ueber den Cap
+    // rutschen. Vorne zeichenweise nachkappen, bis es wirklich passt.
+    while (encoder.encode(snapshot).length > maxBytes && snapshot.length > 0) {
+      snapshot = snapshot.slice(1);
+    }
   }
 
   return snapshot;

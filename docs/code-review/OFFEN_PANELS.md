@@ -150,3 +150,23 @@ Befunde aus dem Release-Review von v0.3.0 → v0.3.1 (Hotfix Renderer-Crash beim
 - **Beschreibung:** `window.location.reload()` reloaded den Renderer komplett und verwirft dabei alle Dirty-Editor-Tabs (uncommittete Bearbeitungen im EditorPane). Der Main-Prozess (PTYs, DB-Connections, Watcher) bleibt sauber, weil nur der Renderer-Tree neu lädt — aber Editor-Dirty-State lebt nur im Renderer.
 - **Begründung:** Heute akzeptabler Trade-off, weil der Reload-Button ein Notausgang im Fallback ist und nicht der Hauptpfad. Eine Warn-Confirm vor dem Reload („Du hast nicht gespeicherte Änderungen, fortfahren?") wäre der saubere Pfad.
 - **Trigger:** wenn ein User in Praxis durch den ErrorBoundary-Fallback eine längere Edit-Session verliert — dann Dirty-Check-Confirm einbauen.
+
+---
+
+## Release-Review v0.4.0 (2026-05-29)
+
+Befunde aus dem Release-Review von v0.3.2 → v0.4.0 (Terminal-Buffer-Restore/Persist in TerminalTab, Aufmerksamkeits-Marker + Rechtsklick-Kontextmenu in der LeftSidebar), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### Zwei ContextMenu-Implementierungen mit divergierender Listener-Strategie
+
+- `src/renderer/components/ProjectContextMenu.tsx:29-49` ↔ `src/renderer/panels/TerminalTab.tsx:1068-1083` · Kategorie: **Verbesserung**
+- **Beschreibung:** `ProjectContextMenu` nutzt `setTimeout(0)` + bubble-phase `mousedown`; das `TerminalContextMenu` nutzt capture-phase `mousedown` ohne Delay. Beide funktionieren korrekt (der auslösende `mousedown` feuert vor dem `contextmenu`-Event, daher keine Selbstschließ-Falle), aber die divergierenden Muster sind eine Wartungs-Inkonsistenz.
+- **Begründung:** Bei nächstem Touch auf ein gemeinsames Pattern (oder eine geteilte `useDismissableMenu`-Hook) vereinheitlichen. Heute kein Defekt.
+- **Trigger:** dritter ContextMenu-Anwender oder wenn eines der Menüs ohnehin angefasst wird.
+
+### Inline-Arrow-Callbacks als Listener-Effekt-Dependency (Re-Register-Churn)
+
+- `src/renderer/panels/LeftSidebar.tsx:443`, `src/renderer/panels/TerminalTab.tsx:959` · Kategorie: **Verbesserung**
+- **Beschreibung:** `onClose={() => setMenu(null)}` bzw. `onDismiss={() => setContextMenu(null)}` sind pro Render neue Funktionsreferenzen → der Listener-Effekt in beiden Menüs (`[onClose]`/`[onDismiss]`) re-registriert document-Listener bei jedem Parent-Render. Kein Leak (Cleanup greift), nur unnötige Churn.
+- **Begründung:** `useCallback` an der Aufrufstelle. Reine Mikro-Optimierung ohne Funktionsänderung.
+- **Trigger:** zusammen mit der ContextMenu-Vereinheitlichung oben.

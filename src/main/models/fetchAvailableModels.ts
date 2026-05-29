@@ -32,13 +32,24 @@ export async function fetchAvailableModels(
   }
 
   const doFetch = deps.fetchImpl ?? fetch;
-  const res = await doFetch(ANTHROPIC_MODELS_URL, {
-    method: 'GET',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': ANTHROPIC_VERSION,
-    },
-  });
+  // Release-Fix v0.4.0: 10s-Timeout, damit ein haengender Fetch (DNS-Stall,
+  // Captive-Portal, totes Netz) den Renderer nicht unbegrenzt blockiert.
+  let res: Response;
+  try {
+    res = await doFetch(ANTHROPIC_MODELS_URL, {
+      method: 'GET',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') {
+      throw new Error('Zeitueberschreitung beim Abruf der Modell-Liste (10 s).');
+    }
+    throw e;
+  }
 
   if (!res.ok) {
     // Haeufige Faelle in User-freundliche Meldungen uebersetzen; der IPC-Handler

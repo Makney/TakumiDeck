@@ -35,13 +35,11 @@ export const LimitBarSchema = z.object({
 
 // Phase-2 Season-34: User-definierte Modelle ueber die Settings-UI.
 // Built-in-IDs wandern in src/shared/models.ts; CustomModel ergaenzt die Liste
-// pro Benutzer um neue Anthropic-Releases ohne Code-Push. `context_limit`
-// optional — fehlt der Wert, faellt der Verbrauch-Resolver auf
-// settings.default_limit zurueck.
+// pro Benutzer um neue Anthropic-Releases ohne Code-Push. Kontext-Limits laufen
+// ausschliesslich ueber settings.model_limits (Per-Modell-Limit-Tabelle).
 export const CustomModelSchema = z.object({
   id: z.string().min(1).max(100),
   label: z.string().min(1).max(100),
-  context_limit: z.number().positive().optional(),
 });
 
 export const AppSettingsSchema = z.object({
@@ -223,7 +221,7 @@ export const PtyTuiStateInputSchema = z.object({
   state: z.enum(['running', 'waiting', 'idle', 'permission-prompt']),
 });
 
-// Phase-2 Season-32: terminal:save-buffer / terminal:load-buffer fuer die
+// Phase-2 Season-33: terminal:save-buffer / terminal:load-buffer fuer die
 // Buffer-Persistierung von terminal-Sessions. Snapshot-Cap auf 1 MiB als
 // defensive Trust-Boundary — der Pure-Helper im Renderer trimt auf 256 KiB,
 // aber das Schema schluckt etwas Puffer fuer kuenftige Anpassungen ohne

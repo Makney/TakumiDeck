@@ -150,7 +150,7 @@ const api: RendererApi = {
       return () => ipcRenderer.removeListener(Channels.SessionStatusPush, wrapped);
     },
   },
-  // Phase-2 Season-32: Terminal-Buffer-Persistierung. Beide Calls werden im
+  // Phase-2 Season-33: Terminal-Buffer-Persistierung. Beide Calls werden im
   // Renderer nur fuer type='terminal' gefeuert; der Main lehnt fremde Typen
   // ab (save: Error-Code, load: liefert null).
   terminal: {

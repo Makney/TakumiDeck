@@ -10,7 +10,7 @@ import type { SessionBufferRepository } from '../db/repos/session-buffer';
 import type { Logger } from '../logger';
 import { assertFromMainWindow } from './sender-guard';
 
-// Phase 2 Season 32: Terminal-Buffer-Persistierung ueber Resume.
+// Phase 2 Season 33: Terminal-Buffer-Persistierung ueber Resume.
 //
 // Zwei IPC-Handler, beide hart auf type='terminal' gegated. Claude-Sessions
 // rendern ihren Verlauf beim `--resume` selbst aus der JSONL — wir

@@ -46,12 +46,11 @@ export interface LimitBar {
 // Phase-2 Season-34: User-definiertes Modell. Built-in-Liste lebt in
 // src/shared/models.ts (`BUILT_IN_MODEL_OPTIONS`); CustomModel-Eintraege
 // erweitern die Dropdown-Auswahl in SettingsModal + NewSessionModal.
-// `context_limit` optional — fehlt der Wert, faellt der Verbrauch-Resolver
-// auf settings.default_limit zurueck.
+// Kontext-Limits werden ausschliesslich ueber die Per-Modell-Limit-Tabelle
+// (settings.model_limits) gepflegt — die deckt Custom-Modelle mit ab.
 export interface CustomModel {
   id: string;
   label: string;
-  context_limit?: number;
 }
 
 // Phase-2 Season-34 (Variante D): ein vom Anthropic `/v1/models`-Endpoint
@@ -247,7 +246,7 @@ export interface PtyTuiStateInput {
   state: 'running' | 'waiting' | 'idle' | 'permission-prompt';
 }
 
-// Phase-2 Season-32: Terminal-Buffer-Persistierung. Renderer serialisiert
+// Phase-2 Season-33: Terminal-Buffer-Persistierung. Renderer serialisiert
 // im Cleanup via @xterm/addon-serialize und schickt den getrimten Snapshot
 // (Pure-Helper `trimBufferSnapshot`) ans Main. Beim Mount eines resumed
 // Terminal-Tabs ruft der Renderer Load und schreibt das Ergebnis vor dem
@@ -1096,7 +1095,7 @@ export interface RendererApi {
     // abonniert und ruft setStatus auf, ohne selbst pollen zu müssen.
     onStatusPush: (handler: (event: SessionStatusPushEvent) => void) => () => void;
   };
-  // Phase-2 Season-32: Terminal-Buffer-Persistierung — eigener Namespace,
+  // Phase-2 Season-33: Terminal-Buffer-Persistierung — eigener Namespace,
   // damit `sessions.*` nicht mit type-spezifischen Calls vermischt wird.
   // Beide Pfade werden im Renderer auf type='terminal' gegated; der Main
   // doppelt das Gate als Defense-in-Depth.

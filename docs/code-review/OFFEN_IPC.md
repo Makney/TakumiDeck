@@ -114,3 +114,23 @@ Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (vier neue Channels: `fs:se
 - **Beschreibung:** Kein `log.info`-Eintrag bei Watcher-Wechsel/Stop. `fs:list-templates` und `fs:clear-screenshots` loggen ihre Ergebnis-Bilanz; der ProjectFilesWatcher loggt zwar selbst `[project-watcher] ready/gestoppt`, aber der IPC-Eintrittspunkt bleibt im Main-Log unsichtbar (z.B. bei stillem Fail-Path Renderer-Race vs Watcher-Setup).
 - **Begründung:** Später ein `log.info('[fs:set-watched-project] projectId=...')` ergänzen — reine Diagnose-Konsistenz.
 - **Trigger:** wenn ein User-Report „Auto-Refresh feuert nicht trotz aktivem Projekt" auftaucht — dann den Einstiegs-Log zur Diagnose nutzen.
+
+---
+
+## Release-Review v0.4.0 (2026-05-29)
+
+Befunde aus dem Release-Review von v0.3.2 → v0.4.0 (neue Channels `terminal:save-buffer` / `terminal:load-buffer` + `models:fetch-available`), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### Channel-Namensraum `terminal:*` für eine Session-Domänen-Operation
+
+- `src/shared/ipc-channels.ts:46-47` ↔ `src/main/ipc/terminal-buffer.ts` · Kategorie: **Verbesserung**
+- **Beschreibung:** Die Buffer-Persistierung läuft über `terminal:save-buffer` / `terminal:load-buffer`, obwohl die Operation fachlich eine Session-Operation ist (FK auf `sessions.id`, Gate auf `session.type`). Alle anderen Session-Operationen liegen unter `session:*`. Reiner Namens-Drift, kein Funktionsfehler.
+- **Begründung:** Bei nächstem Touch unter `session:*` oder einem eigenen `buffer:*`-Prefix konsolidieren. Heute kein Effekt.
+- **Trigger:** wenn ein dritter type-spezifischer Channel hinzukommt oder die Channel-Konstanten ohnehin angefasst werden.
+
+### `terminal:save-buffer` loggt bei Fehler nicht, `terminal:load-buffer` schon (Asymmetrie)
+
+- `src/main/ipc/terminal-buffer.ts` (Save-Catch vs. Load-Catch) · Kategorie: **Stil**
+- **Beschreibung:** Der Load-Catch macht `log.warn(...)` vor `errFromUnknown`, der Save-Catch nicht. Ein Save-Fail (z.B. zod-Reject bei >1 MiB Snapshot oder DB-Lock) verschwindet still im IpcResult ohne Main-Log-Spur.
+- **Begründung:** Symmetrisch ein `log.warn` im Save-Catch ergänzen — reine Diagnose-Konsistenz.
+- **Trigger:** wenn ein User-Report „Terminal-Verlauf wird nach Resume nicht angezeigt" auftaucht — dann den Save-Log zur Diagnose nutzen.

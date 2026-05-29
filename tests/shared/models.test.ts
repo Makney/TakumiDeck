@@ -68,21 +68,10 @@ describe('buildModelOptions', () => {
 describe('validateNewCustomModel', () => {
   const baseExisting = BUILT_IN_MODEL_OPTIONS.map((m) => m.id);
 
-  it('akzeptiert valide neue Eingabe ohne Limit', () => {
+  it('akzeptiert valide neue Eingabe', () => {
     const result = validateNewCustomModel({
       id: 'claude-future',
       label: 'Future',
-      contextLimit: null,
-      existingIds: baseExisting,
-    });
-    expect(result).toBeNull();
-  });
-
-  it('akzeptiert valide neue Eingabe mit Limit', () => {
-    const result = validateNewCustomModel({
-      id: 'claude-future',
-      label: 'Future',
-      contextLimit: 500_000,
       existingIds: baseExisting,
     });
     expect(result).toBeNull();
@@ -93,7 +82,6 @@ describe('validateNewCustomModel', () => {
       validateNewCustomModel({
         id: '   ',
         label: 'X',
-        contextLimit: null,
         existingIds: [],
       }),
     ).toBe('empty_id');
@@ -104,7 +92,6 @@ describe('validateNewCustomModel', () => {
       validateNewCustomModel({
         id: 'claude-x',
         label: '   ',
-        contextLimit: null,
         existingIds: [],
       }),
     ).toBe('empty_label');
@@ -115,7 +102,6 @@ describe('validateNewCustomModel', () => {
       validateNewCustomModel({
         id: 'claude-sonnet-4-6',
         label: 'Dup',
-        contextLimit: null,
         existingIds: baseExisting,
       }),
     ).toBe('duplicate_id');
@@ -126,37 +112,9 @@ describe('validateNewCustomModel', () => {
       validateNewCustomModel({
         id: 'claude-future',
         label: 'Dup',
-        contextLimit: null,
         existingIds: [...baseExisting, 'claude-future'],
       }),
     ).toBe('duplicate_id');
-  });
-
-  it('lehnt nicht-positives Limit ab', () => {
-    expect(
-      validateNewCustomModel({
-        id: 'claude-x',
-        label: 'X',
-        contextLimit: 0,
-        existingIds: [],
-      }),
-    ).toBe('invalid_limit');
-    expect(
-      validateNewCustomModel({
-        id: 'claude-x',
-        label: 'X',
-        contextLimit: -1,
-        existingIds: [],
-      }),
-    ).toBe('invalid_limit');
-    expect(
-      validateNewCustomModel({
-        id: 'claude-x',
-        label: 'X',
-        contextLimit: Number.NaN,
-        existingIds: [],
-      }),
-    ).toBe('invalid_limit');
   });
 });
 

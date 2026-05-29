@@ -35,7 +35,7 @@ export const Channels = {
   // keinen Traffic.
   PtyTuiState: 'pty:tui-state',
 
-  // Terminal (Phase-2 Season-32): Buffer-Persistierung fuer terminal-Sessions.
+  // Terminal (Phase-2 Season-33): Buffer-Persistierung fuer terminal-Sessions.
   // Save wird im TerminalTab-Cleanup gefeuert (Renderer serialisiert via
   // @xterm/addon-serialize und trimmt vorher pure mit `trimBufferSnapshot`).
   // Load wird beim TerminalTab-Mount fuer resumed terminal-Sessions gerufen,

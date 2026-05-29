@@ -96,3 +96,23 @@ Befunde aus dem Release-Review von v0.2.0 → v0.2.1, die bewusst nicht release-
 - **Beschreibung:** `HistoryActionModal.handleResume` ruft `estimateTerminalCols(14)` mit hardcoded 14, kommentiert als „Default-Font-Size 14 ist robust für die ersten ~100 ms". Die drei anderen Resume-Pfade (`TabContainer.handleResume:182`, `LeftSidebar.handleResumeFromTabs:191`, `HistoryPane.handleResume:255`) ziehen alle `settings.terminal_font_size`. Bei abweichendem User-Setting sieht der Resume aus dem Action-Modal kurzzeitig falsche cols/rows.
 - **Begründung:** Keine Regression durch den v0.2.1-Hotfix, sondern eine bereits bestehende Inkonsistenz zur Sprint-9-Settings-Migration der anderen Resume-Pfade. Praktisch geringer Effekt (Initial-Resize-Schätzung für die ersten ~100 ms, danach übernimmt der echte xterm-Resize). Fix wäre eine Zeile (`settings.terminal_font_size` statt `14`), aber außerhalb des Hotfix-Scopes.
 - **Trigger:** Drive-by beim nächsten Touch an `HistoryActionModal` oder als Teil einer „Resume-Pfade vereinheitlichen"-Mini-Season.
+
+---
+
+## Release-Review v0.4.0 (2026-05-29)
+
+Befunde aus dem Release-Review von v0.3.2 → v0.4.0 (Settings-Tab „Modelle" mit `custom_models` + Auto-Refresh, NewSessionModal Modell-Sentinel für terminal-Sessions), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### Kein Cleanup von `default_model` / `model_limits` beim Entfernen eines Custom-Modells
+
+- `src/renderer/modals/SettingsModal.tsx:640-648` (`removeCustomModel`) · Kategorie: **Warnung**
+- **Beschreibung:** Entfernt der User ein Custom-Modell, das als `default_model` gesetzt ist, bleibt `default_model` auf der nun nicht mehr im Dropdown vorhandenen ID stehen (Controlled-`<select>`-Mismatch). Ein zugehöriger `model_limits[id]`-Eintrag verbleibt als Karteileiche.
+- **Begründung:** Praktischer Effekt gering — `default_model` ist nur eine Vorauswahl, der Resolver hat `default_limit`-Fallback. Fix: beim Remove prüfen, ob die ID `default_model` ist, ggf. auf einen Built-in zurücksetzen, und verwaisten `model_limits`-Key mit aufräumen.
+- **Trigger:** Drive-by beim nächsten Touch am Custom-Models-Block oder wenn ein User-Report „falsches Default-Modell nach Löschen" auftaucht.
+
+### Controlled-`<select>`-Mismatch wenn `default_model` nicht in der Optionsliste
+
+- `src/renderer/modals/NewSessionModal.tsx:105/447`, `src/renderer/modals/SettingsModal.tsx:658` · Kategorie: **Warnung** (keine Regression)
+- **Beschreibung:** Zeigt der `value` auf eine ID, die nicht in `modelOptions` ist, rendert das Select visuell die erste Option, der State bleibt aber auf dem unsichtbaren Wert. Das Verhalten bestand identisch in v0.3.2 (statisches `MODEL_OPTIONS`) und ist durch die erweiterte Built-in-Liste eher entschärft.
+- **Begründung:** Kein neuer Defekt, nur Kontext zum Cleanup-Befund oben. Sauberer wäre eine Fallback-Normalisierung (`value` auf erste Option, wenn nicht in der Liste).
+- **Trigger:** zusammen mit dem Cleanup-Befund oben angehen.

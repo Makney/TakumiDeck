@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 
-// Phase 2 Season 32: SessionBufferRepository.
+// Phase 2 Season 33: SessionBufferRepository.
 //
 // Persistiert serialisierte xterm-Buffer-Snapshots fuer Terminal-Sessions
 // (Type 'terminal'), damit ein Resume die letzten Output-Zeilen wieder

@@ -155,7 +155,7 @@ void app.whenReady().then(async () => {
     // nachliefern kann. Reihenfolge daher tauschen — MessageRepo zuerst.
     const messageRepo = new MessageRepository(new SqliteMessageDriver(db));
     const sessions = new SessionRepository(new SqliteSessionDriver(db), messageRepo);
-    // Phase-2 Season-32: Terminal-Buffer-Snapshots. Eigene Tabelle, damit
+    // Phase-2 Season-33: Terminal-Buffer-Snapshots. Eigene Tabelle, damit
     // Sessions-Listings den Snapshot nicht durch SELECT s.* mitziehen.
     const sessionBufferRepo = new SessionBufferRepository(
       new SqliteSessionBufferDriver(db),
@@ -248,7 +248,7 @@ void app.whenReady().then(async () => {
       log: logger,
       pollingRing: jsonlPollingRing,
     });
-    // Phase-2 Season-32: Terminal-Buffer-Persistierung. Beide Handler haben
+    // Phase-2 Season-33: Terminal-Buffer-Persistierung. Beide Handler haben
     // ein hartes type='terminal'-Skip-Gate; claude-Sessions koennen den Save
     // gar nicht erst durchschieben.
     registerTerminalBufferIpc({

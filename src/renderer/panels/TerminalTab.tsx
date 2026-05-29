@@ -269,7 +269,7 @@ export function TerminalTab({
     const searchAddon = new SearchAddon();
     searchAddonRef.current = searchAddon;
     terminal.loadAddon(searchAddon);
-    // Phase-2 Season-32: SerializeAddon liefert beim Tab-Close die ANSI-haltige
+    // Phase-2 Season-33: SerializeAddon liefert beim Tab-Close die ANSI-haltige
     // Buffer-Repraesentation, die wir bei Terminal-Sessions persistieren. Wir
     // halten die Instanz, weil der anonyme Constructor-Aufruf von vorher keine
     // Referenz hinterliess — Season 28 hat das Addon nur fuer Pattern-Match-
@@ -372,7 +372,7 @@ export function TerminalTab({
     // schaden dem StrictMode-Pfad nicht.
     tuiControlRef.current = { start: startTui, pause: pauseTui };
 
-    // Phase-2 Season-32: Pre-Frame-Queue fuer den Restore-Pfad. Bei resumed
+    // Phase-2 Season-33: Pre-Frame-Queue fuer den Restore-Pfad. Bei resumed
     // Terminal-Sessions (type='terminal' && !needsSpawn) laden wir den
     // persistierten xterm-Buffer per IPC und schreiben ihn vor dem ersten
     // PTY-Frame in xterm. Die Queue puffert pty:data-Events, die der Renderer
@@ -416,7 +416,7 @@ export function TerminalTab({
     // PTY-Events filtern hart auf sessionId, sodass bei N Tabs jeder nur seine eigenen
     // Daten schreibt. Der Renderer-Bus sendet sonst ein pty:data-Event an alle Tabs.
     //
-    // Phase-2 Season-32: solange der Restore noch laeuft (nur bei resumed
+    // Phase-2 Season-33: solange der Restore noch laeuft (nur bei resumed
     // terminal-Sessions ueberhaupt true), landen Frames in der Queue.
     const offData = window.api.pty.onData((event) => {
       if (event.sessionId !== sessionId) return;
@@ -596,7 +596,7 @@ export function TerminalTab({
     });
 
     return () => {
-      // Phase-2 Season-32: Buffer-Snapshot persistieren, BEVOR der Terminal
+      // Phase-2 Season-33: Buffer-Snapshot persistieren, BEVOR der Terminal
       // disposed wird (serialize() braucht den lebenden Buffer). Nur fuer
       // terminal-Sessions: claude-Sessions skippen den Save komplett, weil
       // claude beim Resume seinen Verlauf aus der JSONL selbst rendert. Der

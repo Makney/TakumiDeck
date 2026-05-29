@@ -842,7 +842,6 @@ function CustomModelsBlock({
 }) {
   const [draftId, setDraftId] = useState('');
   const [draftLabel, setDraftLabel] = useState('');
-  const [draftLimit, setDraftLimit] = useState('');
   const [error, setError] = useState<CustomModelValidationError | null>(null);
 
   const existingIds = useMemo(
@@ -851,13 +850,9 @@ function CustomModelsBlock({
   );
 
   const submit = useCallback(() => {
-    const trimmedLimit = draftLimit.trim();
-    const contextLimit =
-      trimmedLimit.length === 0 ? null : Number(trimmedLimit);
     const validation = validateNewCustomModel({
       id: draftId,
       label: draftLabel,
-      contextLimit,
       existingIds,
     });
     if (validation !== null) {
@@ -868,23 +863,19 @@ function CustomModelsBlock({
       id: draftId.trim(),
       label: draftLabel.trim(),
     };
-    if (contextLimit !== null) {
-      model.context_limit = contextLimit;
-    }
     onAdd(model);
     setDraftId('');
     setDraftLabel('');
-    setDraftLimit('');
     setError(null);
-  }, [draftId, draftLabel, draftLimit, existingIds, onAdd]);
+  }, [draftId, draftLabel, existingIds, onAdd]);
 
   return (
     <Field
       label="Eigene Modelle"
       hint={
         'IDs vergibt Anthropic im Format „claude-<familie>-<version>". Der Anzeigename ' +
-        'erscheint im Dropdown („Neue Session" + Default-Modell). Kontext-Limit ' +
-        'optional — leer lassen, wenn der Default greifen soll.'
+        'erscheint im Dropdown („Neue Session" + Default-Modell). Kontext-Limits ' +
+        'setzt du oben in der Per-Modell-Limit-Tabelle.'
       }
     >
       <div className="td-custom-models">
@@ -896,9 +887,6 @@ function CustomModelsBlock({
               <li key={m.id} className="td-custom-models-row">
                 <span className="td-custom-models-id">{m.id}</span>
                 <span className="td-custom-models-label">{m.label}</span>
-                <span className="td-custom-models-limit">
-                  {m.context_limit ? `${m.context_limit.toLocaleString('de-DE')} Token` : '— Default'}
-                </span>
                 <button
                   type="button"
                   className="td-action-btn td-custom-models-remove"
@@ -930,15 +918,6 @@ function CustomModelsBlock({
             onChange={(e) => setDraftLabel(e.target.value)}
             spellCheck={false}
           />
-          <input
-            type="number"
-            min={1}
-            step={1000}
-            className="td-settings-input td-settings-input--narrow"
-            placeholder="Limit (optional)"
-            value={draftLimit}
-            onChange={(e) => setDraftLimit(e.target.value)}
-          />
           <button
             type="button"
             className="td-action-btn primary"
@@ -966,8 +945,6 @@ function formatCustomModelError(error: CustomModelValidationError): string {
       return 'Anzeigename darf nicht leer sein.';
     case 'duplicate_id':
       return 'Diese Modell-ID existiert bereits (Built-in oder eigenes).';
-    case 'invalid_limit':
-      return 'Kontext-Limit muss eine positive Zahl sein.';
   }
 }
 

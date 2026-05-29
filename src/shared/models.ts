@@ -8,7 +8,7 @@
 //
 // IDs werden ueber `dedupeCustomModelsAgainstBuiltins` gegen die Built-in-Liste
 // dedupliziert: ein Custom-Eintrag mit derselben ID wie ein Built-in ersetzt
-// dessen Label/Limit (z.B. wenn der User „Opus 4.7" lieber „Opus" nennt).
+// dessen Label (z.B. wenn der User „Opus 4.7" lieber „Opus" nennt).
 
 import type { CustomModel, FetchedModel } from './types';
 
@@ -59,8 +59,7 @@ export function buildModelOptions(customModels: ReadonlyArray<CustomModel>): Mod
 export type CustomModelValidationError =
   | 'empty_id'
   | 'empty_label'
-  | 'duplicate_id'
-  | 'invalid_limit';
+  | 'duplicate_id';
 
 // Pure-Validator fuer neue Custom-Model-Eintraege im Settings-Tab. Liefert
 // die erste gefundene Fehlerart oder `null` bei Erfolg. existingIds umfasst
@@ -68,18 +67,12 @@ export type CustomModelValidationError =
 export function validateNewCustomModel(input: {
   id: string;
   label: string;
-  contextLimit: number | null;
   existingIds: ReadonlyArray<string>;
 }): CustomModelValidationError | null {
   const id = input.id.trim();
   if (id.length === 0) return 'empty_id';
   if (input.label.trim().length === 0) return 'empty_label';
   if (input.existingIds.includes(id)) return 'duplicate_id';
-  if (input.contextLimit !== null) {
-    if (!Number.isFinite(input.contextLimit) || input.contextLimit <= 0) {
-      return 'invalid_limit';
-    }
-  }
   return null;
 }
 

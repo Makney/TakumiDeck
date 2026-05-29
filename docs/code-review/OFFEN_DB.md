@@ -359,3 +359,37 @@ Die Query summiert global über `messages` (kein Projekt-/Session-Scope). Für d
 Der PTY-Caller wrapt den fire-and-forget Baseline-SHA-Capture in einem `.catch()`, der sowohl `revParse`-Fehler als auch DB-Fehler in einem generischen Log-Eintrag zusammenfasst („revParse für Baseline-SHA fehlgeschlagen"). Wenn `setStartCommitSha` (z.B. wegen DB-Lock) wirft, ist die Fehler-Quelle aus dem Log nicht erkennbar. Der Driver selbst hat keinen try/catch — das ist konsistent mit anderen Driver-Methoden, aber die irreführende Log-Message bleibt.
 
 → Im PTY-Handler den `.then()` separat fangen oder die Log-Message neutral formulieren („Baseline-SHA-Setzen fehlgeschlagen"). Keine Verhaltensänderung, nur Diagnose-Klarheit.
+
+---
+
+## Release-Review v0.4.0 (2026-05-29)
+
+Befunde aus dem Release-Review von v0.3.2 → v0.4.0 (Migration 0010 `session_buffer_snapshots` + neues `SessionBufferRepository`, `sessions.ts` Insert-Vertrag auf `model: string | null` relaxiert), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden.
+
+### D-3 – `session_buffer_snapshots.snapshot` ist `NOT NULL` ohne `DEFAULT`
+
+**Datei:** `src/main/db/migrations/0010_session_buffer_snapshots.sql:26` – **NEU**
+
+Die Spalte ist `NOT NULL` ohne `DEFAULT`. Der Upsert reicht `snapshot` immer als Wert durch (kein NULL möglich), und das Skip-Gate gegen leere/whitespace-only Snapshots sitzt im Pure-Helper `trimBufferSnapshot` bzw. im IPC-Layer — nicht im Repo. Damit hängt die NOT-NULL-Integrität an einer Schicht außerhalb der Datenschicht. Innerhalb des DB-Scopes kein Bug, aber die Garantie ist nicht repo-lokal.
+
+→ Defensiv könnte der Repo-Upsert einen leeren String hart ablehnen. Trigger: nächster Touch am `SessionBufferRepository`.
+
+### D-4 – FK-Cascade nur gegen den echten SQLite-Treiber verifizierbar
+
+**Datei:** `src/main/db/repos/session-buffer.ts:88-102` (InMemory-Driver) – **NEU**
+
+Der `InMemorySessionBufferDriver` kennt keine FK-Beziehung zu Sessions. Die im Migration-Header versprochene `ON DELETE CASCADE`-Räumung ist nur gegen den echten SQLite-Treiber prüfbar, nicht im In-Memory-Pfad. Da es aktuell keinen produktiven `DELETE FROM sessions`-Pfad gibt (`project:remove` hängt Sessions auf den Default-Bucket um), ist die Cascade rein vorsorglich.
+
+→ Bei Bedarf einen SQLite-Integrationstest ergänzen, der nach `DELETE FROM sessions` die Snapshot-Räumung prüft. Trigger: sobald ein echter `DELETE FROM sessions`-Pfad eingeführt wird.
+
+### K-8 – `SessionBufferRepository.delete()` ist toter Code (Boundary-Vorhalt)
+
+**Datei:** `src/main/db/repos/session-buffer.ts:24-27, 43-45, 81-83, 99-101` – **NEU**
+
+`delete()` wird laut Kommentar nirgends aufgerufen (FK-Cascade reicht). Bewusst dokumentierter Vorhalt — sauber kommentiert, kein Risiko.
+
+→ So belassen oder beim nächsten Touch entfernen, falls weiter ungenutzt. Trigger: wenn ein expliziter Snapshot-Lösch-Pfad gebraucht wird (dann wird die API genutzt) oder beim Aufräumen toter APIs.
+
+### Notiz zu P-3 – Migrations-Nummer 0010 ist jetzt vergeben
+
+Der für **P-3** (v0.3.0-Block, `idx_messages_ts`) vorgeschlagene Index war als „Mini-Migration 0010" skizziert. Migration 0010 ist inzwischen die Buffer-Snapshot-Tabelle. P-3 bleibt offen und muss künftig Nummer **0011+** nutzen. Keine neue Regression, nur eine Notiz für die P-3-Auflösung.

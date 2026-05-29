@@ -17,7 +17,7 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
-## 2026-05-29 — Season 34: User-erweiterbare Modell-Liste + Auto-Refresh (Variante D)
+## 2026-05-29 — v0.4.0 — Season 34: User-erweiterbare Modell-Liste + Auto-Refresh (Variante D)
 
 ### Was jetzt geht
 
@@ -31,7 +31,7 @@ Variante D (Hybrid: statische/manuelle Basis + optionaler Auto-Refresh) aus drei
 
 ---
 
-## 2026-05-25 — Season 33: Terminal-Buffer-Persistierung ueber Resume
+## 2026-05-25 — v0.4.0 — Season 33: Terminal-Buffer-Persistierung ueber Resume
 
 ### Was jetzt geht
 
@@ -55,7 +55,7 @@ Migration 0010 fuegt nur die neue Tabelle hinzu (drei Spalten plus FK), keine Be
 
 ---
 
-## 2026-05-25 — Season 32: LeftSidebar-Polish (Aufmerksamkeits-Marker · Verlauf-Counter · Rechtsklick-Menu)
+## 2026-05-25 — v0.4.0 — Season 32: LeftSidebar-Polish (Aufmerksamkeits-Marker · Verlauf-Counter · Rechtsklick-Menu)
 
 ### Was jetzt geht
 
@@ -80,7 +80,7 @@ CSS-Token `--td-orange` (`#ff8a3c`) und `--td-warn` (`#f0b400`) waren bereits in
 
 ---
 
-## 2026-05-24 — Season 31: Terminal-Session ohne Claude
+## 2026-05-24 — v0.4.0 — Season 31: Terminal-Session ohne Claude
 
 ### Was jetzt geht
 
@@ -99,7 +99,7 @@ Zwei Skip-Pfade leben im Resume-Handler in `src/main/ipc/session.ts`: der `SESSI
 
 ---
 
-## 2026-05-24 — Season 30 UI-Overhaul (Block 1): symmetrische Sidebars + einheitliches 36-px-Header-Band
+## 2026-05-24 — v0.4.0 — Season 30 UI-Overhaul (Block 1): symmetrische Sidebars + einheitliches 36-px-Header-Band
 
 ### Was jetzt geht
 
@@ -119,7 +119,7 @@ Kein neuer Test in dieser Aenderung — reine CSS/Layout-Anpassung; einziges ver
 
 ---
 
-## 2026-05-24 — Right-Pane-Polish: Datei-Browser-Filter, Sensitive-Confirm-Gate, Git-Status-Indikatoren
+## 2026-05-24 — v0.4.0 — Right-Pane-Polish: Datei-Browser-Filter, Sensitive-Confirm-Gate, Git-Status-Indikatoren
 
 ### Was jetzt geht
 
@@ -142,7 +142,7 @@ Pure-Helper-Aufteilung: `treeFilter.ts` bekommt ein optionales `ReadonlySet<stri
 
 ---
 
-## 2026-05-24 — App-Icon + Brand-Logo in der Titlebar
+## 2026-05-24 — v0.4.0 — App-Icon + Brand-Logo in der Titlebar
 
 ### Was jetzt geht
 
