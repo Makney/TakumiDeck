@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## CI-Release-Build bricht: electron-forge resolved 0 Maker auf dem neuen GitHub-Runner (2026-05-29)
+
+**Bereich:** CI-Release-Pipeline `.github/workflows/release.yml` (Step „Build Windows installer + portable zip" → `npm run make`). Die Maker-Definition in `forge.config.ts:107-115` (`MakerSquirrel` + `MakerZIP({}, ['win32'])`) ist korrekt und unveraendert. Spiegelt den OFFEN_BUILD.md-Eintrag „Release-Review v0.4.0".
+
+**Was:** Beim v0.4.0-Tag-Push-Release (CI-Run `26624542066`) lief `npm run make` mit Exit 0, gab aber `Making for the following targets: ,` aus — electron-forge loeste **null Maker** auf, also entstand kein Setup.exe/ZIP in `out/make/squirrel.windows/x64`. Folge: der Step `generate-latest-yml.mjs` bricht („Squirrel-Output-Ordner fehlt") und der Asset-Upload findet nichts. **Lokal** (identischer Commit `b954635`) baut `npm run make` beide Distributables korrekt — also kein Code-/Config-Defekt. v0.4.0 wurde deshalb ueber den manuellen Fallback (VERSIONIERUNG.md Schritt 10: lokaler Build + `gh release create`/`upload`) veroeffentlicht. Verwandter Runner-Drift desselben Releases, bereits gefixt und damit **nicht** mehr offen: Electrons npm-ci-Postinstall schrieb `node_modules/electron/path.txt` nicht mehr, wodurch drei Test-Suites beim Laden via `require('electron')` (transitiv ueber `electron-log`) brachen — umgangen mit `test.env.ELECTRON_OVERRIDE_DIST_PATH` in `vitest.config.ts` (Commit `b954635`).
+
+**Warum so:** Der manuelle Fallback war im Release-Moment der schnellste Weg zu einem fertigen v0.4.0 — der lokale Build funktioniert, der Tag zeigt auf einen voll gruenen Commit (1038/1038 Tests). Die CI-Reparatur ist eine eigene Iterationsrunde, die **nur gegen die CI verifizierbar** ist (lokal nicht reproduzierbar, weil lokal beide Maker auflosen). Sie wurde bewusst aus dem Release-Moment herausgehalten, statt das Release weiter zu blockieren. Verdacht-Ursache durchgaengig: Runner-Drift (npm 11.13.0, `windows-latest` → `windows-2025-vs2026`-Transition laut Runner-Annotation), nicht TakumiDeck-Code — der letzte erfolgreiche CI-Release (v0.3.2, 2026-05-20) lief mit identischem Workflow gruen.
+
+**Risiko:** Mittel. Jeder kuenftige Release ueber die CI scheitert identisch, solange nicht gefixt — der manuelle Fallback ist dann jedes Mal Pflicht (lokaler `npm run make` + `generate-latest-yml.mjs` + `gh release create`/`upload`). Das hebt die in Season 27 gewonnene Release-Automatisierung wieder auf und ist fehleranfaelliger (vergessene `latest.yml`, falsche Asset-Pfade, Asset-Namens-Drift). Kein Datenverlust, kein Runtime-Effekt — rein Release-Prozess.
+
+**Auflösung:** **Trigger:** **vor** dem naechsten Release-Tag-Push (v0.4.1/v0.5.0) — sonst ist der manuelle Fallback jedes Mal Pflicht. Drei Pfade (Detail-Abwaegung der Varianten in OFFEN_BUILD.md, Abschnitt „Release-Review v0.4.0"): **(A)** Runner-Image im Workflow auf den zuletzt gruenen Windows-Stand fixieren — Sofort-Stabilisierung, aber temporaer (Image wird irgendwann abgekuendigt); **(B)** electron-forge-Toolchain von der 7.5-Linie auf den neuesten stabilen Stand heben — nachhaltig, aber Risiko Folgebrueche (insb. Kopplung MakerSquirrel ↔ `electron-winstaller`-Pin, siehe eigener OFFEN_BUILD-Eintrag) und nur gegen CI verifizierbar; **(C)** npm-Version im Workflow festnageln — punktuell, Ursache aber unbestaetigt. Empfehlung: erst **A** (Sofort), dann **B** (nachhaltig), **C** nur als Rueckfall. Verifikation per Wegwerf-Tag oder `workflow_dispatch`, bevor der echte Release-Tag gesetzt wird.
+
+---
+
 ## Modell-Auto-Refresh: nur env-API-Key, keine Pagination, kein OAuth-Pfad (2026-05-29)
 
 **Bereich:** `src/main/models/fetchAvailableModels.ts`, `src/main/ipc/models.ts` (Phase-2-Season-34, Variante D).
