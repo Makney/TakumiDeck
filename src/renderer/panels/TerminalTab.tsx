@@ -380,15 +380,29 @@ export function TerminalTab({
     // Zeilen vor dem alten Verlauf, und die Reihenfolge ist kaputt. Bei allen
     // anderen Faellen (Spawn-Mount, claude-Sessions) ist `restoreReady` sofort
     // true, der Queue-Pfad ist no-op.
+    // Bereich-PANELS-Review 1.3: type/needsSpawn werden hier als Closure-
+    // Snapshot beim Mount eingefroren — konsistent mit dem [sessionId]-only-
+    // Effect (siehe Kommentar am Effect-Ende). Beide aendern sich im Tab-
+    // Kontext nicht (kein In-Place-Typ-Editor). Falls je ein In-Place-Wechsel
+    // von `type` eingefuehrt wird, sind Restore- UND Persist-Pfad stale —
+    // dann diese Annahme erneut pruefen.
     const isTerminalSession = type === 'terminal';
     const shouldRestoreBuffer = isTerminalSession && !needsSpawn;
     const pendingFrames: string[] = [];
     let restoreReady = !shouldRestoreBuffer;
+    // Bereich-PANELS-Review 1.2: Dirty-Flag. true, sobald nach dem Restore
+    // echter PTY-Inhalt in den Buffer geschrieben wurde (onData/onExit/Flush).
+    // Der Restore-Snapshot selbst setzt das Flag NICHT — dann ist der Buffer
+    // identisch zum gespeicherten Stand und der Cleanup-Save kann den
+    // idempotenten Serialize+IPC-Roundtrip ueberspringen.
+    let bufferDirty = false;
 
     const flushPendingFrames = (): void => {
       if (pendingFrames.length === 0) return;
       for (const data of pendingFrames) terminal.write(data);
       pendingFrames.length = 0;
+      // Gequeuete Frames sind echte PTY-Daten → Buffer ist jetzt veraendert.
+      bufferDirty = true;
     };
 
     if (shouldRestoreBuffer) {
@@ -425,12 +439,22 @@ export function TerminalTab({
         return;
       }
       terminal.write(event.data);
+      bufferDirty = true;
     });
     const offExit = window.api.pty.onExit((event) => {
       if (event.sessionId !== sessionId) return;
-      terminal.write(
-        `\r\n\x1b[33m[Session beendet · exitCode=${event.exitCode}]\x1b[0m\r\n`,
-      );
+      // Bereich-PANELS-Review 1.1: die Beendet-Zeile MUSS denselben Queue-Pfad
+      // wie onData nehmen. Sonst landet sie bei einem resumed-direkt-Exit
+      // (loadBuffer noch in flight) vor dem restaurierten Verlauf und den
+      // gepufferten Frames — genau die Reihenfolge-Vertauschung, die die
+      // pendingFrames-Queue verhindern soll.
+      const exitLine = `\r\n\x1b[33m[Session beendet · exitCode=${event.exitCode}]\x1b[0m\r\n`;
+      if (!restoreReady) {
+        pendingFrames.push(exitLine);
+      } else {
+        terminal.write(exitLine);
+        bufferDirty = true;
+      }
       // Status im Store aktualisieren, damit die Tab-Pille einen Resume-Hinweis anzeigt.
       // Die DB-Wahrheit kommt vom Lifecycle (pty:exit-Handler) — der Renderer setzt
       // hier nur die UI-Spiegelung, damit kein Round-Trip nötig ist.
@@ -605,8 +629,22 @@ export function TerminalTab({
       // Snapshot mit Leer-Buffer ueberschreibt — der erste Cleanup laeuft
       // vor terminal.open (RAF), die Pre-Cleanup-Pruefung darunter ist die
       // sichtbare Boundary.
+      //
+      // Bereich-PANELS-Review 1.2/1.4:
+      //   - `restoreReady`: laeuft der Cleanup waehrend loadBuffer noch in
+      //     flight ist (resumed-Session sofort wieder geschlossen), wurde der
+      //     gespeicherte Snapshot noch nicht in den Buffer geschrieben. Ein
+      //     Serialize wuerde dann den guten DB-Stand mit einem Teil-Buffer
+      //     (nur die paar pendingFrames) ueberschreiben. Deshalb hier NICHT
+      //     speichern — der bestehende Snapshot bleibt erhalten. Die wenigen
+      //     ungeschriebenen Frames gehen verloren (akzeptabel, da nie sichtbar).
+      //   - `bufferDirty`: kam seit dem Restore kein neuer PTY-Inhalt rein,
+      //     ist der Buffer identisch zum gespeicherten Snapshot — der
+      //     Serialize+Trim+IPC-Roundtrip waere reine idempotente Arbeit.
       if (
         isTerminalSession &&
+        restoreReady &&
+        bufferDirty &&
         terminalRef.current === terminal &&
         terminal.buffer.active.length > 0
       ) {

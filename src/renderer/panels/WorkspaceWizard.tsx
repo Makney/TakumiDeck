@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { AppSettings } from '@shared/types';
+import { useUiStore } from '../stores/ui';
 
 // Phase-2 Season-18: First-Start-Workspace-Wizard. Wird statt des 4-Spalten-
 // Hauptlayouts gerendert, solange `settings.workspace_wizard_completed === false`.
@@ -65,9 +66,16 @@ export function WorkspaceWizard({
         // Settings sind schon persistiert, der User kann die Sidebar spaeter
         // ueber den Settings-Workspace-Tab-Rescan nachziehen. Wizard trotzdem
         // beenden, sonst klebt der User im Welcome ohne Weg raus.
-        setErrorMsg(
-          `Scan fehlgeschlagen (${scanned.error}) — du kannst spaeter in den Einstellungen erneut scannen.`,
-        );
+        //
+        // Bereich-PANELS-Review 4.2: onComplete unmountet den Wizard sofort —
+        // ein lokales setErrorMsg waere nie sichtbar. Persistenter Toast ueber
+        // den UI-Store, der das Hauptlayout ueberlebt, meldet den Fehl-Scan.
+        useUiStore
+          .getState()
+          .flashToast(
+            `Workspace-Scan fehlgeschlagen (${scanned.error}) — du kannst in den Einstellungen erneut scannen.`,
+            6000,
+          );
       }
       onComplete(nextSettings);
     } finally {

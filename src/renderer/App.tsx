@@ -16,6 +16,7 @@ import { useUsageStore } from './stores/usage';
 import { useProjectStore } from './stores/projects';
 import { useUiStore } from './stores/ui';
 import { useFileTabsStore } from './stores/fileTabs';
+import { useGitStatusSync } from './stores/gitStatus';
 
 // Renderer-Layout — 4-Spalten-Grid nach docs/design/claude-export/styles.css
 // (.td-main, Zeilen 122-195). Season 30 UI-Overhaul: Sidebars 240/232 →
@@ -59,6 +60,11 @@ export function App() {
       activeProjectId ? projects.find((p) => p.id === activeProjectId) ?? null : null,
     [projects, activeProjectId],
   );
+
+  // Bereich-PANELS-Review 2.2 (Variante A): EINZIGER git:status-Schreib-Trigger.
+  // Laedt den Status fuers aktive Projekt und re-fetcht bei fs:changed; EditorPane
+  // und RightPaneFilesPanel lesen nur noch aus dem useGitStatusStore.
+  useGitStatusSync();
 
   useEffect(() => {
     let cancelled = false;

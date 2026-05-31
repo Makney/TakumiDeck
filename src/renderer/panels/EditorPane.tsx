@@ -5,7 +5,8 @@ import { useSessionStore } from '../stores/sessions';
 import { MarkdownEditor, type MarkdownEditorLayout } from '../components/MarkdownEditor';
 import { buildQuickAccessList } from '../components/quickAccess';
 import { DiffViewer } from '../components/DiffViewer';
-import type { AppSettings, GitStatusResult } from '@shared/types';
+import { useGitStatusStore, EMPTY_GIT_STATUS_ENTRY } from '../stores/gitStatus';
+import type { AppSettings } from '@shared/types';
 
 // EditorPane (Sprint 7, post-User-Feedback Layout-Umstellung).
 //
@@ -68,11 +69,16 @@ export function EditorPane({ settings }: EditorPaneProps) {
   // unten den refreshKey. Diff + Editor reagieren ueber Dep-Listen.
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const { status, loading, loadError, hasGit } = useGitStatus(
-    projectId,
-    diffTabOpen && diffActive,
-    refreshKey,
+  // Bereich-PANELS-Review 2.2: git:status kommt aus dem gemeinsamen Store, der
+  // zentral fuers aktive Projekt laedt (App → useGitStatusSync). Damit faellt
+  // der zweite, redundante Fetch weg, den EditorPane und RightPaneFilesPanel
+  // bisher unabhaengig voneinander abgesetzt haben. Der Status bleibt fuer das
+  // aktive Projekt dauerhaft geladen — der DiffViewer (unten per display-Toggle
+  // gemountet, Review 2.4) bleibt damit zustandsstabil ueber Tab-Wechsel.
+  const gitEntry = useGitStatusStore((s) =>
+    projectId ? s.byProject[projectId] ?? EMPTY_GIT_STATUS_ENTRY : EMPTY_GIT_STATUS_ENTRY,
   );
+  const { status, loading, loadError, hasGit } = gitEntry;
 
   const handleSave = useCallback(
     async (
@@ -168,6 +174,12 @@ export function EditorPane({ settings }: EditorPaneProps) {
               .tabs[event.projectId]?.find((t) => t.id === tab.id);
             if (!current || current.dirty) return;
             useFileTabsStore.getState().setSaved(event.projectId, tab.id, res.data.content);
+          })
+          // Bereich-PANELS-Review 2.1: hartes Reject (z.B. IPC-Kanal weg beim
+          // Quit-Race) abfangen, damit der Auto-Reload-Pfad keine Unhandled-
+          // Rejection wirft. Der Tab behaelt einfach seinen alten Inhalt.
+          .catch((e) => {
+            console.warn('[EditorPane] fs:read im Auto-Reload fehlgeschlagen', e);
           });
       }
     });
@@ -280,8 +292,15 @@ export function EditorPane({ settings }: EditorPaneProps) {
             </div>
           );
         })}
-        {diffTabOpen && diffActive && (
-          <div className="td-code-pane">
+        {/* Bereich-PANELS-Review 2.4: DiffViewer bleibt gemountet, solange der
+            Diff-Tab offen ist, und wird nur per display-Toggle verborgen —
+            analog zum File-Tab-Stack daruber. So ueberleben Mode-Auswahl,
+            aktive Datei und CodeMirror-Scroll einen Tab-Wechsel. */}
+        {diffTabOpen && (
+          <div
+            className="td-code-pane"
+            style={{ display: diffActive ? 'flex' : 'none' }}
+          >
             <DiffViewer
               projectId={projectId}
               status={status}
@@ -302,58 +321,6 @@ export function EditorPane({ settings }: EditorPaneProps) {
           offene Tabs noch eine sinnvolle Anker-Liste rendert. */}
     </div>
   );
-}
-
-// ============================================================ Git-Status-Hook
-
-interface GitStatusState {
-  status: GitStatusResult | null;
-  loading: boolean;
-  loadError: string | null;
-  hasGit: boolean;
-}
-
-function useGitStatus(
-  projectId: string | null,
-  enabled: boolean,
-  // Phase-2 Season-29: Bumps via fs:changed-Push triggern einen Re-Fetch.
-  refreshKey: number,
-): GitStatusState {
-  const [state, setState] = useState<GitStatusState>({
-    status: null,
-    loading: false,
-    loadError: null,
-    hasGit: true,
-  });
-
-  useEffect(() => {
-    if (!projectId || !enabled) {
-      setState({ status: null, loading: false, loadError: null, hasGit: true });
-      return;
-    }
-    let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true, loadError: null }));
-    void window.api.git.status({ projectId }).then((result) => {
-      if (cancelled) return;
-      if (result.ok) {
-        setState({ status: result.data, loading: false, loadError: null, hasGit: true });
-      } else if (result.code === 'NOT_A_GIT_REPO') {
-        setState({ status: null, loading: false, loadError: null, hasGit: false });
-      } else {
-        setState({
-          status: null,
-          loading: false,
-          loadError: result.error,
-          hasGit: true,
-        });
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, enabled, refreshKey]);
-
-  return state;
 }
 
 // ============================================================ Editor-Wrapper

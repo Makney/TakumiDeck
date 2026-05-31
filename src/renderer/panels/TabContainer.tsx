@@ -149,8 +149,13 @@ export function TabContainer({ settings }: Props) {
         // existieren).
         if (!activeProjectId) return;
         const index = parseInt(e.key, 10) - 1;
-        const list = useSessionStore.getState().tabs.filter(
-          (t) => t.projectId === activeProjectId,
+        // Bereich-PANELS-Review 2.3: denselben Helper wie die Tab-Bar nutzen,
+        // damit Tastatur-Index und sichtbare Reihenfolge garantiert identisch
+        // bleiben — ein Inline-Filter wuerde bei kuenftiger Sortier-/Archived-
+        // Logik in selectTabsForProject auseinanderdriften.
+        const list = selectTabsForProject(
+          useSessionStore.getState().tabs,
+          activeProjectId,
         );
         const target = list[index];
         if (!target) return;

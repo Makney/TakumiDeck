@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUiStore } from '../stores/ui';
 import { useStatsStore, type StatsScope } from '../stores/stats';
-import type { StatsOverviewResult, StatsRange } from '@shared/types';
+import type { StatsRange } from '@shared/types';
 import { fmtTokens } from '../components/fmtTokens';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { ModelsView } from '../components/ModelsView';
@@ -159,18 +159,19 @@ function OverviewView({ easterEggEnabled }: { easterEggEnabled: boolean }) {
     return () => unsubscribe();
   }, [refresh, refreshHeatmap, activeProjectId]);
 
-  if (error) {
-    return (
-      <div className="td-stats-placeholder">
-        <p>Stats konnten nicht geladen werden</p>
-        <p className="td-stats-placeholder-meta">{error}</p>
-      </div>
-    );
-  }
-
+  // Bereich-PANELS-Review 4.1: Ein Cards-Fehler (stats:project-overview) darf
+  // nicht die ganze Split-View ersetzen — die Heatmap hat ihren eigenen
+  // Fehlerkanal (heatmapError) und Refresh-Pfad. Der error-Placeholder belegt
+  // daher nur den Cards-Slot; die Heatmap rendert unabhaengig weiter.
   return (
     <>
       <div className="td-overview-split">
+        {error ? (
+          <div className="td-stats-placeholder">
+            <p>Stats konnten nicht geladen werden</p>
+            <p className="td-stats-placeholder-meta">{error}</p>
+          </div>
+        ) : (
         <div className="td-stats-cards td-stats-cards-compact">
           <Stat label="Sitzungen" value={overview ? String(overview.sessions_total) : '—'} />
           <Stat
@@ -202,7 +203,11 @@ function OverviewView({ easterEggEnabled }: { easterEggEnabled: boolean }) {
           />
           <Stat
             label="Lieblingsmodell"
-            value={overview ? formatFavoriteModel(overview) : '—'}
+            value={
+              overview && overview.favorite_model
+                ? prettyModelId(overview.favorite_model)
+                : '—'
+            }
             sub={
               overview && overview.favorite_model
                 ? `${overview.favorite_model_count} Msgs`
@@ -210,6 +215,7 @@ function OverviewView({ easterEggEnabled }: { easterEggEnabled: boolean }) {
             }
           />
         </div>
+        )}
         <ActivityHeatmap
           data={heatmap}
           weeks={heatmapWeeks}
@@ -217,7 +223,7 @@ function OverviewView({ easterEggEnabled }: { easterEggEnabled: boolean }) {
           error={heatmapError}
         />
       </div>
-      {easterEggEnabled && overview && (
+      {!error && easterEggEnabled && overview && (
         <EasterEggStrip tokensTotal={overview.tokens_total} />
       )}
     </>
@@ -299,12 +305,4 @@ function formatHour(hour: number | null): string {
   return `${String(hour).padStart(2, '0')}:00`;
 }
 
-// Kurzdarstellung der Modell-IDs, damit sie in die schmale Card passen.
-// claude-opus-4-7 → Opus 4.7, claude-sonnet-4-6 → Sonnet 4.6, etc. Unbekannte
-// IDs werden auf die letzten 12 Zeichen gekuerzt — kein hartes Fail bei neuen
-// Modell-Familien.
-function formatFavoriteModel(overview: StatsOverviewResult): string {
-  if (!overview.favorite_model) return '—';
-  return prettyModelId(overview.favorite_model);
-}
 

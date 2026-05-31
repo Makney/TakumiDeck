@@ -24,6 +24,22 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## git:status zentral im gemeinsamen Renderer-Store statt pro Panel (Variante A)
+
+**Entscheidung:** Der `git:status`-Stand lebt in einem eigenen Zustand-Store (`useGitStatusStore`), der pro Projekt cached. Genau ein Schreib-Trigger (`useGitStatusSync()` im App-Bootstrap) lädt beim Projekt-Wechsel und re-fetcht bei `fs:changed`. EditorPane (Diff) und der Datei-Browser lesen nur noch reaktiv daraus.
+
+**Varianten:**
+
+- **A — Gemeinsamer git:status-Store (Zustand-Slice)** ✅ **gewählt.** Zentraler Cache, beide Panels leiten ihre Sicht (volle Files-Liste bzw. `Map<relPath, status>`) ab; ein Fetch pro Push.
+- **B — git:status auf App-Ebene heben + per Props durchreichen:** verworfen — Prop-Drilling durch RightStack, und App müsste die Re-Fetch-Logik selbst tragen.
+- **C — Main-seitiges Coalescing** (IPC-Handler dedupliziert gleichzeitige Anfragen): verworfen als alleinige Lösung — billig, aber zwei IPC-Roundtrips blieben bestehen, der Renderer-Code bliebe doppelt.
+
+**Grund:** Vorher fetchten EditorPane (`useGitStatus`) und RightPaneFilesPanel je unabhängig denselben `git:status` und abonnierten beide `fs:changed` — pro Datei-Event also zwei parallele git-Aufrufe fürs selbe Projekt. Mit dem Diff-Tab-Auto-Open (quasi dauerhaft bei Git-Projekten) wurde die Dopplung zum Dauerzustand. A löst die Wurzel: eine Quelle, ein Fetch, referenz-stabile Selektoren (Modul-Konstante `EMPTY_GIT_STATUS_ENTRY` + abgeleitete `useMemo`-Map) gemäß der Selector-Stabilitäts-Regel. C hätte die git-Arbeit zwar entdoppelt, aber die redundante Renderer-Logik und zwei Roundtrips gelassen.
+
+**Konsequenz:** Neue git:status-Konsumenten lesen aus dem Store, statt selbst zu fetchen. Der Schreib-Trigger ist bewusst zentralisiert — wer einen weiteren `git:status`-Pfad braucht, erweitert `useGitStatusSync`/`refresh`, statt einen dritten Fetch-Effekt aufzumachen. **Bewusst ausgenommen:** die TitleBar behält ihren eigenen `git:status`-Call für die Branch-Anzeige, weil sie über einen anderen Trigger (`td-git-refresh` nach Commit, nicht `fs:changed`) aktualisiert — sie in den Store zu ziehen wäre ein eigener Schritt mit eigener Trigger-Semantik.
+
+---
+
 ## Season-34 Modell-Erkennung: statische Basis + manuelle Pflege + optionaler Auto-Refresh (Variante D)
 
 **Entscheidung:** Modelle werden über drei Schichten verwaltet: (1) eine im Code gepflegte Built-in-Liste (`BUILT_IN_MODEL_OPTIONS`), die App-Updates mit neuen Anthropic-Modellen mitliefert; (2) eine user-gepflegte `custom_models`-Liste in den Settings für ad-hoc-Releases vor dem nächsten Update; (3) ein **optionaler** Auto-Refresh-Button, der den Anthropic-Endpoint `GET /v1/models` abfragt und neue IDs als Custom-Vorschläge einblendet — aber nur, wenn ein API-Key vorhanden ist.

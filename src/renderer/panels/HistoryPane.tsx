@@ -68,6 +68,13 @@ const STATUS_OPTIONS: SessionStatus[] = [
   'error',
   'archived',
 ];
+// Bereich-PANELS-Review 3.3: Default-Status-Filter aus STATUS_OPTIONS ableiten
+// statt als zweite Inline-Liste zu fuehren. So bleibt bei kuenftiger Status-
+// Erweiterung eine einzige Quelle — `archived` ist als einziger bewusst aus dem
+// Default ausgeblendet (sonst fuellen weggeraeumte Sessions die Liste).
+const DEFAULT_STATUS_FILTER: SessionStatus[] = STATUS_OPTIONS.filter(
+  (s) => s !== 'archived',
+);
 const STATUS_LABELS: Record<SessionStatus, string> = {
   running: 'läuft',
   waiting: 'wartet',
@@ -156,17 +163,7 @@ export function HistoryPane({ project, settings }: Props) {
     setLoading(true);
     setError(null);
     const effectiveStatuses =
-      selectedStatuses.length === 0
-        ? ([
-            'running',
-            'idle',
-            'waiting',
-            'permission-prompt',
-            'completed',
-            'interrupted',
-            'error',
-          ] as SessionStatus[])
-        : selectedStatuses;
+      selectedStatuses.length === 0 ? DEFAULT_STATUS_FILTER : selectedStatuses;
     void window.api.sessions
       .history({
         projectId: project.id,

@@ -17,6 +17,26 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-31 — v0.4.0 — Code-Review PANELS: 15 Fixes + gemeinsamer git:status-Store
+
+### Was jetzt geht
+
+- **Der Stats-Fehler verdeckt nicht mehr die Heatmap.** Schlägt der Sitzungs-/Token-Cards-Abruf fehl, zeigt nur noch der Card-Bereich den Fehler-Platzhalter — die Aktivitäts-Heatmap rendert daneben weiter, weil sie einen eigenen Fehlerkanal hat. Vorher ersetzte ein Cards-Fehler die komplette Übersicht.
+- **Die Verlauf-Quickliste in der Sidebar bleibt aktuell.** Wandert eine Session im Hintergrund auf abgeschlossen/unterbrochen/Fehler (ohne dass man einen Tab öffnet oder schließt), erscheint bzw. verschwindet sie jetzt sofort in der Quickliste — vorher musste man erst das Projekt wechseln oder einen Tab anfassen.
+- **Der Diff-Tab merkt sich seinen Zustand.** Beim Wechsel weg vom Diff-Tab und wieder zurück bleiben Modus-Auswahl (Working/Staged/Session), die gewählte Datei und die Scroll-Position erhalten — der Merge-View wird nicht mehr komplett neu aufgebaut.
+- **Ein fehlgeschlagener Workspace-Scan im Erst-Start-Wizard wird sichtbar.** Statt einer Fehlermeldung, die im selben Moment mit dem Wizard verschwand, erscheint jetzt ein persistenter Toast im Hauptlayout mit Hinweis auf den manuellen Rescan in den Einstellungen.
+- **Resumte Terminal-Sessions zeigen die „[Session beendet]"-Zeile in korrekter Reihenfolge** und sparen sich redundante Buffer-Speichervorgänge, wenn seit dem Restore nichts Neues kam.
+
+### Aufräum-Arbeiten ohne sichtbare Wirkung
+
+15 Befunde aus dem PANELS-Review (alle 13 Renderer-Panel-Dateien) abgearbeitet: fehlende `.catch`-Pfade auf Auto-Reload-IPCs (EditorPane, LeftSidebar), Tastatur-Tab-Index über denselben Helper wie die Tab-Bar, dedupliziertes Health-Check-Handling in der TitleBar, einheitliche Default-Status-Liste im Verlauf-Filter. Vier Design-by-Choice-Befunde wandern bewusst nach [`OFFEN_PANELS.md`](./code-review/OFFEN_PANELS.md). Neuer gezielter Test für den git:status-Store (`tests/renderer/git-status-store.test.ts`).
+
+### Architektur-Notiz
+
+`git:status` wird jetzt über einen **gemeinsamen Renderer-Store** (`useGitStatusStore`) zentral geladen, statt dass EditorPane und der Datei-Browser ihn unabhängig fetchen und beide bei jeder Datei-Änderung neu abrufen. Aus zwei parallelen git-Aufrufen pro Datei-Event wird einer. Variante A aus drei Optionen gewählt — Details in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md).
+
+---
+
 ## 2026-05-29 — v0.4.0 — Season 34: User-erweiterbare Modell-Liste + Auto-Refresh (Variante D)
 
 ### Was jetzt geht

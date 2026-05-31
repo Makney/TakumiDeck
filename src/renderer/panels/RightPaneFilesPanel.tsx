@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import type { FsTreeNode, GitFileStatus } from '@shared/types';
+import { useGitStatusStore } from '../stores/gitStatus';
 import { filterTree } from '../components/treeFilter';
 import { pickFileMarker, type FileMarker } from '../components/fileMarker';
 import {
@@ -85,55 +86,30 @@ export function RightPaneFilesPanel({ projectId, dirtyRelPaths, selectedRelPath,
   }, [projectId]);
 
   // Phase-2 Season-29.5: Git-Status pro File als Map<relPath, GitFileStatus>.
-  // Initial-Fetch beim Projekt-Wechsel, Re-Fetch bei jedem fs:changed-Push
-  // aus dem Season-29-Watcher. NOT_A_GIT_REPO → leere Map (keine Marker).
-  const [gitStatusMap, setGitStatusMap] = useState<ReadonlyMap<string, GitFileStatus>>(EMPTY_GIT_MAP);
-  const [gitRefreshKey, setGitRefreshKey] = useState(0);
-  useEffect(() => {
-    if (!projectId) {
-      setGitStatusMap(EMPTY_GIT_MAP);
-      return;
+  //
+  // Bereich-PANELS-Review 2.2: kommt jetzt aus dem gemeinsamen useGitStatusStore
+  // (zentral geladen + bei fs:changed re-fetcht via App → useGitStatusSync).
+  // Vorher fetchte dieses Panel unabhaengig von EditorPane denselben git:status
+  // und abonnierte fs:changed separat — pro Datei-Event also zwei parallele
+  // git-Aufrufe fuers selbe Projekt. Jetzt lesen wir nur noch reaktiv und
+  // leiten die Marker-Map daraus ab. NOT_A_GIT_REPO → status=null → leere Map.
+  const gitStatus = useGitStatusStore((s) =>
+    projectId ? s.byProject[projectId]?.status ?? null : null,
+  );
+  const gitStatusMap = useMemo<ReadonlyMap<string, GitFileStatus>>(() => {
+    if (!gitStatus) return EMPTY_GIT_MAP;
+    const next = new Map<string, GitFileStatus>();
+    for (const file of gitStatus.files) {
+      // Worktree-Status hat Vorrang vor Index-Status: was im Working-Tree
+      // sichtbar ist, ist auch im File-Browser sichtbar. Nur wenn Worktree
+      // = unchanged (also vollstaendig gestaged), fallen wir auf den
+      // Index-Status zurueck — sonst sieht ein voll-gestagter neuer File
+      // gar keinen Marker.
+      const status = file.worktreeStatus !== 'unchanged' ? file.worktreeStatus : file.indexStatus;
+      if (status !== 'unchanged') next.set(file.path, status);
     }
-    let cancelled = false;
-    void window.api.git.status({ projectId }).then((result) => {
-      if (cancelled) return;
-      if (!result.ok) {
-        // NOT_A_GIT_REPO + jede andere Fehler-Quelle laufen still — File-
-        // Browser ist auch ohne Git voll funktional.
-        setGitStatusMap(EMPTY_GIT_MAP);
-        return;
-      }
-      const next = new Map<string, GitFileStatus>();
-      for (const file of result.data.files) {
-        // Worktree-Status hat Vorrang vor Index-Status: was im Working-Tree
-        // sichtbar ist, ist auch im File-Browser sichtbar. Nur wenn Worktree
-        // = unchanged (also vollstaendig gestaged), fallen wir auf den
-        // Index-Status zurueck — sonst sieht ein voll-gestagter neuer File
-        // gar keinen Marker.
-        const status = file.worktreeStatus !== 'unchanged' ? file.worktreeStatus : file.indexStatus;
-        if (status !== 'unchanged') next.set(file.path, status);
-      }
-      setGitStatusMap(next);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, gitRefreshKey]);
-
-  // Subscribe auf fs:changed-Push aus dem Main. Wir bumpen den
-  // gitRefreshKey, der den useEffect oben re-triggert. Tree-Reload
-  // bewusst nicht — chokidar pusht Datei-Aenderungen, keine
-  // Strukturaenderungen, und ein „neuer File faellt aus dem Tree" wuerde
-  // den User irritieren ohne klaren Mehrwert. (Tree-Refresh bei
-  // Strukturaenderungen waere ein Phase-3-Thema.)
-  useEffect(() => {
-    if (!projectId) return;
-    const unsubscribe = window.api.fs.onChanged((event) => {
-      if (event.projectId !== projectId) return;
-      setGitRefreshKey((k) => k + 1);
-    });
-    return unsubscribe;
-  }, [projectId]);
+    return next;
+  }, [gitStatus]);
 
   const filtered = useMemo(
     () => filterTree(tree, filter, activeExtensions),

@@ -118,24 +118,52 @@ export function LeftSidebar({ settings }: Props) {
   // Read-only IPC, kein useRef-Guard nötig (Memory: Guard nur für Mutationen).
   // Re-Load bei `tabs`-Änderung ist relevant, weil neue Sessions in der Tab-Bar
   // beim Schließen in den Verlauf wandern und der Snapshot dann veraltet ist.
-  useEffect(() => {
+  //
+  // Seq-Guard statt cancelled-Flag, weil loadHistory jetzt aus zwei Triggern
+  // gerufen wird (Effekt unten + Status-Push) — der hoechste mySeq gewinnt.
+  const historySeq = useRef(0);
+  const loadHistory = useCallback(() => {
     if (!activeProjectId) {
       setHistoryEntries([]);
       return;
     }
-    let cancelled = false;
+    const mySeq = ++historySeq.current;
     void window.api.sessions
       .history({ projectId: activeProjectId, statuses: HISTORY_STATUSES })
       .then((result) => {
-        if (cancelled) return;
-        if (result.ok) setHistoryEntries(result.data);
+        if (historySeq.current !== mySeq) return;
+        if (result.ok) {
+          setHistoryEntries(result.data);
+        } else {
+          // Bereich-PANELS-Review 3.2: !result.ok nicht mehr still schlucken.
+          console.warn('[LeftSidebar] sessions:history fehlgeschlagen', result.error);
+        }
+      })
+      .catch((e) => {
+        // Bereich-PANELS-Review 3.2: hartes Reject (IPC-Kanal weg) abfangen.
+        console.warn('[LeftSidebar] sessions:history rejected', e);
       });
-    return () => {
-      cancelled = true;
-    };
-    // tabs.length triggert Re-Load nach Tab-Schließen; wir brauchen kein deep-equal,
-    // weil Status-Änderungen ohnehin den Tab nicht aus dem Store entfernen.
-  }, [activeProjectId, tabs.length]);
+  }, [activeProjectId]);
+
+  // tabs.length triggert Re-Load nach Tab-Schließen; wir brauchen kein deep-equal,
+  // weil Status-Änderungen ohnehin den Tab nicht aus dem Store entfernen.
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory, tabs.length]);
+
+  // Bereich-PANELS-Review 3.1: auch bei Hintergrund-Status-Wechsel neu laden.
+  // Eine Session, die im Hintergrund auf completed/interrupted/error (oder
+  // archived) wandert — ohne dass ein Tab geoeffnet/geschlossen wird —, wuerde
+  // sonst erst beim naechsten Project-/Tab-Trigger in der Quickliste auftauchen
+  // bzw. verschwinden. Wir reagieren nur auf quicklisten-relevante Status, damit
+  // die haeufigen running/idle-Ticks keinen Re-Fetch ausloesen.
+  useEffect(() => {
+    return window.api.sessions.onStatusPush((event) => {
+      if (event.status === 'archived' || HISTORY_STATUSES.includes(event.status)) {
+        loadHistory();
+      }
+    });
+  }, [loadHistory]);
 
   // Phase-2 Season-32: drei Counts pro Projekt in einem Pass — running (gruen),
   // waiting (orange, inkl. permission-prompt), attention (gelb: interrupted/error).

@@ -142,3 +142,37 @@ Befunde aus dem Release-Review von v0.3.2 → v0.4.0 (Terminal-Buffer-Restore/Pe
 - **Beschreibung:** `onClose={() => setMenu(null)}` bzw. `onDismiss={() => setContextMenu(null)}` sind pro Render neue Funktionsreferenzen → der Listener-Effekt in beiden Menüs (`[onClose]`/`[onDismiss]`) re-registriert document-Listener bei jedem Parent-Render. Kein Leak (Cleanup greift), nur unnötige Churn.
 - **Begründung:** `useCallback` an der Aufrufstelle. Reine Mikro-Optimierung ohne Funktionsänderung.
 - **Trigger:** zusammen mit der ContextMenu-Vereinheitlichung oben.
+
+---
+
+## Code-Review PANELS (2026-05-31)
+
+Befunde aus dem Bereichs-Review der Renderer-Panels (alle 13 Dateien). Bugs/Warnungen/Verbesserungen wurden gefixt (siehe git-History desselben Tages); die folgenden **Design-by-Choice**-Befunde bleiben bewusst offen.
+
+### `flushPendingFrames` nur im `.finally` des Restore-IPC gerufen
+
+- `src/renderer/panels/TerminalTab.tsx` (Restore-Queue im `[sessionId]`-Effect) · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Die Pre-Frame-Queue (`pendingFrames`) wird nur im `.finally` des `loadBuffer`-IPC geleert. Geprüft und sicher: `.finally` läuft bei einem Promise garantiert (auch nach `.catch`), die Queue bleibt also nie stehen. Mit dem 1.1-Fix nimmt jetzt auch der `pty:exit`-Pfad dieselbe Queue, und der Cleanup-Save (1.2/1.4) überspringt den Save, solange `restoreReady` noch `false` ist — der gespeicherte Snapshot wird nicht durch einen Teil-Buffer überschrieben.
+- **Begründung:** Keine Änderung nötig — als geprüft-und-sicher dokumentiert, damit der nächste Review den `.finally`-only-Pfad nicht erneut als potenzielle Hängen-bleibt-Lücke meldet.
+- **Trigger:** wenn der Restore-/Queue-Pfad in einem Refactor umgebaut wird.
+
+### `handleOpenInEditorFromDiff` setzt auf synchrones `openFile`
+
+- `src/renderer/panels/EditorPane.tsx:98-105` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Der Auto-Open-Pairing-Handler ruft `openFile(...)` und direkt danach `setActive(projectId, 'diff')`, damit der User auf der Diff-Pane bleibt. Das funktioniert nur, weil `openFile` synchron in den Store schreibt. Eine künftige Async-Variante von `openFile` würde das `setActive('diff')` davor laufen lassen, und der frisch geöffnete File-Tab würde doch aktiv. Im Code-Kommentar (Z.92-97) dokumentiert.
+- **Begründung:** Heute korrekt; reiner Dokumentations-Anker.
+- **Trigger:** wenn `openFile` jemals auf async umgestellt wird — dann den `setActive('diff')`-Reset in die `.then`-Kette ziehen.
+
+### Hardcoded P90-Fenster „192 h" in der TitleBar
+
+- `src/renderer/panels/TitleBar.tsx:198` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Der System-Status-Slot zeigt fest „P90 192 h", während `PlanPane.tsx:72` denselben Wert korrekt aus `settings.p90_window_hours` zieht. Stellt der User das Fenster in den Settings um, bleibt die TitleBar bei 192 h. Der Inline-Kommentar (Z.198) markiert das bereits als „Phase 2: aus settings.p90_window_hours ziehen".
+- **Begründung:** Im Code als Phase-2-TODO markiert; kein funktionaler Defekt, nur eine Anzeige-Inkonsistenz.
+- **Trigger:** wenn `settings` ohnehin an die TitleBar durchgereicht wird oder die Inkonsistenz empirisch stört.
+
+### `usage.onUpdate`-Listener ohne `scope`/`range` in den Deps
+
+- `src/renderer/panels/StatsPane.tsx:150-160` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Der Push-Listener-Effekt hat nur `[refresh, refreshHeatmap, activeProjectId]` als Deps; `scope`/`range` fehlen. Korrekt, weil `refresh`/`refreshHeatmap` ihre Filter über `get()` store-intern lesen, nicht über Closure-Argumente. Der erste Refresh-Effekt (Z.133-141) listet `scope, range` dagegen explizit (er soll bei jedem Wechsel sofort neu laden). Die Asymmetrie ist gewollt.
+- **Begründung:** Funktional korrekt; ein Kommentar zur Asymmetrie wäre nice-to-have, mehr nicht.
+- **Trigger:** wenn `refresh`/`refreshHeatmap` jemals ihre Filter als Argument statt via `get()` lesen — dann `scope`/`range` in die Deps nachziehen.

@@ -70,38 +70,41 @@ export function TitleBar({ version }: Props) {
     | { kind: 'unhealthy'; hint: string }
   >({ kind: 'unknown' });
 
-  useEffect(() => {
-    let cancelled = false;
-    void window.api.app.claudeHealth().then((result) => {
-      if (cancelled) return;
+  // Bereich-PANELS-Review 4.3: gemeinsame Auswerte-Logik fuer beide Health-
+  // Trigger (Initial-Check + Re-Check). Vorher war der result.ok/healthy-Block
+  // in beiden Effekten dupliziert.
+  const applyHealthResult = useCallback(
+    (result: Awaited<ReturnType<typeof window.api.app.claudeHealth>>) => {
       if (!result.ok) {
         setClaudeHealth({ kind: 'unhealthy', hint: result.error });
         return;
       }
       if (result.data.healthy) setClaudeHealth({ kind: 'healthy' });
       else setClaudeHealth({ kind: 'unhealthy', hint: result.data.hint });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.api.app.claudeHealth().then((result) => {
+      if (cancelled) return;
+      applyHealthResult(result);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyHealthResult]);
 
   // Health-Re-Check bei PTY-Spawn-Fehler (TerminalTab feuert das CustomEvent,
   // wenn pty:create scheitert — siehe Phase-2-Erweiterung in Sprint 8).
   useEffect(() => {
     const handler = () => {
-      void window.api.app.claudeHealth().then((result) => {
-        if (!result.ok) {
-          setClaudeHealth({ kind: 'unhealthy', hint: result.error });
-          return;
-        }
-        if (result.data.healthy) setClaudeHealth({ kind: 'healthy' });
-        else setClaudeHealth({ kind: 'unhealthy', hint: result.data.hint });
-      });
+      void window.api.app.claudeHealth().then(applyHealthResult);
     };
     window.addEventListener('td-claude-recheck', handler);
     return () => window.removeEventListener('td-claude-recheck', handler);
-  }, []);
+  }, [applyHealthResult]);
 
   // Branch-Loader: nur wenn aktives Projekt + Git-Repo vorhanden. Read-only IPC,
   // kein useRef-Guard nötig (Memory: Guard nur für Server-Mutationen).
