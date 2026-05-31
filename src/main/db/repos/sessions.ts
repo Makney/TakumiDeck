@@ -302,8 +302,9 @@ export class SqliteSessionDriver implements SessionDbDriver {
   // Bulk-Patches (z.B. before-quit-Handler über alle running-Sessions).
   private readonly patchStmtCache = new Map<string, Database.Statement>();
   // Statement-Cache für listHistoryForProject(): Cache-Key = Filter-Permutation
-  // (typesLen × statusesLen × hasQuery). Maximal ~56 Permutationen — alle dürfen
-  // dauerhaft im Cache leben.
+  // (typesLen × statusesLen × modelsLen × hasQuery). Permutations-Raum bleibt
+  // klein (≤560, siehe listHistoryForProject()) — alle dürfen dauerhaft im
+  // Cache leben.
   private readonly historyStmtCache = new Map<
     string,
     Database.Statement<Record<string, unknown>, SessionHistoryEntry>

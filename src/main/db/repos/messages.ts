@@ -163,6 +163,11 @@ export class SqliteMessageDriver implements MessageDbDriver {
   lastRoleForSession(sessionId: string): 'assistant' | 'user' | null {
     const row = this.lastRoleStmt.get(sessionId);
     if (!row) return null;
+    // Bewusste Kollabierung: jede Nicht-`assistant`-Rolle wird auf `'user'`
+    // gemappt (treibt die waiting-State-Detection). Heute schreibt der Parser
+    // nur 'user'/'assistant', daher kein Fehl-Mapping. Sobald 'tool'-Rollen
+    // persistiert werden (gekoppelt an S-3, fehlender role-Domain-Constraint),
+    // hier explizit behandeln.
     return row.role === 'assistant' ? 'assistant' : 'user';
   }
 
@@ -246,6 +251,8 @@ export class InMemoryMessageDriver implements MessageDbDriver {
       if (!candidate || r.ts > candidate.ts) candidate = r;
     }
     if (!candidate) return null;
+    // Siehe SQLite-Driver: Nicht-`assistant`-Rollen bewusst auf `'user'`
+    // gemappt (S-3-Kopplung).
     return candidate.role === 'assistant' ? 'assistant' : 'user';
   }
 

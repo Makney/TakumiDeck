@@ -36,6 +36,6 @@ Befunde, die während eines Code-Reviews aufkommen, aber **bewusst nicht gefixt*
 
 ## Pflege-Regeln
 
-- Einträge werden **nicht gelöscht**, wenn sie verschwinden — stattdessen als *behoben* markieren und mit Datum + Referenz auf den CHANGELOG-Eintrag annotieren. So bleibt nachvollziehbar, dass der Befund existierte.
+- Behobene/gegenstandslose Befunde werden **nicht gelöscht, sondern ins `archiv/ARCHIV_<BEREICH>.md` verschoben** — verbatim, mit Datum + kurzer Auflösungs-Notiz. So bleibt diese Datei auf die offenen Punkte fokussiert und der Verlauf nachvollziehbar. Oben in jeder OFFEN-Datei ein Verweis aufs Archiv.
 - **Keine Gummiband-Einträge.** Wenn ein Befund hier landet, soll er so konkret sein, dass ein späterer Review-Agent ihn eindeutig wiedererkennt und nicht noch einmal meldet.
 - **Kategorie „Design-by-Choice"** für Dinge, die bewusst so sind — dort steht die Begründung oft als Verweis auf `ENTSCHEIDUNGEN.md`.

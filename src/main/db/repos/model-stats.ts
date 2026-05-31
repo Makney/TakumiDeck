@@ -148,7 +148,9 @@ export class SqliteModelStatsDriver implements ModelStatsDbDriver {
       // Phase-2 Season Flacsh: `tokens_in_sum`, `tokens_cache_read` und
       // `tokens_cache_creation` ergaenzen die Cache-Hit-Rate-Berechnung
       // im Repository. `tokens_in_sum` wird separat aggregiert, weil das
-      // bestehende `tokens`-Feld input+output summiert.
+      // bestehende `tokens`-Feld input+output summiert — und `tokens_in`
+      // seit 0008 die Cache-Read/-Creation-Tokens bereits enthaelt (das
+      // `tokens`-Total ist also die verarbeitete, nicht die billable Sicht).
       stmt = this.db.prepare(
         `SELECT model,
                 COUNT(*) AS messages,

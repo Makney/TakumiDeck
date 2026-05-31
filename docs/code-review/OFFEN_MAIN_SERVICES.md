@@ -2,21 +2,11 @@
 
 Befunde für `src/main/{pty,jsonl,workspace,sessions,git,usage,templates,fs,settings}/...` und `src/main/{main,paths,logger}.ts`, die bewusst nicht im aktuellen Scope gefixt werden — damit nachfolgende Review-Durchgänge sie nicht erneut melden.
 
+> **Behobene Befunde** sind ins Archiv ausgelagert: [`archiv/ARCHIV_MAIN_SERVICES.md`](./archiv/ARCHIV_MAIN_SERVICES.md). Diese Datei führt nur noch die **offenen** Punkte.
+
 ## Format
 
 Siehe [OFFEN_TEMPLATE.md](./OFFEN_TEMPLATE.md). Pro Eintrag: Datei:Zeile, Kategorie, Beschreibung, Begründung, optional Trigger.
-
----
-
-## ESLint-Vor-Pass-Befunde (2026-05-10)
-
-Aus dem Initial-Lint-Lauf nach ESLint-Setup.
-
-### parser.ts catch-Variable `e` ungenutzt — BEHOBEN 2026-05-11
-
-- `src/main/jsonl/parser.ts:69` · Kategorie: **Warnung**
-- **Beschreibung:** Catch-Block deklarierte `e`, nutzte es aber nicht. ESLint `@typescript-eslint/no-unused-vars` warnte, weil das Pattern `^_` für bewusst-ignoriert nicht erfüllt war.
-- **Auflösung (2026-05-11):** Bereich-3-Review hat verifiziert, dass die Fail-Soft-Strategie korrekt ist (Warnings werden zum Watcher propagiert und geloggt), die Error-Detail-Message ging aber verloren. Fix: `e instanceof Error ? e.message : String(e)` wird jetzt in den Warning-Text aufgenommen; `eslint-disable`-Zeile + FIXME-Kommentar entfernt.
 
 ---
 

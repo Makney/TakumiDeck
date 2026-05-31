@@ -2,6 +2,8 @@
 
 Befunde aus dem Bereichs-Review IPC-Handler (2026-05-12), die bewusst nicht gefixt wurden. Sie sind hier dokumentiert, damit der nächste Review-Durchgang sie nicht erneut meldet.
 
+> **Behobene Befunde** sind ins Archiv ausgelagert: [`archiv/ARCHIV_IPC.md`](./archiv/ARCHIV_IPC.md). Diese Datei führt nur noch die **offenen** Punkte.
+
 Scope-Erinnerung: `src/main/ipc/*.ts` — Validation-Schicht zwischen Renderer und Main. Sender-Guard, zod-Schema-Parse, Result-Pattern, Path-Traversal-Schutz sind durchgängig vorhanden (Bereich-4-Vorgänger-Reviews haben die Hauptlücken B-1 bis B-6 bereits geschlossen — siehe Inline-Kommentare in den Handlern).
 
 ---
@@ -48,18 +50,6 @@ Scope-Erinnerung: `src/main/ipc/*.ts` — Validation-Schicht zwischen Renderer u
 - **Beschreibung:** Wenn der Renderer-Patch nur `status` enthält, läuft die Status-Transition durch den Lifecycle (DB-Write), und anschließend wird `sessions.update(sessionId, {})` mit einem leeren Rest-Patch aufgerufen. Das Repo erkennt den leeren Patch (`cleaned.length === 0`) und macht einen `findById`-Roundtrip. Funktional korrekt — nur ein überflüssiger Repo-Call.
 - **Begründung:** Eine Konditionale (`if (Object.keys(restPatch).length > 0) sessions.update(...)`) wäre eine triviale Mikro-Optimierung ohne messbaren Effekt; im Tausch dafür wird die Branch-Komplexität erhöht. Konservativ in OFFEN — kein Bug.
 - **Trigger:** wenn jemals ein Profiler-Hotspot in dem Handler-Pfad gemessen wird.
-
----
-
-## Tooling-Hypothesen aus dem Fallow-Vor-Pass (verifiziert: bereits aufgelöst)
-
-Die im Auftrag genannten Fallow-Hypothesen sind im Code bereits adressiert — sie tauchen im Bericht hier nur dokumentarisch auf, damit der nächste Review-Durchgang das nicht erneut nachzieht:
-
-- `fs.ts:82-95` ↔ `fs.ts:155-167` (fs:read ↔ fs:write Project-Lookup + Anti-Traversal) → konsolidiert in `resolveValidatedProjectPath` (`src/main/ipc/fs.ts:192`). Inline-Kommentar verweist auf B-4/W-2.
-- `pty.ts:132-146` ↔ `session.ts:154-164` (PtyManager-Spawn-Args) → die echte Duplikat-Stelle ist der Pre-Spawn-Check (Binary-Lookup + cwd-Existenz), nicht die Spawn-Args selbst. Konsolidiert in `src/main/pty/preSpawnCheck.ts`, beide Handler nutzen den Helper (W-1).
-- Komplexitäts-Hotspots `session.ts:93` (Cyclo 11), `project.ts:64` (Cyclo 10), `app.ts:62` (Cyclo 8), `pty.ts:59` (Cyclo 8), `session.ts:62` (Cyclo 7): jede dieser Funktionen ist ein IPC-Handler, der eine echte Multi-Schritt-Orchestrierung (zod-Parse → DB-Lookup → State-Machine → Side-Effect → Result-Wrap) machen muss. Sender-Guard, zod-Parse und try/catch tragen pro Handler zwingend ~6 Branches bei. Der Pfad ist nicht produktiv aufteilbar, ohne den Lese-Fluss zu zersplittern — keine Refactoring-Aktion.
-
-Ungenutzte Cross-Schemas aus Bereich 1 (`SessionUpdatePatchSchema`, `ClaudeMdOnDemandFileSchema`, `JsonlUsageSchema`, `SessionTypeSchema`, `SessionStatusSchema`): verifiziert — alle sind als interne Schema-Bestandteile in `src/shared/schemas.ts` referenziert (Composition aus dem Patch-Schema, dem OnDemand-Union-Member, dem JSONL-Outer-Schema bzw. den Filter-Listen). Keine Stelle, an der ein Handler ohne Validation gegen ein passendes Schema arbeitet.
 
 ---
 

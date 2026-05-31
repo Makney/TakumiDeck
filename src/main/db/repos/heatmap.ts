@@ -196,6 +196,8 @@ export class SqliteHeatmapDriver implements HeatmapDbDriver {
     if (!stmt) {
       const where =
         q.projectId === null ? 'WHERE ts >= ?' : 'WHERE project_id = ? AND ts >= ?';
+      // tokens = input + output; `tokens_in` enthaelt seit 0008 die
+      // Cache-Read/-Creation-Tokens (verarbeitete, nicht billable Sicht).
       stmt = this.db.prepare(
         `SELECT strftime('%Y-%m-%d', ts/1000, 'unixepoch', 'localtime') AS day,
                 COALESCE(SUM(tokens_in + tokens_out), 0) AS tokens

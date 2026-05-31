@@ -2,6 +2,8 @@
 
 Befunde aus dem Bereichs-Review Build/Konfig (2026-05-12, Commit `5dc33d0` + Hotfix `ecdca93`), die bewusst nicht gefixt werden — damit nachfolgende Review-Durchgänge sie nicht erneut melden.
 
+> **Behobene Befunde** sind ins Archiv ausgelagert: [`archiv/ARCHIV_BUILD.md`](./archiv/ARCHIV_BUILD.md). Diese Datei führt nur noch die **offenen** Punkte.
+
 Scope-Erinnerung: `package.json` · `forge.config.ts` · `vite.main.config.ts` · `vite.renderer.config.ts` · `vite.preload.config.ts` · `tsconfig.json` · `tsconfig.node.json` · `.fallowrc.json` · `eslint.config.mjs` · `.husky/pre-commit`.
 
 Was im Review-Pass durchgegriffen wurde — und damit hier nicht mehr offen ist:
@@ -59,16 +61,6 @@ Was im Review-Pass durchgegriffen wurde — und damit hier nicht mehr offen ist:
 - **Beschreibung:** Architektur-Review-Soll der Build-Konfig nennt „Husky-Pre-Commit-Hook führt `typecheck` + `test` aus". Aktueller Stand: der Hook ruft `npm run typecheck` und `npm run lint -- --max-warnings=0`, aber nicht `npm run test`. CLAUDE.md Regel 6 fordert, dass Linting und Tests vor dem Commit grün sind — der manuelle Lauf ist Teil des Commit-Triggers, nicht des Hooks.
 - **Begründung:** Vitest läuft beim Full-Suite-Pass aktuell ~12-18 s — das ist der Punkt, ab dem ein Pre-Commit-Hook Reibung beim häufigen Commit-Workflow erzeugt (mehrfach pro Stunde während aktiver Sprint-Arbeit). Typecheck (~3 s) und Lint (~2 s) sind akzeptabel, die Test-Suite wäre die teuerste Komponente. Tests werden stattdessen explizit vor dem Commit-Signal manuell ausgeführt — der Workflow ist „typecheck + lint im Hook, test vor dem Commit-Trigger durch den Assistenten" (CLAUDE.md Regel 6 ist kein Hook-Zwang, sondern eine Bedingung an den Commit-Zeitpunkt).
 - **Trigger:** wenn die Test-Suite jemals deutlich schneller wird (z.B. nach Sharding auf Vitest-Worker-Threads), oder wenn die Anzahl an „test war rot beim Commit"-Vorfällen zunimmt — dann `npm run test` mit aufnehmen.
-
----
-
-## Fallow-Findings verifiziert: bereits aufgelöst oder Design-by-Choice
-
-Die in der Build-Bereichs-Sitzung mitgelaufenen Fallow-Hypothesen sind im Code bereits adressiert — sie tauchen hier nur dokumentarisch auf, damit der nächste Review-Durchgang das nicht erneut nachzieht:
-
-- `codemirror` (Umbrella-Package) aus den `dependencies` entfernt — alle `@codemirror/*`-Sub-Pakete sind weiter direkt deklariert (Commit `5dc33d0`).
-- `@electron-forge/shared-types` als explizite devDep ergänzt (war nur transitiv) — Type-Import in `forge.config.ts:1` jetzt sauber aufgelöst (Commit `5dc33d0`).
-- `electron-winstaller` als unused devDep gemeldet — siehe Eintrag oben (gewollter Pin-Anker).
 
 ---
 

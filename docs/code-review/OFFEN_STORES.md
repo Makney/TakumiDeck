@@ -40,5 +40,5 @@ Befunde aus dem Stores-Review, die **bewusst nicht gefixt** werden.
 
 ## Pflege-Regeln
 
-- Einträge werden **nicht gelöscht**, wenn sie verschwinden — stattdessen als *behoben* markieren und mit Datum + Referenz auf den CHANGELOG-Eintrag annotieren.
+- Behobene/gegenstandslose Befunde werden **nicht gelöscht, sondern ins `archiv/ARCHIV_<BEREICH>.md` verschoben** — verbatim, mit Datum + kurzer Auflösungs-Notiz (für STORES gibt es bislang kein Archiv, weil noch nichts erledigt ist).
 - **Keine Gummiband-Einträge.** Wenn ein Befund hier landet, soll er so konkret sein, dass ein späterer Review-Agent ihn eindeutig wiedererkennt und nicht noch einmal meldet.

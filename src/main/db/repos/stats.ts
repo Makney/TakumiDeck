@@ -145,6 +145,11 @@ export class SqliteStatsDriver implements StatsDbDriver {
     return row?.n ?? 0;
   }
 
+  // „Tokens gesamt" = SUM(tokens_in + tokens_out). Seit Migration 0008 buendelt
+  // `tokens_in` input + cache_creation + cache_read, d.h. die Cache-Read-Tokens
+  // (oft stark rabattiert) zaehlen voll mit. Das ist bewusst die „verarbeitete
+  // Tokens"-Sicht, nicht der billable Netto-Verbrauch — bei hohem Cache-Hit-
+  // Anteil liegt die Zahl entsprechend ueber dem Abrechnungs-Aequivalent.
   sumTokens(q: StatsQuery): number {
     const key = keyFor(q);
     let stmt = this.tokensSumCache.get(key);
