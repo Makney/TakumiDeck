@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-05-31 — v0.4.0 — Code-Review STORES: 6 Fixes (Cleanup-Lücken + Stale-Guards)
+
+### Was jetzt geht
+
+- **Ein gelöschtes Projekt hinterlässt keinen Geister-State mehr.** Entfernt man ein Projekt, werden jetzt auch dessen Datei-Tabs und der gecachte Git-Status mitgeräumt — vorher blieben sie im Renderer liegen und wurden beim nächsten App-Start gegen ein nicht mehr existierendes Projekt wiederhergestellt.
+- **Die Kontext-Bar geschlossener Sessions wird aufgeräumt.** Schließt man einen Tab, fliegt der zugehörige Per-Session-Kontext-Eintrag mit raus — über eine lange App-Sitzung mit vielen geöffneten/geschlossenen Tabs sammelt sich kein toter Zustand mehr an.
+- **Stats und Kontext-Bar zeigen keine veralteten Werte mehr.** Wechselt man Scope/Range/Wochen schnell hintereinander (oder Tabs), kann eine ältere, langsamere IPC-Antwort eine neuere nicht mehr überschreiben — Übersicht, Heatmap, Modelle und die Per-Session-Kontext-Bar haben jetzt jeweils einen Stale-Guard. Heatmap und Modelle haben zudem ein eigenes Lade-Flag.
+
+### Aufräum-Arbeiten ohne sichtbare Wirkung
+
+6 Befunde aus dem STORES-Review (alle 7 Renderer-Zustand-Stores) abgearbeitet: Cross-Store-Cleanup beim Projekt-Remove (`projects` → `fileTabs.resetProject` + neuer `gitStatus.clearProject`), Prune des Usage-Kontexts beim Tab-Close (neuer `usage.pruneContext`, von `sessions.closeTab` gerufen), Per-Query- bzw. Per-Session-Seq-Guards in `stats` und `usage` analog zum bestehenden `gitStatus`-Muster, plus dedizierte Loading-Flags für Heatmap/Modelle. Kein Design-by-Choice-Befund offen geblieben (alle 6 gefixt). Neue gezielte Tests: `tests/renderer/usage-store.test.ts`, `tests/renderer/projects-store.test.ts` und erweiterte `git-status-store.test.ts`.
+
+---
+
 ## 2026-05-31 — v0.4.0 — Code-Review PANELS: 15 Fixes + gemeinsamer git:status-Store
 
 ### Was jetzt geht

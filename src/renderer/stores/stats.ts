@@ -26,8 +26,10 @@ import type {
 // ungefragt mit ausloest.
 //
 // `refresh` ist idempotent: rufen, wann immer etwas relevantes geandert hat
-// (Projekt-Wechsel, Toggle, usage:update-Push). Race-Schutz uebernimmt der
-// Aufrufer (debounce + ref-guard).
+// (Projekt-Wechsel, Toggle, usage:update-Push). Gegen stale Antworten (schneller
+// Scope/Range/Wochen-Wechsel) schuetzt jetzt ein Per-Query-Seq-Guard im Store —
+// eine aeltere IPC-Antwort kann eine neuere nicht mehr ueberschreiben. Der
+// Aufrufer darf zusaetzlich debouncen, muss aber keinen ref-guard mehr stellen.
 
 export type StatsScope = 'project' | 'global';
 
@@ -65,6 +67,10 @@ interface StatsStoreState {
   heatmap: StatsHeatmapResult | null;
   models: StatsModelsResult | null;
   loading: boolean;
+  // Eigene Loading-Flags fuer Heatmap/Models — sonst ist deren initialer
+  // null-Zustand nicht von „laedt gerade" unterscheidbar (asymmetrisch zu refresh).
+  heatmapLoading: boolean;
+  modelsLoading: boolean;
   error: string | null;
   heatmapError: string | null;
   modelsError: string | null;
@@ -93,6 +99,13 @@ function readHeatmapWeeks(): StatsHeatmapWeeks {
   return 30;
 }
 
+// Per-Query-Seq-Guards gegen stale Antworten: wechselt der User schnell Scope/
+// Range/Wochen, darf eine aeltere IPC-Antwort eine neuere nicht ueberschreiben
+// (analog gitStatus). Modul-lokal, da die Queries global sind, nicht per Projekt.
+let overviewSeq = 0;
+let heatmapSeq = 0;
+let modelsSeq = 0;
+
 export const useStatsStore = create<StatsStoreState>((set, get) => ({
   scope: readPersisted<StatsScope>(SCOPE_STORAGE_KEY, ['project', 'global'], 'project'),
   range: readPersisted<StatsRange>(RANGE_STORAGE_KEY, ['all', '30d', '7d'], 'all'),
@@ -101,6 +114,8 @@ export const useStatsStore = create<StatsStoreState>((set, get) => ({
   heatmap: null,
   models: null,
   loading: false,
+  heatmapLoading: false,
+  modelsLoading: false,
   error: null,
   heatmapError: null,
   modelsError: null,
@@ -128,18 +143,21 @@ export const useStatsStore = create<StatsStoreState>((set, get) => ({
     // Im Global-Scope ignorieren wir die projectId — wir wollen explizit alles
     // sehen, nicht das gerade aktive Projekt einschraenken.
     const effectiveProjectId = state.scope === 'global' ? null : projectId;
+    const mySeq = ++overviewSeq;
     set({ loading: true, error: null });
     try {
       const result = await window.api.stats.overview({
         projectId: effectiveProjectId,
         range: state.range,
       });
+      if (mySeq !== overviewSeq) return; // stale — neuere Anfrage gewann
       if (result.ok) {
         set({ overview: result.data, loading: false });
       } else {
         set({ error: result.error, loading: false });
       }
     } catch (e) {
+      if (mySeq !== overviewSeq) return;
       set({
         loading: false,
         error: e instanceof Error ? e.message : String(e),
@@ -150,38 +168,44 @@ export const useStatsStore = create<StatsStoreState>((set, get) => ({
   refreshHeatmap: async (projectId: string | null) => {
     const state = get();
     const effectiveProjectId = state.scope === 'global' ? null : projectId;
-    set({ heatmapError: null });
+    const mySeq = ++heatmapSeq;
+    set({ heatmapLoading: true, heatmapError: null });
     try {
       const result = await window.api.stats.heatmap({
         projectId: effectiveProjectId,
         weeks: state.heatmapWeeks,
       });
+      if (mySeq !== heatmapSeq) return; // stale — neuere Anfrage gewann
       if (result.ok) {
-        set({ heatmap: result.data });
+        set({ heatmap: result.data, heatmapLoading: false });
       } else {
-        set({ heatmapError: result.error });
+        set({ heatmapError: result.error, heatmapLoading: false });
       }
     } catch (e) {
-      set({ heatmapError: e instanceof Error ? e.message : String(e) });
+      if (mySeq !== heatmapSeq) return;
+      set({ heatmapError: e instanceof Error ? e.message : String(e), heatmapLoading: false });
     }
   },
 
   refreshModels: async (projectId: string | null) => {
     const state = get();
     const effectiveProjectId = state.scope === 'global' ? null : projectId;
-    set({ modelsError: null });
+    const mySeq = ++modelsSeq;
+    set({ modelsLoading: true, modelsError: null });
     try {
       const result = await window.api.stats.models({
         projectId: effectiveProjectId,
         range: state.range,
       });
+      if (mySeq !== modelsSeq) return; // stale — neuere Anfrage gewann
       if (result.ok) {
-        set({ models: result.data });
+        set({ models: result.data, modelsLoading: false });
       } else {
-        set({ modelsError: result.error });
+        set({ modelsError: result.error, modelsLoading: false });
       }
     } catch (e) {
-      set({ modelsError: e instanceof Error ? e.message : String(e) });
+      if (mySeq !== modelsSeq) return;
+      set({ modelsError: e instanceof Error ? e.message : String(e), modelsLoading: false });
     }
   },
 }));

@@ -130,4 +130,34 @@ describe('useGitStatusStore', () => {
     expect(store.getState().byProject.p1!.status!.branch).toBe('branch-p1');
     expect(store.getState().byProject.p2!.status!.branch).toBe('branch-p2');
   });
+
+  // W3 (STORES-Review 2026-05-31): clearProject raeumt beim Projekt-Remove den
+  // Cache-Eintrag UND den Seq-Guard-Zaehler auf.
+  it('clearProject entfernt den byProject-Eintrag', async () => {
+    statusFn.mockResolvedValue({ ok: true, data: mkStatus('main') });
+    await store.getState().refresh('p1');
+    expect(store.getState().byProject.p1).toBeDefined();
+    store.getState().clearProject('p1');
+    expect(store.getState().byProject.p1).toBeUndefined();
+  });
+
+  it('clearProject invalidiert einen in-flight refresh (kein re-Write nach Remove)', async () => {
+    const d = deferred<{ ok: true; data: GitStatusResult }>();
+    statusFn.mockReturnValue(d.promise);
+    const pending = store.getState().refresh('p1');
+    expect(store.getState().byProject.p1!.loading).toBe(true);
+    // Projekt wird entfernt, waehrend der git:status-IPC noch laeuft.
+    store.getState().clearProject('p1');
+    expect(store.getState().byProject.p1).toBeUndefined();
+    // Verspaetete Antwort darf den Eintrag NICHT re-erzeugen.
+    d.resolve({ ok: true, data: mkStatus('main') });
+    await pending;
+    expect(store.getState().byProject.p1).toBeUndefined();
+  });
+
+  it('clearProject auf unbekannte id ist ein referenz-stabiler No-op', () => {
+    const before = store.getState().byProject;
+    store.getState().clearProject('nope');
+    expect(store.getState().byProject).toBe(before);
+  });
 });

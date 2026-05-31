@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { ProjectRow } from '@shared/types';
+import { useFileTabsStore } from './fileTabs';
+import { useGitStatusStore } from './gitStatus';
 
 // Project-Store (Sprint 4).
 //
@@ -68,6 +70,11 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     const result = await window.api.projects.remove({ projectId });
     if (result.ok) {
       set({ projects: result.data, loading: false });
+      // Renderer-State des entfernten Projekts mit aufräumen — sonst bleiben
+      // Datei-Tabs und Git-Status-Cache als verwaister State liegen (würden beim
+      // nächsten App-Start gegen ein nicht mehr existierendes Projekt hydriert).
+      useFileTabsStore.getState().resetProject(projectId);
+      useGitStatusStore.getState().clearProject(projectId);
       return true;
     }
     set({ error: result.error, loading: false });

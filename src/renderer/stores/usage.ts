@@ -23,8 +23,17 @@ interface UsageStoreState {
 
   refreshBars: (barIds: string[]) => Promise<void>;
   refreshContext: (sessionId: string) => Promise<void>;
+  // Beim Tab-Close aufgerufen: entfernt den Per-Session-Kontext-Eintrag, damit
+  // contextBySession nicht über die App-Lebenszeit mit toten Sessions zuwächst.
+  pruneContext: (sessionId: string) => void;
   reset: () => void;
 }
+
+// Per-Session-Seq-Guard für refreshContext: stale Antworten (Tab inzwischen
+// geschlossen oder neuere Anfrage gewonnen) dürfen den Kontext nicht (wieder)
+// schreiben. Analog zum gitStatus-Store. pruneContext löscht den Seq-Eintrag und
+// invalidiert damit zugleich einen evtl. noch laufenden refreshContext.
+const contextSeqBySession = new Map<string, number>();
 
 export const useUsageStore = create<UsageStoreState>((set) => ({
   bars: {},
@@ -74,8 +83,13 @@ export const useUsageStore = create<UsageStoreState>((set) => ({
   },
 
   refreshContext: async (sessionId: string) => {
+    // Seq vor dem Await ziehen; ein verspäteter Write (Tab schon geschlossen oder
+    // neuere Anfrage gewonnen) wird danach als stale erkannt und verworfen.
+    const mySeq = (contextSeqBySession.get(sessionId) ?? 0) + 1;
+    contextSeqBySession.set(sessionId, mySeq);
     try {
       const result = await window.api.usage.context({ sessionId });
+      if (contextSeqBySession.get(sessionId) !== mySeq) return; // stale — überholt oder gepruned
       if (result.ok) {
         set((s) => ({
           contextBySession: { ...s.contextBySession, [sessionId]: result.data },
@@ -86,13 +100,26 @@ export const useUsageStore = create<UsageStoreState>((set) => ({
         console.warn(`[useUsageStore] refreshContext ${sessionId}: ${result.error}`);
       }
     } catch (e) {
+      if (contextSeqBySession.get(sessionId) !== mySeq) return; // stale
       // IPC-Reject (statt Result-Envelope) — analog refreshBars: still loggen,
       // damit keine unhandled rejection im Renderer entsteht.
       console.warn(`[useUsageStore] refreshContext ${sessionId} threw:`, e);
     }
   },
 
+  pruneContext: (sessionId: string) => {
+    // Seq löschen invalidiert einen evtl. laufenden refreshContext (dessen Write
+    // greift dann oben ins stale-return). Danach den Kontext-Eintrag entfernen.
+    contextSeqBySession.delete(sessionId);
+    set((s) => {
+      if (!(sessionId in s.contextBySession)) return s;
+      const { [sessionId]: _drop, ...rest } = s.contextBySession;
+      return { contextBySession: rest };
+    });
+  },
+
   reset: () => {
+    contextSeqBySession.clear();
     set({ bars: {}, contextBySession: {}, loading: false, error: null });
   },
 }));

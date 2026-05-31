@@ -36,6 +36,9 @@ export const EMPTY_GIT_STATUS_ENTRY: GitStatusEntry = {
 interface GitStatusStore {
   byProject: Record<string, GitStatusEntry>;
   refresh: (projectId: string) => Promise<void>;
+  // Beim Projekt-Remove aufgerufen: entfernt den Cache-Eintrag und den
+  // Seq-Guard-Zähler, damit kein verwaister Git-Status zurückbleibt.
+  clearProject: (projectId: string) => void;
 }
 
 // Per-Projekt-Seq-Guard gegen Races: zappt der User schnell zwischen Projekten
@@ -82,6 +85,17 @@ export const useGitStatusStore = create<GitStatusStore>((set) => ({
     }
 
     set((s) => ({ byProject: { ...s.byProject, [projectId]: entry } }));
+  },
+
+  clearProject: (projectId: string) => {
+    // Seq-Eintrag löschen invalidiert zugleich einen evtl. noch laufenden
+    // refresh (dessen Write greift dann ins stale-return oben).
+    seqByProject.delete(projectId);
+    set((s) => {
+      if (!(projectId in s.byProject)) return s;
+      const { [projectId]: _drop, ...rest } = s.byProject;
+      return { byProject: rest };
+    });
   },
 }));
 

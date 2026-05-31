@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SessionStatus, SessionType } from '@shared/types';
+import { useUsageStore } from './usage';
 
 // Renderer-State der aktiven Tabs (Zustand-Store, Sprint 3).
 //
@@ -171,6 +172,9 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       tabs: tabs.filter((t) => t.sessionId !== sessionId),
       activeId: nextActive,
     });
+    // Per-Session-Usage-Kontext mit aufräumen — sonst wächst contextBySession
+    // über die App-Lebenszeit mit Einträgen geschlossener Sessions zu.
+    useUsageStore.getState().pruneContext(sessionId);
   },
 
   setActive: (sessionId) => {
