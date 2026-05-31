@@ -130,3 +130,30 @@ Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (Auto-Update-Pipeline + Pro
 - **Beschreibung:** `ignored: (p) => isSkippedPath(p, projectPath)` läuft auf **jeden** Pfad inkl. Files. `isSkippedPath` segmentiert den Relativpfad und prüft die `PROJECT_WATCH_SKIP_DIRS`-Set. Korrekt, aber bei tiefen Trees (Projekte mit vielen Dateien außerhalb der Skip-Dirs) wird die Funktion sehr oft aufgerufen. `path.relative` + `split` pro Aufruf ist nicht trivial.
 - **Begründung:** Da `ignoreInitial: true` gesetzt ist, betrifft das nur Live-Events nach Boot — also faktisch egal. Kein Bug; reine Performance-Beobachtung.
 - **Trigger:** wenn ein User „Initial-Scan / Watcher dauert lange auf großem Repo" meldet — dann auf einen pre-segmentierten Skip-Check umstellen (z.B. nur Top-Level-Segment vergleichen).
+
+---
+
+## Code-Review Core 2026-05-31
+
+Befunde aus dem Core-Review (= Main-Services-Scope), die bewusst nicht gefixt werden. Der einzige actionable Befund (V1: `backfilledPaths.clear()` in `JsonlWatcher.stop()`) wurde direkt umgesetzt und steht nicht hier.
+
+### Pass-2 Session↔File-Pairing rein positionsbasiert über mtime
+
+- `src/main/jsonl/backfill.ts:160-166` · Kategorie: **Verbesserung**
+- **Beschreibung:** Pass-2 paart Sessions (`started_at` ASC) gegen Files (`mtimeMs` ASC) rein positionsbasiert. Bei NTFS-mtime-Granularität oder kopierten/berührten Files kann die mtime-Reihenfolge von der echten Session-Chronologie abweichen → Fehlpaarung.
+- **Begründung:** Die Limitation ist im Datei-Header als „dokumentiert im SEASON_LOG" erwähnt — bewusste Heuristik, kein Bug. Keine Aktion, solange die SEASON_LOG-Notiz die Heuristik abdeckt.
+- **Trigger:** wenn ein User-Report „Session X zeigt die Token/JSONL einer anderen Session" auftaucht — dann ein robusteres Pairing-Kriterium als reine mtime-Position einziehen.
+
+### `idle`-Zweig im State-Detection-Loop faktisch tot
+
+- `src/main/db/repos/messages.ts:247-257` + `src/main/sessions/state-detection-loop.ts:108-111` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Einziger `messages.insert`-Aufrufer (`jsonl/watcher.ts:174`) schreibt nur `role:'assistant'`, daher liefert `lastRoleForSession` für jede getrackte Session immer `'assistant'`. Der `idle`-Zweig `next = lastRole === 'assistant' ? 'waiting' : 'idle'` erreicht den `'idle'`-Fall damit praktisch nie.
+- **Begründung:** Im Code als „selten"/„S-3-Kopplung" bewusst dokumentiert — faktisch toter Pfad, kein Defekt. Eine Verschlankung würde die Symmetrie der Transition-Logik aufgeben.
+- **Trigger:** wenn ein zweiter `messages.insert`-Aufrufer mit `role:'user'` dazukommt (oder User-Messages getrackt werden) — dann den `idle`-Zweig real prüfen oder den toten Pfad entfernen.
+
+### `app.on('ready')`-Block ohne Single-Instance-Guard
+
+- `src/main/main.ts:604-645` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Der `app.on('ready', …)`-Block (Permission-/CSP-Handler) ist — anders als der `whenReady`-Block (Guard bei `:167` über `gotSingleInstanceLock`) — nicht durch den Single-Instance-Lock geschützt.
+- **Begründung:** Eine zweite Instanz, die den Lock nicht bekommt, ruft `app.quit()` und erreicht `ready` normalerweise gar nicht mehr → kein realer Defekt, nur Konsistenz-Asymmetrie.
+- **Trigger:** wenn der Single-Instance-Pfad umgebaut wird (z.B. „zweite Instanz übergibt Argv an die erste, statt zu quitten") — dann beide ready-Pfade unter denselben Guard ziehen.

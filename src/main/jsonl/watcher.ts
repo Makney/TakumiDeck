@@ -103,6 +103,11 @@ export class JsonlWatcher {
     // gewünscht, der nächste Aufruf von scheduleHandle würde ohnehin auflaufen
     // ohne chokidarWatcher. Aber inFlight muss komplett zu Ende laufen.
     this.pending.clear();
+    // Season-35-Throttle-Set ebenfalls leeren: Bei einem späteren Watcher-Restart
+    // (z.B. Settings-Pfad-Wechsel) muss der Backfill-Scan jede Datei erneut einmal
+    // sichten dürfen — sonst überspringt backfillClaudeSessionId bereits gesehene
+    // Pfade fälschlich. Heute Singleton über App-Lebensdauer, daher defensiv.
+    this.backfilledPaths.clear();
     if (this.inFlight.size > 0) {
       await Promise.allSettled(this.inFlight.values());
     }
