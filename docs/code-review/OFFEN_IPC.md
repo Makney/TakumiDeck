@@ -124,3 +124,23 @@ Befunde aus dem Release-Review von v0.3.2 → v0.4.0 (neue Channels `terminal:sa
 - **Beschreibung:** Der Load-Catch macht `log.warn(...)` vor `errFromUnknown`, der Save-Catch nicht. Ein Save-Fail (z.B. zod-Reject bei >1 MiB Snapshot oder DB-Lock) verschwindet still im IpcResult ohne Main-Log-Spur.
 - **Begründung:** Symmetrisch ein `log.warn` im Save-Catch ergänzen — reine Diagnose-Konsistenz.
 - **Trigger:** wenn ein User-Report „Terminal-Verlauf wird nach Resume nicht angezeigt" auftaucht — dann den Save-Log zur Diagnose nutzen.
+
+---
+
+## Bereichs-Review IPC (2026-05-31)
+
+Befunde aus dem vollständigen IPC-Layer-Review (alle 15 Handler). Die behobenen Befunde dieses Durchgangs (W-1 PTY-Write-Guard, V-1 Bracketed-Paste-Vorcheck, V-2 Resize/Kill-Guard, V-3 projectId-Konventions-Kommentar) sind im [`archiv/ARCHIV_IPC.md`](./archiv/ARCHIV_IPC.md) festgehalten. Hier bleiben nur die bewusst nicht gefixten Design-by-Choice-Punkte, damit der nächste Durchgang sie nicht erneut meldet.
+
+### `models:fetch-available` reicht `process.env.ANTHROPIC_API_KEY` ungeprüft an den Fetch
+
+- `src/main/ipc/models.ts:17` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Der Handler hat keine Payload (daher korrekt kein zod-Schema) und liest den API-Key direkt aus der Main-Prozess-Umgebung, nicht aus dem Renderer. Ohne Key liefert `fetchAvailableModels` `available=false` zurück (kein Fehler), HTTP-/Netzwerkfehler werden als `IpcResult.ok=false` verpackt.
+- **Begründung:** Der Key kommt aus der Main-Env, nicht über die Renderer-Trust-Boundary — es gibt also keine ungeprüfte Renderer-Eingabe, die abzusichern wäre. Eine zusätzliche Validierung des Env-Werts würde nur den fehlenden/leeren Fall abdecken, den `fetchAvailableModels` bereits sauber als `available=false` behandelt. Bewusst so belassen.
+- **Trigger:** falls der API-Key jemals aus dem Renderer-Payload (statt der Main-Env) stammen sollte — dann zod-Parse + Format-Check ergänzen.
+
+### `terminal:save-buffer` ohne Main-seitigen Größen-Re-Check (verlässt sich auf Schema-Cap)
+
+- `src/main/ipc/terminal-buffer.ts:60` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** `buffers.upsert(input.sessionId, input.snapshot)` schreibt den Snapshot ohne eigenen Längen-Re-Check. Die Trust-Boundary ist der 1-MiB-Cap im `TerminalSaveBufferInputSchema` (`src/shared/schemas.ts:231`); der Renderer trimmt vorher zusätzlich auf 256 KiB.
+- **Begründung:** Der zod-Cap *ist* die Validation-Schicht — er greift vor dem ersten Side-Effect, exakt nach dem zod-vor-Side-Effect-Muster aller anderen Handler. Ein zweiter Längen-Check im Handler wäre redundant zum Schema-Constraint und würde die Validation auf zwei Stellen verteilen.
+- **Trigger:** falls der 1-MiB-Cap je aus dem Schema entfernt oder gelockert wird — dann den Re-Check in den Handler ziehen.

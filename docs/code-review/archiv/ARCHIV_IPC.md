@@ -13,3 +13,16 @@ Die im Auftrag genannten Fallow-Hypothesen sind im Code bereits adressiert — d
 - Komplexitäts-Hotspots `session.ts:93` (Cyclo 11), `project.ts:64` (Cyclo 10), `app.ts:62` (Cyclo 8), `pty.ts:59` (Cyclo 8), `session.ts:62` (Cyclo 7): jede dieser Funktionen ist ein IPC-Handler, der eine echte Multi-Schritt-Orchestrierung (zod-Parse → DB-Lookup → State-Machine → Side-Effect → Result-Wrap) machen muss. Sender-Guard, zod-Parse und try/catch tragen pro Handler zwingend ~6 Branches bei. Der Pfad ist nicht produktiv aufteilbar, ohne den Lese-Fluss zu zersplittern — keine Refactoring-Aktion.
 
 Ungenutzte Cross-Schemas aus Bereich 1 (`SessionUpdatePatchSchema`, `ClaudeMdOnDemandFileSchema`, `JsonlUsageSchema`, `SessionTypeSchema`, `SessionStatusSchema`): verifiziert — alle sind als interne Schema-Bestandteile in `src/shared/schemas.ts` referenziert (Composition aus dem Patch-Schema, dem OnDemand-Union-Member, dem JSONL-Outer-Schema bzw. den Filter-Listen). Keine Stelle, an der ein Handler ohne Validation gegen ein passendes Schema arbeitet.
+
+---
+
+## Bereichs-Review IPC (2026-05-31) — sofort behoben
+
+Befunde aus dem vollständigen IPC-Layer-Review (alle 15 Handler), die im selben Durchgang gefixt wurden. Die bewusst offen gebliebenen DbC-Punkte (D-1 `models:fetch-available`, D-2 `terminal:save-buffer`-Größen-Cap) stehen in [`../OFFEN_IPC.md`](../OFFEN_IPC.md).
+
+- **W-1 · `pty:write` ohne Teardown-Guard** (`src/main/ipc/pty.ts`): `manager.write` lief vor jedem Existenz-Check; ein letzter Keystroke nach PTY-Exit (Tab-Close vor `pty:exit`) ließ `requireHandle` werfen → `PTY_WRITE`-Error an den fire-and-forget-Renderer. **Fix:** `if (!manager.has(sessionId)) return ok(null)` vor dem Write — Teardown-Race wird still verworfen.
+- **V-1 · Bracketed-Paste-Regex pro Keystroke** (`src/main/ipc/pty.ts`): der `\x1b[200~…\x1b[201~`-Strip-Regex (`[\s\S]*?`) lief bei jedem Tastendruck über den gesamten Input, bei MB-Pastes teuer. **Fix:** billiger `includes('\x1b[200~')`-Vorcheck überspringt den Regex im Normalfall (einzelne Taste).
+- **V-2 · `pty:resize` / `pty:kill` ohne Existenz-Check** (`src/main/ipc/pty.ts`): beide reichten die `sessionId` direkt an `manager.*` durch, das via `requireHandle` bei entferntem PTY warf. **Fix:** je `manager.has()`-Guard mit stillem `ok(null)`, konsistent zu W-1.
+- **V-3 · `projectId`-Nullish-Semantik undokumentiert** (`src/main/ipc/stats.ts`): in der stats-Domain heißt `projectId ?? null` *projektübergreifend*, anders als bei `fs:*`/`git:*` (dort `PROJECT_NOT_FOUND`). **Fix:** Konventions-Kommentar im Modul-Header, damit künftige stats-Channels die Semantik beibehalten.
+
+Verifiziert read-only-folgenfrei: alle Renderer-Aufrufe (`window.api.pty.write/resize`) sind fire-and-forget, `pty.kill` wird vom Renderer nicht aufgerufen — throw→stilles `ok(null)` hat keine Renderer-sichtbare Regression. typecheck + lint + `pty-manager.test.ts` (10 Tests) grün.

@@ -283,6 +283,12 @@ export function registerPtyIpc(deps: {
     if (!guard.ok) return guard;
     try {
       const input = PtyWriteInputSchema.parse(payload);
+      // Code-Review IPC 2026-05-31 (W-1): Teardown-Race abfangen. Schickt der
+      // Renderer noch einen letzten Keystroke, nachdem der PTY bereits beendet/
+      // entfernt wurde (Tab-Close vor pty:exit), gibt es nichts zu beschreiben.
+      // manager.write würde sonst über requireHandle werfen und einen
+      // PTY_WRITE-Error an den fire-and-forget-Renderer reichen — still verwerfen.
+      if (!manager.has(input.sessionId)) return ok(null);
       manager.write(input.sessionId, input.data);
 
       // Variante A+B: Enter-Tastendruck auf einer waiting-Session → sofort
@@ -295,8 +301,16 @@ export function registerPtyIpc(deps: {
       // tragen die eingefuegten Newlines IM Paste-Block — Claude Code wertet die
       // als Shift+Enter, nicht als Absende-Enter. Wir filtern den Paste-Body
       // raus und pruefen nur die Newlines ausserhalb (= echter CR vom Submit).
-      // eslint-disable-next-line no-control-regex -- ESC (\x1b) ist Teil der ANSI-Bracketed-Paste-Marker, hier absichtlich.
-      const stripped = input.data.replace(/\x1b\[200~[\s\S]*?\x1b\[201~/g, '');
+      //
+      // Code-Review IPC 2026-05-31 (V-1): Der [\s\S]*?-Scan laeuft pro Keystroke;
+      // bei sehr grossen Pastes (mehrere MB Clipboard) ist das teuer. Da jeder
+      // Bracketed-Paste-Block mit \x1b[200~ beginnt, ueberspringt der billige
+      // includes-Vorcheck den Regex im Normalfall (einzelne Taste) komplett.
+      const hasPasteMarker = input.data.includes('\x1b[200~');
+      const stripped = hasPasteMarker
+        ? // eslint-disable-next-line no-control-regex -- ESC (\x1b) ist Teil der ANSI-Bracketed-Paste-Marker, hier absichtlich.
+          input.data.replace(/\x1b\[200~[\s\S]*?\x1b\[201~/g, '')
+        : input.data;
       if (stripped.includes('\r') || stripped.includes('\n')) {
         const current = sessions.findById(input.sessionId);
         if (current?.status === 'waiting') {
@@ -321,6 +335,10 @@ export function registerPtyIpc(deps: {
     if (!guard.ok) return guard;
     try {
       const input = PtyResizeInputSchema.parse(payload);
+      // Code-Review IPC 2026-05-31 (V-2): wie pty:write — Resize auf einen bereits
+      // entfernten PTY (Teardown-Race) still verwerfen statt requireHandle werfen
+      // zu lassen. Der Renderer ruft resize fire-and-forget nach jedem Mount/Layout.
+      if (!manager.has(input.sessionId)) return ok(null);
       manager.resize(input.sessionId, input.cols, input.rows);
       return ok(null);
     } catch (e) {
@@ -333,6 +351,10 @@ export function registerPtyIpc(deps: {
     if (!guard.ok) return guard;
     try {
       const input = PtyKillInputSchema.parse(payload);
+      // Code-Review IPC 2026-05-31 (V-2): Kill auf einen bereits beendeten PTY
+      // (onExit hat das Handle schon entfernt) ist ein No-op — still verwerfen,
+      // statt requireHandle einen PTY_KILL-Error werfen zu lassen.
+      if (!manager.has(input.sessionId)) return ok(null);
       manager.kill(input.sessionId);
       return ok(null);
     } catch (e) {

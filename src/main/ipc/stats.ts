@@ -19,6 +19,14 @@ import { assertFromMainWindow } from './sender-guard';
 // Aufschluesselung (Season 14). Renderer ruft die drei Channels separat —
 // jeder Tab pullt nur seinen Endpoint, damit der Cards-Tick die schwerere
 // GROUP-BY-Models-Query nicht mit ausloest.
+//
+// projectId-Konvention (Code-Review IPC 2026-05-31, V-3): in dieser Domain ist
+// `projectId` bewusst optional/nullish — `?? null` bedeutet hier *projekt-
+// uebergreifend* (alle Projekte aggregiert), NICHT „Projekt nicht gefunden".
+// Das weicht absichtlich von den fs:*/git:*-Handlern ab, wo eine fehlende/
+// unbekannte projectId mit PROJECT_NOT_FOUND quittiert wird (dort ist die
+// projectId ein Pflicht-Schluessel auf einen konkreten Pfad). Beim Anlegen
+// weiterer stats-Channels diese Semantik beibehalten.
 
 export function registerStatsIpc(deps: {
   stats: StatsRepository;
