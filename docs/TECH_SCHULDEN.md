@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## JSONL-Ingestion läuft synchron im Main-Prozess — Worker-Auslagerung zurückgestellt (2026-05-31)
+
+**Bereich:** `src/main/jsonl/watcher.ts` (`handleFile` → `messages.insert` / `usage.upsertBucket`). Die Parse-Pipeline und die better-sqlite3-Writes laufen im Main-Prozess — demselben Thread, der die IPC zum Renderer-Fenster bedient. Season 35 (Performance-/Stabilitäts-Fix) hat die beiden Quick-Wins (Single-Instance-Lock in `main.ts`, Backfill-Drossel per `backfilledPaths`-Set im Watcher) umgesetzt; die strukturelle Auslagerung in einen eigenen Prozess (`utilityProcess`/`worker_threads`) ist bewusst auf später verschoben, bis die Quick-Wins im echten Build gegen das Symptom gemessen sind.
+
+**Was:** Heutiges Verhalten — jeder JSONL-`change` parst und schreibt synchron in `data.sqlite`, blockierend für den Main-Thread. Bei einer aktiven, viel schreibenden Claude-Session entstehen lange Write-Bursts; solange ein Burst läuft, ist die IPC zum Fenster gestaut, also reagiert die UI verzögert oder gar nicht. Die Quick-Wins entschärfen die beiden Haupt-Verstärker (kein konkurrierender Zweit-Prozess mehr; kein Full-Table-Scan pro `change`), beseitigen aber nicht die grundsätzliche Tatsache, dass Parse + DB-Write auf dem UI-bedienenden Thread sitzen.
+
+**Warum so:** Die Auslagerung ist ein Architektur-Umbau (Working Rule „Variants vor Architektur" greift, also A/B/C mit Aufwand-Tabelle vor jeder Implementierung). Sie ist deutlich aufwendiger und risikoreicher als die Quick-Wins (Prozess-Grenze, IPC-Serialisierung der Parse-Ergebnisse, DB-Ownership-Frage: schreibt der Worker direkt in SQLite oder schickt er geparste Messages zurück an den Main, der schreibt). Vor diesem Aufwand soll erst empirisch geklärt werden, ob Schritt 1+2 das Einfrieren schon hinreichend beheben — möglicherweise ist der Umbau gar nicht nötig. Kein sichtbarer Funktionsumfang hängt daran (Scope-Grenze des Kickoffs: Token-/Usage-Tracking, Stats, Resume bleiben verhaltensgleich).
+
+**Risiko:** Mittel, abhängig vom Mess-Ergebnis. Wenn die Quick-Wins reichen, ist die Resterwartung „seltener, kurzer Stau bei extremen Bursts" und das Risiko sinkt auf niedrig. Wenn nicht, bleibt das Kernsymptom (UI-Stall bei aktiver Session) bestehen, bis der Umbau kommt. Kein Datenverlust, kein Regressions-Risiko für die Token-Aggregate — rein Responsiveness.
+
+**Auflösung:** **Trigger:** wenn die Live-Messung nach den Quick-Wins zeigt, dass die UI bei aktiver Claude-Session weiterhin stockt (DoD-Kriterium „UI bleibt klickbar" nicht erfüllt). Dann Schritt 3 als Varianten A/B/C ausarbeiten, grob: (A) `utilityProcess` mit eigener SQLite-Verbindung (Worker parst + schreibt direkt, Main hält nur Read-Pfade); (B) `worker_threads`, der nur parst und geparste Messages per `postMessage` an den Main zurückgibt, der weiter synchron schreibt (kleinere Umstellung, aber DB-Write bleibt im Main); (C) kein eigener Prozess, stattdessen Writes im Main batchen/asynchron entzerren (z. B. Transaktions-Bündelung + Yield zwischen Bursts), billigster Pfad, falls der Stau nur an der Write-Frequenz hängt. Empfehlung erst nach der Messung, weil die Wahl davon abhängt, ob Parse-CPU oder DB-Write-Contention der Engpass ist. Optionaler Begleit-Schritt aus dem Kickoff (Watch-Umfang begrenzen: `depth`-Limit analog `project-watcher.ts`, mtime-Cutoff für alte Session-Ordner) bleibt ebenfalls bis nach der Messung geparkt.
+
+---
+
 ## CI-Release-Build bricht: electron-forge resolved 0 Maker auf dem neuen GitHub-Runner (2026-05-29)
 
 **Bereich:** CI-Release-Pipeline `.github/workflows/release.yml` (Step „Build Windows installer + portable zip" → `npm run make`). Die Maker-Definition in `forge.config.ts:107-115` (`MakerSquirrel` + `MakerZIP({}, ['win32'])`) ist korrekt und unveraendert. Spiegelt den OFFEN_BUILD.md-Eintrag „Release-Review v0.4.0".

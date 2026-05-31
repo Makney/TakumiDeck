@@ -49,6 +49,10 @@ export class JsonlWatcher {
   // dieselben Bytes zweimal lesen. Eine Map<file, Promise> serialisiert das.
   private inFlight = new Map<string, Promise<void>>();
   private pending = new Set<string>();
+  // Season 35: Pfade, fuer die der Legacy-Backfill-Scan bereits einmal lief.
+  // Das Linken einer resume-toten Session muss nur beim ERSTEN Sichten ihrer
+  // JSONL passieren — danach ist der Full-Table-Scan reine Verschwendung.
+  private backfilledPaths = new Set<string>();
 
   constructor(private readonly deps: JsonlWatcherDeps) {}
 
@@ -266,6 +270,14 @@ export class JsonlWatcher {
   // Tick deterministisch — der Backfill-Scan ueber `listMissingClaudeSessionId`
   // entfaellt fuer diese Datei.
   private backfillClaudeSessionId(filePath: string): void {
+    // Season 35: Pro Datei nur EINMAL pro Prozess-Lebensdauer scannen. Bisher
+    // lief `listMissingClaudeSessionId()` (Full-Table-Scan) bei JEDEM Event —
+    // also bei aktiven claude-Sessions im Sekundentakt pro `change`. Das
+    // blockierte den Main-Thread (better-sqlite3 ist synchron) und damit die
+    // IPC zum Fenster („UI nicht anklickbar"). Der Backfill ist idempotent;
+    // nach dem ersten Sichten gibt es fuer diese Datei nichts mehr zu tun.
+    if (this.backfilledPaths.has(filePath)) return;
+    this.backfilledPaths.add(filePath);
     const claudeUuid = claudeUuidFromJsonlPath(filePath);
     if (!claudeUuid) return;
     const folderEncoded = encodedCwdFromJsonlPath(filePath);

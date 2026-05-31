@@ -62,6 +62,27 @@ if (started) {
   app.quit();
 }
 
+// Single-Instance-Lock (Season 35): Eine zweite Instanz wuerde denselben
+// ~/.claude/projects-Baum watchen UND in dieselbe data.sqlite schreiben —
+// doppelte Watcher-/Parse-Last + SQLite-Contention. Genau das erklaerte das
+// Symptom „zweite Instanz laeuft fluessig, erste haengt": beide Prozesse
+// kaempfen um die DB. Wir lassen daher nur eine Instanz zu; ein zweiter Start
+// fokussiert das bestehende Fenster und beendet sich selbst.
+// requestSingleInstanceLock() muss vor whenReady() laufen.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  // Wird nur im primaeren Prozess gefeuert, wenn eine zweite Instanz startet.
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 // Pfade konfigurieren (Dev vs. Prod), bevor irgendein Modul userData liest.
 configurePaths();
 
@@ -140,6 +161,10 @@ function createMainWindow(): void {
 }
 
 void app.whenReady().then(async () => {
+  // Zweite Instanz hat keinen Lock bekommen und beendet sich bereits (app.quit()
+  // oben) — den teuren Startup (DB, Watcher, Workspace-Scan) gar nicht erst
+  // hochfahren, sonst liefe doch kurz ein zweiter konkurrierender Prozess.
+  if (!gotSingleInstanceLock) return;
   try {
     const settings = SettingsStore.initialize(getSettingsPath());
     const db = openDatabase(getDatabasePath());
