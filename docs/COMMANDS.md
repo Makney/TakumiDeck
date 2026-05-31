@@ -68,6 +68,19 @@ Zweite Zeile mit $literal-Dollarzeichen.
 '@
 ```
 
+⚠️ **Der `@'…'@`-Here-String ist PowerShell-only.** Wird er versehentlich über das
+**Bash-Tool** abgesetzt, kennt bash die Syntax nicht: das führende `@` und das
+schließende `'@` landen als Literale in der Commit-Message (Subject begann mit `@`,
+Body endete mit `'@`). Vor dem Absetzen prüfen, in welchem Tool man steckt.
+
+✅ **Shell-übergreifend sichere Variante** (PowerShell *und* Bash) — pro Absatz ein
+eigenes `-m`-Flag, Git fügt die Leerzeilen dazwischen ein. Default für mehrzeilige
+Commits:
+
+```text
+git commit -m "Subject-Zeile" -m "Absatz Body." -m "Co-Authored-By: …"
+```
+
 ### Destruktive Cmdlets fragen interaktiv
 
 - `Remove-Item`, `Stop-Process`, `Clear-Content` fragen ggf. nach Bestätigung.
