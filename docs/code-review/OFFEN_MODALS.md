@@ -94,3 +94,100 @@ Befunde aus dem Release-Review von v0.3.2 → v0.4.0 (Settings-Tab „Modelle" m
 - **Beschreibung:** Zeigt der `value` auf eine ID, die nicht in `modelOptions` ist, rendert das Select visuell die erste Option, der State bleibt aber auf dem unsichtbaren Wert. Das Verhalten bestand identisch in v0.3.2 (statisches `MODEL_OPTIONS`) und ist durch die erweiterte Built-in-Liste eher entschärft.
 - **Begründung:** Kein neuer Defekt, nur Kontext zum Cleanup-Befund oben. Sauberer wäre eine Fallback-Normalisierung (`value` auf erste Option, wenn nicht in der Liste).
 - **Trigger:** zusammen mit dem Cleanup-Befund oben angehen.
+
+---
+
+## Bereich-8-Re-Review (2026-05-31)
+
+Befunde aus dem parallelen 4-Agent-Re-Review über alle Modals + Components. Die hier gelisteten Punkte bleiben bewusst offen (Annahme trägt heute, größere Entscheidung oder additive Verbesserung). Die in derselben Runde gefixten Befunde (Fallback-Badge, YAML-Trenner-Trim, `WEEKLY_WINDOW_HOURS`, mehrstellige Modell-Version, try/catch in `refresh`/`refreshSummary`/`handleSend`/`handleCreate`, Loading-Reset im docs-sync-Cleanup) sind nicht hier, sondern direkt im Code erledigt.
+
+### `DiffViewer`-View-Mount-Effekt ist modus-blind (Deps ohne `mode`/`baselineSha`)
+
+- `src/renderer/components/DiffViewer.tsx:387-416` · Kategorie: **Bug** (latent)
+- **Beschreibung:** Der View-Mount-Effekt listet `mode`/`baselineSha` nicht in den Deps. Aktuell verdeckt, weil der Inhalts-Lade-Effekt `original`/`working` bei jedem Wechsel zuerst auf `null` zurücksetzt und damit ohnehin ein Re-Mount erzwingt. Bricht erst, wenn der `null`-Reset im Lade-Effekt je weg-optimiert wird — dann zeigt `unifiedMergeView` weiter die alte Diff-Basis.
+- **Begründung:** Im aktuellen Code kein erreichbarer Defekt; der Fix (`mode`/`baselineSha` in die Dep-Liste) ist trivial, würde aber eine heute korrekte Mechanik anfassen. Bewusst latent gelassen.
+- **Trigger:** Drive-by, sobald am DiffViewer-Lade-/Mount-Pfad etwas geändert wird (insb. wenn der `null`-Reset angefasst wird).
+
+### `PreCommitModal` setzt `sent` beim manuellen Schließen nicht zurück
+
+- `src/renderer/modals/PreCommitModal.tsx:63,171-175` · Kategorie: **Warnung**
+- **Beschreibung:** Nach `handleSend` bleibt `sent=true` bis zum 800-ms-Auto-Close. Wird der Modal in diesem Fenster anders geschlossen (Esc/Backdrop/×) und sofort wieder geöffnet, hängt das korrekte Verhalten daran, dass die Eltern-Komponente unmountet (frischer State). Bei reinem Sichtbarkeits-Toggle bliebe der Button auf „✓ Gesendet".
+- **Begründung:** Heute trägt die Annahme (Conditional-Render unmountet). Fix wäre `sent`-Reset beim Close oder ein expliziter Kommentar zur Unmount-Annahme.
+- **Trigger:** Drive-by beim nächsten Touch oder falls der Modal je per Sichtbarkeit statt Conditional-Render gehalten wird.
+
+### `JsonRawEditor` re-mountet bei instabiler `validate`-Prop
+
+- `src/renderer/components/JsonRawEditor.tsx:71,76-148` · Kategorie: **Warnung**
+- **Beschreibung:** `validate` fließt über `jsonLinter` → `extensions` → Mount-Effekt. Eine nicht-memoisierte Inline-`validate`-Closure aus der Eltern-Komponente löst pro Render einen kompletten Editor-Re-Mount aus (Cursor/Undo/Scroll verloren). Anders als `MarkdownEditor` (das Callbacks in Refs hält) verlässt sich `JsonRawEditor` auf eine referenz-stabile `validate`-Prop, ohne das zu erzwingen oder zu dokumentieren.
+- **Begründung:** Die aktuellen Aufrufstellen reichen stabile `validate`-Werte durch — kein aktiver Bug. Fix wäre eine Ref-Entkopplung wie im MarkdownEditor oder eine `useCallback`-Pflicht im Prop-Kommentar.
+- **Trigger:** sobald eine Aufrufstelle eine Inline-`validate`-Closure übergibt, oder beim nächsten Touch am JsonRawEditor.
+
+### Geteilter modul-globaler `TOKEN_RE` mit `g`-Flag
+
+- `src/renderer/components/templateVariables.ts:37` · Kategorie: **Warnung**
+- **Beschreibung:** `TOKEN_RE` (g-Flag) wird von `findVariablesInTemplate` (`.exec`-Schleife, setzt `lastIndex=0` defensiv) und `fillTemplateVariables` (`String.replace`, verwaltet `lastIndex` selbst) geteilt. Aktuell korrekt, aber fragil: jede künftige `.exec`/`.test`-Nutzung ohne `lastIndex`-Reset würde sporadische Treffer-Aussetzer verursachen.
+- **Begründung:** Kein aktiver Bug. Sauberer wäre ein RegExp-Literal pro Aufruf oder eine `makeTokenRe()`-Factory statt geteiltem `g`-State.
+- **Trigger:** dritte Nutzung des Patterns oder Drive-by beim nächsten Touch an `templateVariables.ts`.
+
+### `resolveAutoVars`-`.then` ohne `.catch` für echte Promise-Rejections
+
+- `src/renderer/modals/TemplatesModal.tsx:285-291` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Der `!result.ok`-Fall wird bewusst geschluckt (dokumentiert: Tokens bleiben literal als Hinweis auf fehlende Quelle). Es fehlt nur ein `.catch` für echte Bridge-Rejections — die liefen unbehandelt durch, statt wie gewünscht `serverAutoVars` leer zu lassen.
+- **Begründung:** Bewusste Silent-Drop-Entscheidung für den Result-Fehlerpfad; nur die formale Rejection-Absicherung fehlt.
+- **Trigger:** Drive-by beim nächsten Touch — optional leeres `.catch(() => {})` ergänzen.
+
+### `Number('')` → `0` in den Settings-Number-Inputs
+
+- `src/renderer/modals/SettingsModal.tsx:471-476,683-686,1015-1018` (u.a.) · Kategorie: **Verbesserung**
+- **Beschreibung:** Leert der User ein Number-Feld komplett, ist `Number('') === 0`. Bei `>= 0`-Guards wird damit still `0` geschrieben statt das Editieren zuzulassen; bei `> 0`-Guards bleibt der alte Wert, das Feld zeigt aber leer (Controlled-Input-Friktion).
+- **Begründung:** Kein Datenfehler, nur leichte Editier-UX-Reibung, konsistent über alle Inputs. Fix: `value === '' → return` voranstellen.
+- **Trigger:** beim nächsten Touch an den Settings-Number-Inputs.
+
+### `context_soft_warning` inline gepatcht statt über Patch-Helper
+
+- `src/renderer/modals/SettingsModal.tsx:1075-1080,1095-1098` · Kategorie: **Verbesserung**
+- **Beschreibung:** Für `screenshot_retention`, `model_limits`, `token_warning_thresholds`, `template_top_n` gibt es je einen dedizierten Patch-Setter; `context_soft_warning` wird dagegen zweimal inline mit `setField('context_soft_warning', { ... })` gepatcht. Funktional korrekt, nur Stil-Abweichung.
+- **Begründung:** Reine Konsistenz-Verbesserung, kein Defekt.
+- **Trigger:** beim nächsten Touch am Soft-Warning-Block — `setSoftWarning`-Helper einführen.
+
+### Stats-Tabelle zeigt Custom-Modelle ohne User-Label
+
+- `src/renderer/components/ModelsView.tsx:79,123` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Die Stats-Tabelle rendert Modelle via `prettyModelId(row.model)`-Heuristik. Custom-Modelle mit eigenem User-Label erscheinen hier mit der Heuristik, nicht mit dem Label — bewusste Trennung (Stats sind ID-zentriert, Settings-Labels sind UI-Vorlieben), für den User aber potenziell überraschend.
+- **Begründung:** Belassen, solange Stats bewusst ID-zentriert bleiben.
+- **Trigger:** wenn Custom-Labels durchgängig in der Stats-Ansicht erscheinen sollen.
+
+### Magic-Numbers + duplizierte Inline-Styles im TemplatesModal
+
+- `src/renderer/modals/TemplatesModal.tsx:144-148,162-169,741-778` · Kategorie: **Verbesserung**
+- **Beschreibung:** Modal-Größe (820), Drag-Bounding-Werte und zwei nahezu identische Button-Inline-Style-Objekte (AutoVarRow) stehen als nackte Zahlen/Inline-Styles, abweichend vom `td-*`-CSS-Klassen-Stil des restlichen Modals.
+- **Begründung:** Kosmetik/Konsistenz, kein Defekt.
+- **Trigger:** beim nächsten Touch am TemplatesModal — Konstanten zentralisieren, Styles in eine `td-btn-link`-Klasse.
+
+### `bulletCount`-Heuristik an `- `-Prefix gekoppelt
+
+- `src/renderer/modals/TemplatesModal.tsx:725` · Kategorie: **Verbesserung**
+- **Beschreibung:** `bulletCount` zählt nur Zeilen mit exaktem `- `-Prefix. Liefert eine Auto-Var-Quelle `* `, `1. ` oder eingerückte Bullets, zeigt die Sidebar „N Zeichen" statt „N Einträge". Kosmetisch — voller Inhalt bleibt im Preview-Pane sichtbar.
+- **Begründung:** Kein Funktionsfehler. Fix: Erkennung gegen `/^\s*[-*]\s/` absichern.
+- **Trigger:** wenn eine Auto-Var-Quelle ein abweichendes Bullet-Format liefert, oder Drive-by.
+
+### Sensitive-File-Default ohne `*.pfx`/`*.p12`/`.npmrc`/`.htpasswd`
+
+- `src/renderer/components/sensitiveFiles.ts:22-30` · Kategorie: **Verbesserung**
+- **Beschreibung:** Die geforderten Muster (`.env*`, `*secret*`, `*token*`, `*.pem`, `id_rsa`) sind alle vorhanden. Nicht abgedeckt sind verwandte Secret-Träger: `.pfx`/`.p12` (PKCS#12-Keystores), `.npmrc`/`.pypirc` (Auth-Tokens), `.htpasswd`.
+- **Begründung:** Reine Erweiterung der Default-Liste, kein Defekt. Der User kann eigene Patterns ergänzen.
+- **Trigger:** beim nächsten Touch an der Sensitive-Patterns-Default-Liste.
+
+### `DiffViewer`-`original`-Ladefehler nur als `console.warn`
+
+- `src/renderer/components/DiffViewer.tsx:370-373` · Kategorie: **Verbesserung**
+- **Beschreibung:** Schlägt `git.show` für `original` fehl, wird `original=''` gesetzt und nur `console.warn` geloggt — der Diff zeigt dann alle Zeilen als Hinzufügung. Bei echten neuen Dateien korrekt, bei einem echten git-Fehler aber als „neue Datei" fehlinterpretiert, ohne UI-Hinweis. Der `doc`-Pfad setzt dagegen `error`.
+- **Begründung:** Bewusste Asymmetrie (neue Dateien sollen nicht als Fehler erscheinen); ein echter Fehler bleibt aber unsichtbar.
+- **Trigger:** Drive-by — „Datei existiert in ref nicht" vs. sonstiger git-Fehler unterscheiden und letzteren als dezenten Inline-Hinweis zeigen.
+
+### Uneinheitliche Marker-Sprache `PreCommitModal.markChar` vs. `DiffViewer.markFor`
+
+- `src/renderer/modals/PreCommitModal.tsx:311,321-340` · Kategorie: **Verbesserung**
+- **Beschreibung:** `markChar` unterscheidet Index- vs. Worktree-Status nicht (zeigt für beide denselben Großbuchstaben), während `DiffViewer.markFor` Index-Marks per Kleinbuchstaben (`m`/`a`) abgrenzt. Kein Bug, nur uneinheitliche Marker-Sprache zwischen den beiden Listen.
+- **Begründung:** Rein kosmetische Inkonsistenz.
+- **Trigger:** bei einer Marker-Vereinheitlichung die Index-vs-Worktree-Unterscheidung aus DiffViewer auch in PreCommitModal übernehmen.

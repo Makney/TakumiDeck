@@ -23,6 +23,10 @@ import {
 } from '../components/settingsAutoSave';
 import { useUpdaterState } from '../components/useUpdaterState';
 
+// Fenstergroesse (in Stunden), ab der eine limit_bar als Wochen-Limit gilt und
+// das Wochen-Reset-Schema bekommt.
+const WEEKLY_WINDOW_HOURS = 168;
+
 // SettingsModal (Sprint 8, Architektur 6.9).
 //
 // Sechs Tabs (Allgemein / Workspace / Modelle / Token-Tracking / Terminal /
@@ -406,12 +410,18 @@ function ScreenshotRetentionBlock({
 
   const refreshSummary = useCallback(async () => {
     setSummaryError(null);
-    const res = await window.api.fs.screenshotsSummary();
-    if (res.ok) {
-      setSummary(res.data);
-    } else {
+    try {
+      const res = await window.api.fs.screenshotsSummary();
+      if (res.ok) {
+        setSummary(res.data);
+      } else {
+        setSummary(null);
+        setSummaryError(res.error);
+      }
+    } catch (err) {
+      // Bridge-Reject (IPC-Fehler) darf nicht im Loading-State haengen bleiben.
       setSummary(null);
-      setSummaryError(res.error);
+      setSummaryError(err instanceof Error ? err.message : String(err));
     }
   }, []);
 
@@ -755,16 +765,21 @@ function ModelRefreshBlock({
 
   const refresh = useCallback(async () => {
     setState({ kind: 'loading' });
-    const res = await window.api.models.fetchAvailable();
-    if (!res.ok) {
-      setState({ kind: 'error', message: res.error });
-      return;
+    try {
+      const res = await window.api.models.fetchAvailable();
+      if (!res.ok) {
+        setState({ kind: 'error', message: res.error });
+        return;
+      }
+      if (!res.data.available) {
+        setState({ kind: 'no-key' });
+        return;
+      }
+      setState({ kind: 'loaded', models: res.data.models });
+    } catch (err) {
+      // Bridge-Reject (IPC-Fehler) darf den Button nicht im Loading-State lassen.
+      setState({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
     }
-    if (!res.data.available) {
-      setState({ kind: 'no-key' });
-      return;
-    }
-    setState({ kind: 'loaded', models: res.data.models });
   }, []);
 
   return (
@@ -984,7 +999,7 @@ function UsageTab({
   // bleibt als Per-Bar-Override.
   const weeklyResetCurrent = useMemo(() => {
     const weekly = settings.limit_bars.find(
-      (b) => b.window_hours >= 168 && b.reset_schedule,
+      (b) => b.window_hours >= WEEKLY_WINDOW_HOURS && b.reset_schedule,
     );
     return weekly?.reset_schedule ?? { day_of_week: 1, hour: 0, minute: 0 };
   }, [settings.limit_bars]);
@@ -993,7 +1008,7 @@ function UsageTab({
     (patch: Partial<{ day_of_week: number; hour: number; minute: number }>) => {
       const next = { ...weeklyResetCurrent, ...patch };
       const updated = settings.limit_bars.map((b) =>
-        b.window_hours >= 168 ? { ...b, reset_schedule: next } : b,
+        b.window_hours >= WEEKLY_WINDOW_HOURS ? { ...b, reset_schedule: next } : b,
       );
       setField('limit_bars', updated);
     },
@@ -1109,7 +1124,7 @@ function UsageTab({
           will, kann den Raw-JSON-Editor weiter unten nutzen. */}
       <Field
         label="Wochen-Reset"
-        hint="Wochentag und Uhrzeit, an dem die Wochen-Limit-Bars wieder bei 0 anfangen. Wird auf alle Bars mit Fenster ≥ 168 h angewendet. Anthropic resettet i. d. R. zur gleichen Zeit wie beim ersten Plan-Tag."
+        hint={`Wochentag und Uhrzeit, an dem die Wochen-Limit-Bars wieder bei 0 anfangen. Wird auf alle Bars mit Fenster ≥ ${WEEKLY_WINDOW_HOURS} h angewendet. Anthropic resettet i. d. R. zur gleichen Zeit wie beim ersten Plan-Tag.`}
       >
         <div className="td-settings-grid">
           <label className="td-settings-grid-row">

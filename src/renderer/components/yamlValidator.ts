@@ -58,7 +58,9 @@ export function extractFrontmatter(source: string): FrontmatterBlock | null {
   if (!source.startsWith('---\n') && !source.startsWith('---\r\n')) return null;
   const lines = source.split(/\r?\n/);
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === '---') {
+    // `.trim()` toleriert einen Trenner mit Trailing-Whitespace (`--- `), den
+    // manche Editoren beim Speichern hinterlassen.
+    if (lines[i]?.trim() === '---') {
       // body-Zeilen lines[1..i-1], also startLine = 2 (1-basiert).
       return { body: lines.slice(1, i).join('\n'), startLine: 2 };
     }

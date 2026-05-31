@@ -179,6 +179,10 @@ export function NewSessionModal({
     });
     return () => {
       cancelled = true;
+      // Loading-Marker zuruecksetzen, falls der Effekt vor Antwort des IPC
+      // abgebrochen wird (z.B. Wechsel weg von docs-sync) — sonst bliebe das
+      // Badge auf „laedt…" haengen.
+      setDocsSyncLoading(false);
     };
   }, [type, projectId]);
 
@@ -533,6 +537,14 @@ function DocsSyncStatusBadge({
           ⚠️ Datei fehlt
         </span>
       );
+    default:
+      // Defensiv: ein unbekannter State aus dem IPC (z.B. nach Schema-Erweiterung
+      // im Main ohne Renderer-Sync) zeigt einen neutralen Marker statt nichts.
+      return (
+        <span className="td-docs-sync-state td-docs-sync-state-missing">
+          ❔ unbekannt
+        </span>
+      );
   }
 }
 
@@ -603,6 +615,13 @@ function OnDemandStatusBadge({ status }: { status: DocsOnDemandFileStatus }) {
           title="Die in CLAUDE.md referenzierte Datei existiert nicht im Projekt."
         >
           ⚠️ Datei fehlt
+        </span>
+      );
+    default:
+      // Defensiv: unbekannter State aus dem IPC -> neutraler Marker statt nichts.
+      return (
+        <span className="td-docs-sync-state td-docs-sync-state-missing">
+          ❔ unbekannt
         </span>
       );
   }

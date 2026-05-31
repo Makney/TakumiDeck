@@ -354,9 +354,18 @@ export function TemplatesModal({
     let finalText = fill.filled;
     const usesSeasonVar = usedVariables.includes('NEXT_SEASON_NR');
     if (usesSeasonVar && activeSessionId) {
-      const result = await window.api.templates.allocateSeasonForSession({
-        sessionId: activeSessionId,
-      });
+      let result: Awaited<ReturnType<typeof window.api.templates.allocateSeasonForSession>>;
+      try {
+        result = await window.api.templates.allocateSeasonForSession({
+          sessionId: activeSessionId,
+        });
+      } catch (err) {
+        // Bridge-Reject: wie beim !ok-Fall hart stoppen, Modal bleibt offen.
+        flashToast(
+          `Season-Nummer konnte nicht alloziert werden: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+      }
       if (!result.ok) {
         // Hard-Stop: ohne korrekte Season-Nummer abschicken ist schlimmer als
         // gar nicht abschicken (die Nummer landet sonst stale im Prompt und im
@@ -431,11 +440,18 @@ export function TemplatesModal({
       return;
     }
     const stub = createTemplateStub(finalName);
-    const result = await window.api.fs.write({
-      projectId: project.id,
-      relPath,
-      content: stub,
-    });
+    let result: Awaited<ReturnType<typeof window.api.fs.write>>;
+    try {
+      result = await window.api.fs.write({
+        projectId: project.id,
+        relPath,
+        content: stub,
+      });
+    } catch (err) {
+      // Bridge-Reject: Fehler im Inline-Form anzeigen statt still haengen.
+      setNewError(err instanceof Error ? err.message : String(err));
+      return;
+    }
     if (!result.ok) {
       setNewError(result.error);
       return;
