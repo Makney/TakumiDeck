@@ -2,7 +2,7 @@
 workbench:
   project_name: TakumiDeck
   default_model: claude-opus-4-8
-  current_phase_file: docs/roadmap/PHASE2.md
+  current_phase_file: docs/roadmap/PHASE3.md
   current_version: "0.4.0"
   trigger_phrases:
     docs_update: "ist korrekt umgesetzt"
@@ -89,9 +89,9 @@ Git repo: https://github.com/Makney/TakumiDeck.git
 
 ## Current Status
 
-Phase 1 (v0.1) abgeschlossen. Phase 2 (v1.0) aktiv in Entwicklung.
+Phase 1 (v0.1) und Phase 2 (v0.4.0) abgeschlossen. Phase 3 (Power-Features) aktiv in Entwicklung. Versionierung ist von der Phase entkoppelt — die Version bleibt vorerst bei 0.x.
 ```
-→ [docs/roadmap/PHASE2.md](./docs/roadmap/PHASE2.md) — Offene Features der aktuellen Phase
+→ [docs/roadmap/PHASE3.md](./docs/roadmap/PHASE3.md) — Offene Features der aktuellen Phase
 → [docs/FEATURES.md](./docs/FEATURES.md)        — Feature status matrix (✅/🟡/⛔)
 → [docs/CHANGELOG.md](./docs/CHANGELOG.md)      — Recently built features
 → [docs/TAKUMIDECK_ARCHITEKTUR.md](./docs/TAKUMIDECK_ARCHITEKTUR.md) — Master architecture reference

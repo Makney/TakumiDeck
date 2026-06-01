@@ -1,19 +1,19 @@
 # Roadmap – Übersicht
 
-TakumiDeck wird in **4 Phasen** entwickelt, die jeweils in einem Versions-Milestone münden. Phase 4 ist ein Sammelort für Gray-Area-Features ohne Versionsplan.
+TakumiDeck wird in **4 Phasen** entwickelt. Phase 1 mündete in einen festen Versions-Milestone (v0.1); ab Phase 2 ist die Versionierung von der Phase entkoppelt — Features landen fortlaufend in 0.x-Releases. Phase 4 ist ein Sammelort für Gray-Area-Features ohne Versionsplan.
 
 Features haben **keine feste Reihenfolge** innerhalb einer Phase – jede Implementierung findet in einer eigenen Season statt. Ausnahme: Features mit Abhängigkeiten sind als **Feature-Blöcke** markiert (Reihenfolge muss eingehalten werden).
 
 | Phase                              | Ziel                                          | Milestone | Status |
 | ---------------------------------- | --------------------------------------------- | --------- | ------ |
 | [Phase 1](./PHASE1.md)             | MVP — lauffähige Multi-Session-Workbench      | v0.1      | ✅      |
-| [Phase 2](./PHASE2.md)             | Komfort und Stabilisierung                    | v1.0      | 🟡      |
-| [Phase 3](./PHASE3.md)             | Power-Features und Erweiterungen              | —         | ⛔      |
+| [Phase 2](./PHASE2.md)             | Komfort und Stabilisierung                    | v0.4.0    | ✅      |
+| [Phase 3](./PHASE3.md)             | Power-Features und Erweiterungen              | —         | 🟡      |
 | [Phase 4](./PHASE4.md)             | Experimentelles und Gray-Area (Opt-In)        | —         | ⛔      |
 
 Abgeschlossene Features → [CHANGELOG.md](../CHANGELOG.md)
 
-Phase 2 läuft **trigger-getrieben** — einzelne Features werden gezogen, wenn sie im Daily-Use als Schmerzpunkte spürbar werden (siehe Trigger-Hinweise pro Feature in [PHASE2.md](./PHASE2.md)).
+Phase 3 läuft **trigger-getrieben** — einzelne Features werden gezogen, wenn sie im Daily-Use als Schmerzpunkte spürbar werden (siehe Trigger-Hinweise pro Feature in [PHASE3.md](./PHASE3.md)). Ab Phase 2 ist die Versionierung von der Phase **entkoppelt**: Features landen in 0.x-Releases, ein v1.0-Sprung ist nicht an einen Phasen-Abschluss gebunden.
 
 ---
 

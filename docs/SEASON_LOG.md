@@ -20,9 +20,9 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
-## Phase 3 Season 37 — Unterstützung für Programmiersprachen-Syntax (vorgezogen)
+## Phase 3 Season 36 — Unterstützung für Programmiersprachen-Syntax
 
-> _Hinweis zur Nummer: Das Kickoff-Brief war mit „Season 36" betitelt, aber Season 36 war bereits durch den Datei-Längen-Refactor (TerminalTab) belegt — diese Season ist die nächste freie Nummer (37). Erstes vorgezogenes Phase-3-Feature; Phase 2 ist formal noch nicht abgeschlossen, der Trigger (Daily-Use-Druck) war aber erreicht._
+> _Hinweis zur Nummer: Der Allocator (`sessions.season_number`) vergibt für diese Session Season 36 — so auch im Kickoff-Brief betitelt. Erstes Phase-3-Feature: Phase 2 ist mit v0.4.0 abgeschlossen, ab hier wird aus PHASE3.md gezogen (Versionierung von der Phase entkoppelt, vorerst bei 0.x)._
 
 **Ziel:** Der CodeMirror-Editor kannte nur Markdown + YAML; Code-Files liefen ohne Highlighting im Plain-Text-Modus. Scope laut Brief: Sprach-Erkennung aus dem Suffix (inkl. `.mjs/.cjs/.mts/.cts`-Fallbacks), CM6-Sprachpakete lazy beim ersten Treffer laden (Initial-Bundle schlank halten), Auto-Indent/Bracket-Matching pro Sprache über das `lang-*`-Paket, optionale dokumentierte Plain-Text-Map für Exoten ohne Paket (`.toml/.proto/.ini`), Preview-Toggle nur für Markdown. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.
 
@@ -36,17 +36,19 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 **Gebremst durch:**
 
-- **Season-Nummern-Drift im Kickoff-Brief.** Der Brief war als „Season 36" betitelt, obwohl 36 bereits vergeben war. Kein Blocker, aber es zwang zu einer Reconciliation gegen SEASON_LOG + Git-Log, um die richtige Nummer (37) zu setzen. Lehre: bei Season-Start die nächste freie Nummer aus dem SEASON_LOG verifizieren, nicht blind aus dem Brief übernehmen.
+- **Season-Nummer aus dem SEASON_LOG-Label statt aus dem Allocator abgeleitet.** Der Brief war korrekt mit „Season 36" betitelt; ich hatte zunächst 37 gesetzt, weil der Datei-Längen-Refactor bereits als „Season 36" im SEASON_LOG stand. Der Allocator vergibt 36 aber an *diese* Session — die Refactor-Überschrift war ein manuelles Label, kein Allocator-Wert. Auf User-Korrektur zurück auf 36 gestellt. Lehre: Season-Nummer am Allocator (`sessions.season_number`) verifizieren, nicht an den manuell gesetzten SEASON_LOG-Überschriften.
 - **Vorab-uncommittete SEASON_LOG-Politur im Tree.** Beim Doku-Commit lag eine ältere, nicht von dieser Season stammende SEASON_LOG-Verfeinerung (Season 35/36-Wording) uncommittet im Working Tree — sie reist im Doku-Commit mit. Sauber wäre, solche Doku-Politur eigenständig zu committen, bevor die nächste Season den Tree teilt.
 
 **Für nächste Season:**
 
 - **Neue Editor-Sprache = ein Map-Eintrag + ein Loader-`case`.** Das Pattern steht; eine weitere Sprache mit echtem CM6-Paket ist Minimal-Aufwand. Sprachen ohne Paket gehören in die dokumentierte Plain-Text-Menge, nicht stillschweigend übersprungen.
-- **Phase 2 ist weiterhin formal offen.** Dies war ein vorgezogenes Phase-3-Feature — vor dem nächsten „Phase-Abschluss"-Label prüfen, ob die verbleibenden Phase-2-Roadmap-Items wirklich alle ✅ sind (Memory: „Abschluss" vs. „Zwischenstand").
+- **Phase 3 läuft jetzt.** Mit Phase 2 (v0.4.0) abgeschlossen wird ab dieser Season aus PHASE3.md gezogen; die Versionierung ist von der Phase entkoppelt und bleibt vorerst bei 0.x. Vor künftigen „Phase-Abschluss"-Labels weiter am Allocator + Roadmap-✅-Stand verifizieren (Memory: „Abschluss" vs. „Zwischenstand").
 
 ---
 
-## Phase 2 Season 36 — Datei-Längen-Refactor: types.ts · SettingsModal · TerminalTab
+## Phase 2 · Wartung — Datei-Längen-Refactor: types.ts · SettingsModal · TerminalTab
+
+> _Nummer-Hinweis: Dieser Refactor war Wartungsarbeit ohne eigene Allocator-Season-Nummer — er stand zwischenzeitlich als „Season 36" hier, aber der Allocator (`sessions.season_number`) vergibt 36 an die nachfolgende Programmiersprachen-Syntax-Season (oben). Daher als nummernlose Wartung gelistet, zeitlich nach Season 35._
 
 **Ziel:** Die drei Dateien über der 1200-Zeilen-Pflichtgrenze zerlegen (Ziel max. 500 Zeilen/Datei, 1200 als Obergrenze). Der Refactor lief in drei Teilen: `types.ts` (Teil 1) und `SettingsModal.tsx` (Teil 2) wurden in einer früheren Session erledigt und lagen noch uncommittet im Tree; **diese Session war Teil 3/3 — `TerminalTab.tsx` (1301 Zeilen)**, das schwierigste Stück. Ziel hier: unter 1200, Richtung 500. Erschwernis im Brief explizit benannt: ~920 der Zeilen stecken in einer Komponente, davon ~550 in einem einzigen Init-`useEffect`, der den kompletten xterm-Lifecycle hält (StrictMode-Guards, Dispose-Reihenfolge, Buffer-Restore aus Season 33). Verhalten muss bit-identisch bleiben. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.
 

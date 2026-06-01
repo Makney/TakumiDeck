@@ -28,7 +28,7 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ### Architektur
 
-Variante A (siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)): die bestehende Editor-Komponente wurde erweitert statt einen zweiten Code-Editor anzulegen — die Sprache hängt an einer CodeMirror-`Compartment`, die nach dem Lazy-Load ohne Re-Mount umkonfiguriert wird. Phase-3-Feature, wegen des Daily-Use-Drucks aus Season 29 (Auto-Open-Pairing macht jedes Working-Tree-File per Klick öffenbar) vorgezogen. Pre-Commit-Gate grün (typecheck · eslint · 1079/1079 Tests, davon 13 neue für die Sprach-Erkennung).
+Variante A (siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)): die bestehende Editor-Komponente wurde erweitert statt einen zweiten Code-Editor anzulegen — die Sprache hängt an einer CodeMirror-`Compartment`, die nach dem Lazy-Load ohne Re-Mount umkonfiguriert wird. Erstes Phase-3-Feature (Season 36); der Daily-Use-Druck kam aus Season 29 (Auto-Open-Pairing macht jedes Working-Tree-File per Klick öffenbar). Pre-Commit-Gate grün (typecheck · eslint · 1079/1079 Tests, davon 13 neue für die Sprach-Erkennung).
 
 ---
 

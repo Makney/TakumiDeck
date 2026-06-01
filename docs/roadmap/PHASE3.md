@@ -1,8 +1,8 @@
 # Roadmap Phase 3 – Power-Features und Erweiterungen
 
-**Voraussetzung:** Phase 2 abgeschlossen (v1.0 stabil)
+**Voraussetzung:** Phase 2 abgeschlossen (v0.4.0 stabil im Daily-Use)
 
-**Ziel:** TakumiDeck um langfristige Power-Features erweitern. Diese Phase hat keinen festen Versionsplan — Features werden je nach Bedarf gezogen, wenn der eigene Workflow oder das Tooling-Umfeld sich verändert.
+**Ziel:** TakumiDeck um langfristige Power-Features erweitern. Diese Phase hat keinen festen Versionsplan — Features werden je nach Bedarf gezogen, wenn der eigene Workflow oder das Tooling-Umfeld sich verändert. Die Versionierung bleibt bei 0.x und ist von der Phase entkoppelt.
 
 **Milestone:** offen
 

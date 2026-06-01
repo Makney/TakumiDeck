@@ -1,10 +1,10 @@
-# Roadmap Phase 2 – Komfort und Stabilisierung (v1.0)
+# Roadmap Phase 2 – Komfort und Stabilisierung (abgeschlossen, v0.4.0)
 
 **Voraussetzung:** Phase 1 abgeschlossen (v0.1 stabil im Daily-Use)
 
 **Ziel:** TakumiDeck wird vom MVP zum produktiven Daily-Driver. Komfort-Features, die im täglichen Einsatz wichtig werden, sobald die Grundfunktionen stabil sind. Trigger sind oft empirische Schmerzpunkte aus Phase 1.
 
-**Milestone:** Version 1.0
+**Milestone:** v0.4.0 (abgeschlossen). Der ursprünglich angepeilte v1.0-Sprung ist entfallen — die Versionierung bleibt bei 0.x und ist von der Phase entkoppelt.
 
 ---
 
