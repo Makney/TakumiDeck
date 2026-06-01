@@ -37,5 +37,6 @@ Befunde, die während eines Code-Reviews aufkommen, aber **bewusst nicht gefixt*
 ## Pflege-Regeln
 
 - Behobene/gegenstandslose Befunde werden **nicht gelöscht, sondern ins `archiv/ARCHIV_<BEREICH>.md` verschoben** — verbatim, mit Datum + kurzer Auflösungs-Notiz. So bleibt diese Datei auf die offenen Punkte fokussiert und der Verlauf nachvollziehbar. Oben in jeder OFFEN-Datei ein Verweis aufs Archiv.
+- **Marker + Skript für den Move:** Einen erledigten Eintrag mit einer Trailer-Zeile `**Behoben:** YYYY-MM-DD · <Variante> · <Auflösungs-Notiz>` versehen (als nackter Absatz oder als `- `-Listenpunkt, je nach Eintrags-Format). Dann `py scripts/archive-resolved.py` (Trockenlauf) bzw. `--apply` ausführen — das schneidet jeden so markierten `###`-Eintrag aus der OFFEN-Datei und hängt ihn ans passende Archiv an (Archiv wird bei Bedarf neu angelegt).
 - **Keine Gummiband-Einträge.** Wenn ein Befund hier landet, soll er so konkret sein, dass ein späterer Review-Agent ihn eindeutig wiedererkennt und nicht noch einmal meldet.
 - **Kategorie „Design-by-Choice"** für Dinge, die bewusst so sind — dort steht die Begründung oft als Verweis auf `ENTSCHEIDUNGEN.md`.

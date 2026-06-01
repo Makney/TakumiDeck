@@ -61,13 +61,6 @@ Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (Terminal-Polish + Multi-Ta
 - **Begründung:** Wird zur echten Lücke, sobald EditorPane jemals dynamisch ent-mountet (z.B. wenn ein zukünftiger Refactor den Editor in ein modales Panel verschiebt). Heute ist EditorPane permanent gemountet, solange die App lebt.
 - **Trigger:** wenn EditorPane unmount-fähig wird (Layout-Refactor) — dann Cleanup-Return ergänzen.
 
-### `SerializeAddon` geladen aber ungenutzt
-
-- `src/renderer/panels/TerminalTab.tsx:259` · Kategorie: **Design-by-Choice**
-- **Beschreibung:** `SerializeAddon` wird im Init-Effect geladen, aber kein Ref/Handle gehalten und nirgendwo gerufen. Bewusste Vorbereitung für die in Phase 2 / Roadmap geparkte Terminal-Buffer-Persistierung-Karte (siehe `docs/roadmap/PHASE2.md`). Kostet einen Konstruktor-Aufruf pro Tab-Mount.
-- **Begründung:** Belassen, weil das Loaden im SEASON_LOG dokumentiert ist und das Lazy-Load-Pattern beim Implementieren der Buffer-Persistierung den Setup-Aufwand einspart. Ein Inline-Code-Kommentar („// Buffer-Persistierung-Roadmap, siehe PHASE2") wäre hilfreich für den nächsten Touch.
-- **Trigger:** wenn die Buffer-Persistierung-Karte aus Phase 2 implementiert wird — dann den Addon-Handle nutzen und den Kommentar entfernen.
-
 ---
 
 ## Release-Review v0.3.1 (2026-05-19)

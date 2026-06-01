@@ -35,3 +35,17 @@ Zusätzlich im Bereich-7-Review aufgelöste Befunde (nicht im Initial-Lint-Lauf)
 - `tests/renderer/spawn-tracking-state.test.ts` · Kategorie: **Verbesserung**
 - **Beschreibung:** Die acht neuen Tests prüfen die Pure-Helper-Verträge (`removeFromIdSet`/`removeFromIdMap` referenz-stabil bei No-op, neue Instanz bei Treffer) und ein Bugfix-Szenario auf Helper-Ebene. Es fehlt aber ein Renderer-Integrations- oder Hook-Test, der `TabContainer.handleClose` tatsächlich aufruft und danach `addTab` mit derselben sessionId wieder einfügt und verifiziert, dass die Resume-Folge-Aktion (`needsSpawn=false`, `initialPrompt=null`) tatsächlich am Mount ankommt.
 - **Begründung (historisch):** Mit der v0.3.2-Variante-B-Umstellung sind die Pure-Helper und ihr Test komplett weggefallen. Der zentrale Regressions-Test sitzt jetzt im neuen `useSessionStore Spawn-Tracking`-Block in `tests/renderer/sessions-store.test.ts` und prüft den End-to-End-Pfad direkt am Store: `addTab({sessionId, needsSpawn: true})` → `closeTab(sessionId)` → `addTab({sessionId})` → erwarteter `needsSpawn=false` am neuen Tab. Damit ist der Resume-Pfad auf der Schicht abgesichert, auf der er passiert.
+
+---
+
+## 2026-06-01 — Per archive-resolved.py archiviert
+
+Verschoben aus [`OFFEN_PANELS.md`](../OFFEN_PANELS.md). Aufloesung steht je Eintrag in der **Behoben:**-Zeile.
+
+### `SerializeAddon` geladen aber ungenutzt
+
+- `src/renderer/panels/TerminalTab.tsx:259` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** `SerializeAddon` wird im Init-Effect geladen, aber kein Ref/Handle gehalten und nirgendwo gerufen. Bewusste Vorbereitung für die in Phase 2 / Roadmap geparkte Terminal-Buffer-Persistierung-Karte (siehe `docs/roadmap/PHASE2.md`). Kostet einen Konstruktor-Aufruf pro Tab-Mount.
+- **Begründung:** Belassen, weil das Loaden im SEASON_LOG dokumentiert ist und das Lazy-Load-Pattern beim Implementieren der Buffer-Persistierung den Setup-Aufwand einspart. Ein Inline-Code-Kommentar („// Buffer-Persistierung-Roadmap, siehe PHASE2") wäre hilfreich für den nächsten Touch.
+- **Trigger:** wenn die Buffer-Persistierung-Karte aus Phase 2 implementiert wird — dann den Addon-Handle nutzen und den Kommentar entfernen.
+- **Behoben:** 2026-06-01 · Season 33 / v0.4.0 (Terminal-Buffer-Persist) · Trigger erfüllt: `SerializeAddon` hält jetzt einen Handle (`TerminalTab.tsx:277`) und wird im Cleanup-Save-Pfad via `serializeAddon.serialize()` (`:652`) genutzt → `terminal:save-buffer`. Kein toter Lade-Aufruf mehr; verifiziert am aktuellen HEAD-Stand.
