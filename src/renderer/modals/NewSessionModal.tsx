@@ -12,7 +12,7 @@ import {
   type DocsSyncFileDescriptor,
   type ContextPreambleItem,
 } from '@shared/docs-sync';
-import { buildModelOptions } from '@shared/models';
+import { buildModelOptions, resolveModelSelectValue } from '@shared/models';
 
 // NewSessionModal: Sprint-3-Pflicht aus Architektur 6.0.1.
 //
@@ -460,7 +460,7 @@ export function NewSessionModal({
             <label className="td-field">
               <span>Modell</span>
               <select
-                value={model}
+                value={resolveModelSelectValue(model, modelOptions)}
                 onChange={(e) => setModel(e.target.value)}
               >
                 {modelOptions.map((opt) => (

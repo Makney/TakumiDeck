@@ -59,6 +59,20 @@ describe('isSensitiveFile', () => {
     expect(isSensitiveFile('certs/ca.pem')).toBe(true);
   });
 
+  it('matched PKCS#12-Keystores (*.pfx / *.p12)', () => {
+    expect(isSensitiveFile('client.pfx')).toBe(true);
+    expect(isSensitiveFile('keystore.p12')).toBe(true);
+    expect(isSensitiveFile('certs/server.PFX')).toBe(true);
+  });
+
+  it('matched Registry-Auth-Files (.npmrc / .pypirc) und .htpasswd', () => {
+    expect(isSensitiveFile('.npmrc')).toBe(true);
+    expect(isSensitiveFile('.pypirc')).toBe(true);
+    expect(isSensitiveFile('.htpasswd')).toBe(true);
+    // Nur der exakte Basename — kein False-Positive auf abgeleitete Namen
+    expect(isSensitiveFile('npmrc.example')).toBe(false);
+  });
+
   it('case-insensitive', () => {
     expect(isSensitiveFile('.ENV')).toBe(true);
     expect(isSensitiveFile('Server.KEY')).toBe(true);

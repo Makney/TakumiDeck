@@ -137,7 +137,7 @@ export function App() {
   if (!settings.workspace_wizard_completed) {
     return (
       <div className="td-app td-app-wizard">
-        <TitleBar version={version} />
+        <TitleBar version={version} p90WindowHours={settings.p90_window_hours} />
         <WorkspaceWizard onComplete={(next) => setSettings(next)} />
       </div>
     );
@@ -145,7 +145,7 @@ export function App() {
 
   return (
     <div className="td-app">
-      <TitleBar version={version} />
+      <TitleBar version={version} p90WindowHours={settings.p90_window_hours} />
       <main className="td-main">
         {/* Spalte 1: LeftSidebar, full-height */}
         <div className="td-col-left">
@@ -208,6 +208,7 @@ export function App() {
         <HistoryActionModal
           entry={historyActionEntry}
           defaultModel={settings?.default_model ?? null}
+          terminalFontSize={settings?.terminal_font_size ?? 14}
           onClose={() => setHistoryActionEntry(null)}
         />
       )}

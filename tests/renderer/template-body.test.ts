@@ -42,6 +42,39 @@ describe('extractTemplateBody', () => {
     expect(extractTemplateBody(md)).toBe(md);
   });
 
+  it('Fallback: strippt YAML-Frontmatter, wenn kein Vorlage-Heading existiert', () => {
+    // Regressionsschutz: ein Template MIT Frontmatter, aber OHNE `## Vorlage`-
+    // Heading darf den YAML-Block nicht in den Prompt leaken.
+    const md = [
+      '---',
+      'variables:',
+      '  FEATURE_NAME: { input: text, required: true }',
+      '---',
+      '',
+      '# Titel',
+      '',
+      'Freier Markdown-Text ohne Vorlage-Sektion.',
+    ].join('\n');
+    expect(extractTemplateBody(md)).toBe(
+      '# Titel\n\nFreier Markdown-Text ohne Vorlage-Sektion.',
+    );
+  });
+
+  it('Frontmatter ueber "## Vorlage" beeinflusst den Fence-Inhalt nicht', () => {
+    const md = [
+      '---',
+      'variables:',
+      '  X: { auto: today }',
+      '---',
+      '',
+      '## Vorlage',
+      '```',
+      'pure prompt',
+      '```',
+    ].join('\n');
+    expect(extractTemplateBody(md)).toBe('pure prompt');
+  });
+
   it('Fallback: liefert vollen Content, wenn unter dem Heading kein Fence kommt', () => {
     const md = ['## Vorlage', '', 'kein Fence, nur Fliesstext.', ''].join('\n');
     expect(extractTemplateBody(md)).toBe(md);

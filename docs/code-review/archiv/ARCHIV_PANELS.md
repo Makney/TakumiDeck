@@ -49,3 +49,27 @@ Verschoben aus [`OFFEN_PANELS.md`](../OFFEN_PANELS.md). Aufloesung steht je Eint
 - **Begründung:** Belassen, weil das Loaden im SEASON_LOG dokumentiert ist und das Lazy-Load-Pattern beim Implementieren der Buffer-Persistierung den Setup-Aufwand einspart. Ein Inline-Code-Kommentar („// Buffer-Persistierung-Roadmap, siehe PHASE2") wäre hilfreich für den nächsten Touch.
 - **Trigger:** wenn die Buffer-Persistierung-Karte aus Phase 2 implementiert wird — dann den Addon-Handle nutzen und den Kommentar entfernen.
 - **Behoben:** 2026-06-01 · Season 33 / v0.4.0 (Terminal-Buffer-Persist) · Trigger erfüllt: `SerializeAddon` hält jetzt einen Handle (`TerminalTab.tsx:277`) und wird im Cleanup-Save-Pfad via `serializeAddon.serialize()` (`:652`) genutzt → `terminal:save-buffer`. Kein toter Lade-Aufruf mehr; verifiziert am aktuellen HEAD-Stand.
+
+---
+
+## 2026-06-01 — Per archive-resolved.py archiviert
+
+Verschoben aus [`OFFEN_PANELS.md`](../OFFEN_PANELS.md). Aufloesung steht je Eintrag in der **Behoben:**-Zeile.
+
+### Hardcoded P90-Fenster „192 h" in der TitleBar
+
+- `src/renderer/panels/TitleBar.tsx:198` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Der System-Status-Slot zeigt fest „P90 192 h", während `PlanPane.tsx:72` denselben Wert korrekt aus `settings.p90_window_hours` zieht. Stellt der User das Fenster in den Settings um, bleibt die TitleBar bei 192 h. Der Inline-Kommentar (Z.198) markiert das bereits als „Phase 2: aus settings.p90_window_hours ziehen".
+- **Begründung:** Im Code als Phase-2-TODO markiert; kein funktionaler Defekt, nur eine Anzeige-Inkonsistenz.
+- **Trigger:** wenn `settings` ohnehin an die TitleBar durchgereicht wird oder die Inkonsistenz empirisch stört.
+- **Behoben:** 2026-06-01 · Design-by-Choice · Neue Prop `p90WindowHours` an `TitleBar` (App.tsx reicht `settings.p90_window_hours` an beiden Render-Stellen durch), Anzeige zieht den Wert statt hartcodiert „192 h". Nur der P90-Wert — der statische „Terminal"-Modustext bleibt als separater Phase-2-Punkt offen.
+
+---
+
+### `usage.onUpdate`-Listener ohne `scope`/`range` in den Deps
+
+- `src/renderer/panels/StatsPane.tsx:150-160` · Kategorie: **Design-by-Choice**
+- **Beschreibung:** Der Push-Listener-Effekt hat nur `[refresh, refreshHeatmap, activeProjectId]` als Deps; `scope`/`range` fehlen. Korrekt, weil `refresh`/`refreshHeatmap` ihre Filter über `get()` store-intern lesen, nicht über Closure-Argumente. Der erste Refresh-Effekt (Z.133-141) listet `scope, range` dagegen explizit (er soll bei jedem Wechsel sofort neu laden). Die Asymmetrie ist gewollt.
+- **Begründung:** Funktional korrekt; ein Kommentar zur Asymmetrie wäre nice-to-have, mehr nicht.
+- **Trigger:** wenn `refresh`/`refreshHeatmap` jemals ihre Filter als Argument statt via `get()` lesen — dann `scope`/`range` in die Deps nachziehen.
+- **Behoben:** 2026-06-01 · Verbesserung · Klarstellender Kommentar über dem Push-Listener-Effekt ergänzt (warum `scope`/`range` bewusst nicht in den Deps stehen: Filter werden store-intern via `get()` gelesen). Comment-only, kein Verhaltens-Change.

@@ -23,6 +23,9 @@ import logoUrl from '../assets/logo.png';
 
 interface Props {
   version: string;
+  // P90-Fenster (Stunden) aus den Settings — gleiche Quelle wie PlanPane, damit
+  // die TitleBar-Anzeige bei einer Settings-Aenderung nicht auf 192 h haengt.
+  p90WindowHours: number;
 }
 
 interface BranchState {
@@ -31,7 +34,7 @@ interface BranchState {
   lastError: string | null;
 }
 
-export function TitleBar({ version }: Props) {
+export function TitleBar({ version, p90WindowHours }: Props) {
   const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useUiStore((s) => s.activeProjectId);
   const setShowSettingsModal = useUiStore((s) => s.setShowSettingsModal);
@@ -191,14 +194,15 @@ export function TitleBar({ version }: Props) {
       <div className="td-spacer" />
 
       {/* Sprint 9 (C5) — System-Status-Slot rechts vor den Icons nach Vorlage
-          (app.jsx 276-279). Statisch im MVP — Phase 2 kann den Text dynamisch
-          machen (z.B. „Markdown-Editor" wenn Mid-Pane auf Editor steht,
-          „History" wenn HistoryPane offen ist). */}
+          (app.jsx 276-279). Der Modus-Text („Terminal") ist noch statisch —
+          Phase 2 kann ihn dynamisch machen (z.B. „Markdown-Editor" wenn Mid-Pane
+          auf Editor steht, „History" wenn HistoryPane offen ist). Das P90-Fenster
+          kommt aus den Settings. */}
       <span
         className="td-titlebar-meta-item td-titlebar-system-status"
         title="App-Modus + P90-Fenster"
       >
-        Terminal · P90 {/* hardcoded 192 — Phase 2: aus settings.p90_window_hours ziehen */}192 h
+        Terminal · P90 {p90WindowHours} h
       </span>
 
       <div className="td-icons">

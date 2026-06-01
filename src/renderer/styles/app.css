@@ -1616,6 +1616,19 @@ body,
   color: var(--td-red);
 }
 
+/* Inline-Link-Button (z.B. „Mehr"/„Weniger" in der TemplatesModal-Sidebar):
+   sieht wie ein Text-Link aus, ist aber ein echter <button>. Ersetzt die
+   zuvor pro Button duplizierten Inline-Styles. */
+.td-btn-link {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  font: inherit;
+}
+
 /* ----- Sprint 5: PlanPane + UsageBar (Architektur 6.4) ----- */
 
 .td-plan-pane {

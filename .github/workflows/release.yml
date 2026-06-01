@@ -32,7 +32,15 @@ concurrency:
 jobs:
   build-and-release:
     name: Windows-Build + GitHub-Release
-    runs-on: windows-latest
+    # Phase-2 Season-31 (OFFEN_BUILD #8, Variante A): bewusst auf windows-2022
+    # gepinnt statt windows-latest. Der windows-latest-Transition auf das
+    # windows-2025/vs2026-Image (zwischen v0.3.2 und v0.4.0) brach die
+    # electron-forge-Maker-Aufloesung (`npm run make` gab "Making for the
+    # following targets: , " mit 0 Makern aus). v0.3.2 lief zuletzt gruen auf
+    # dem damaligen windows-latest (= windows-2022). Pin = Sofort-Stabilisierung;
+    # die nachhaltige Loesung (Forge-Toolchain anheben, Variante B) bleibt offen,
+    # bis Zeit fuer eine CI-Iterationsrunde da ist.
+    runs-on: windows-2022
     timeout-minutes: 30
 
     steps:

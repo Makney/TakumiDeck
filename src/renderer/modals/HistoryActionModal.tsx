@@ -27,10 +27,19 @@ interface Props {
   // Per-Session > Global-Default). Null nur, solange App.tsx die Settings
   // noch lädt — extrem kurzes Fenster.
   defaultModel: string | null;
+  // Aktuelle Terminal-Font-Size aus den Settings — für die Initial-cols/rows-
+  // Schätzung beim Resume. Wird wie die anderen Resume-Pfade (TabContainer,
+  // LeftSidebar, HistoryPane) durchgereicht, statt hier 14 hart zu setzen.
+  terminalFontSize: number;
   onClose: () => void;
 }
 
-export function HistoryActionModal({ entry, defaultModel, onClose }: Props) {
+export function HistoryActionModal({
+  entry,
+  defaultModel,
+  terminalFontSize,
+  onClose,
+}: Props) {
   const setHistorySelected = useUiStore((s) => s.setHistorySelected);
   const setMainView = useUiStore((s) => s.setMainView);
   const addTab = useSessionStore((s) => s.addTab);
@@ -75,9 +84,10 @@ export function HistoryActionModal({ entry, defaultModel, onClose }: Props) {
       }
       // Sprint 9 — cols/rows aus aktueller Mid-Column-Breite, sonst
       // schneidet xterm den Welcome-Output ab (siehe estimateTerminalCols).
-      // Default-Font-Size 14 ist robust für die ersten ~100 ms bis der
-      // Tab gemountet ist und fit() die echten Werte schickt.
-      const { cols, rows } = estimateTerminalCols(14);
+      // Font-Size aus den Settings (wie die übrigen Resume-Pfade) — die
+      // Schätzung gilt nur für die ersten ~100 ms, bis der Tab gemountet ist
+      // und fit() die echten Werte schickt.
+      const { cols, rows } = estimateTerminalCols(terminalFontSize);
       const result = await window.api.sessions.resume({
         sessionId: entry.id,
         cols,

@@ -54,6 +54,37 @@ describe('SettingsStore', () => {
     expect(store.read().markdown_editor_layout).toBe('split');
   });
 
+  // #3 Scoped Deep-Merge: ein partielles fixes Sub-Objekt (z.B. eine vor einem
+  // neuen Inner-Feld angelegte settings.json) wuerde unter Shallow-Merge das
+  // Default ersetzen und beim Vollschema-Parse crashen. Der Deep-Merge fuellt
+  // fehlende Inner-Keys aus den Defaults, User-Werte gewinnen pro Feld.
+  it('read() fuellt fehlende Inner-Keys fixer Sub-Objekte aus den Defaults', () => {
+    SettingsStore.initialize(filePath);
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    raw.token_warning_thresholds = { yellow: 80, orange: 90 }; // `red` fehlt
+    fs.writeFileSync(filePath, JSON.stringify(raw), 'utf-8');
+    const store = new SettingsStore(filePath);
+    const settings = store.read();
+    const defaults = buildDefaultSettings();
+    expect(settings.token_warning_thresholds.yellow).toBe(80);
+    expect(settings.token_warning_thresholds.orange).toBe(90);
+    expect(settings.token_warning_thresholds.red).toBe(
+      defaults.token_warning_thresholds.red,
+    );
+  });
+
+  // #3 Gegenprobe: die offenen Maps (model_limits, shortcuts) bleiben bewusst
+  // Shallow — die User-Map gewinnt komplett, geprunte Built-in-Eintraege duerfen
+  // NICHT aus den Defaults zurueckkommen.
+  it('read() laesst offene Maps (model_limits) Shallow — User-Map gewinnt komplett', () => {
+    SettingsStore.initialize(filePath);
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    raw.model_limits = { 'claude-sonnet-4-6': 123456 };
+    fs.writeFileSync(filePath, JSON.stringify(raw), 'utf-8');
+    const store = new SettingsStore(filePath);
+    expect(store.read().model_limits).toEqual({ 'claude-sonnet-4-6': 123456 });
+  });
+
   it('initialize() lässt vorhandene Datei unangetastet', () => {
     const store1 = SettingsStore.initialize(filePath);
     const before = store1.patch({ terminal_font_size: 17 });

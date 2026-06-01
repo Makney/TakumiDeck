@@ -24,6 +24,22 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Settings-Default-Merge: Scoped Deep-Merge der fixen Sub-Objekte (Variante A)
+
+**Entscheidung:** `SettingsStore.read()` mergt fehlende Keys aus den Defaults **rekursiv** in die fixen Sub-Objekte (`token_warning_thresholds`, `context_soft_warning`, `screenshot_retention`, `template_top_n`); die offenen Maps (`model_limits`, `shortcuts` als `z.record`) bleiben Shallow (die User-Map gewinnt komplett). Top-Level bleibt ein flacher Spread.
+
+**Varianten:**
+
+- **A — Scoped Deep-Merge** ✅ **gewählt.** Nur die fixen Sub-Objekte tief mergen, die offenen Maps Shallow lassen.
+- **B — Migration pro Key:** jede neue Inner-Field-Ergänzung bekommt einen Schritt in der Season-25-Migrations-Pipeline. Explizit + versioniert, aber laufende Disziplin — eine vergessene Migration crasht den Read.
+- **C — Blanket Deep-Merge** (rekursiv über alles, inkl. Maps): verworfen — würde vom User bewusst entfernte Built-in-Modelle in `model_limits` bzw. gelöschte `shortcuts` aus den Defaults zurückholen.
+
+**Grund:** Der alte flache Spread (`{ ...defaults, ...user }`) war nicht nur „verliert still einen Key": Die fixen Sub-Objekte haben **keine** zod-`.default()` auf ihren Inner-Feldern. Ein partielles User-Sub-Objekt (z.B. eine vor einem künftigen neuen Inner-Feld angelegte `settings.json`) hätte das Default-Sub-Objekt komplett ersetzt und `AppSettingsSchema.parse()` zum **Werfen** gebracht — `read()` crasht für Bestandsuser, nicht nur ein Key fehlt. A schließt genau dieses Crash-Risiko als strukturelles Sicherheitsnetz ohne laufende Pflege. C disqualifiziert sich an der Map-Semantik (kuratierte User-Maps dürfen keine geprunten Defaults zurückbekommen); B wäre korrekt, verlagert die Absicherung aber auf die Disziplin, an jede Inner-Field-Ergänzung zu denken.
+
+**Konsequenz:** Neue fixe Sub-Objekte gehören in die `FIXED_SUB_OBJECTS`-Liste in `store.ts`, damit sie automatisch tief gemergt werden. Neue offene Maps bleiben bewusst draußen. Die Season-25-Migrations-Pipeline bleibt für echte Wert-*Transformationen* zuständig (z.B. Default-Drift-Bereinigung), der Deep-Merge nur für das Auffüllen fehlender Default-Keys.
+
+---
+
 ## git:status zentral im gemeinsamen Renderer-Store statt pro Panel (Variante A)
 
 **Entscheidung:** Der `git:status`-Stand lebt in einem eigenen Zustand-Store (`useGitStatusStore`), der pro Projekt cached. Genau ein Schreib-Trigger (`useGitStatusSync()` im App-Bootstrap) lädt beim Projekt-Wechsel und re-fetcht bei `fs:changed`. EditorPane (Diff) und der Datei-Browser lesen nur noch reaktiv daraus.

@@ -34,7 +34,13 @@ import { displayProjectName } from './displayProjectName';
 
 // Regex laut Architektur 6.5: nur Großbuchstaben + Underscore zwischen {{...}}.
 // Strenges Muster verhindert Kollisionen mit normalem Markdown wie {{x}} oder {{1}}.
-const TOKEN_RE = /\{\{([A-Z_]+)\}\}/g;
+//
+// Factory statt geteilter Modul-Konstante: das `g`-Flag traegt mutablen
+// `lastIndex`-State. Jeder Konsument (findVariablesInTemplate via `.exec`-
+// Schleife, fillTemplateVariables via `String.replace`) bekommt so eine eigene
+// Instanz — kein geteilter lastIndex, der bei kuenftiger `.exec`/`.test`-Nutzung
+// ohne Reset sporadische Treffer-Aussetzer verursachen koennte.
+const makeTokenRe = (): RegExp => /\{\{([A-Z_]+)\}\}/g;
 
 // Legacy-Fallback fuer Templates ohne Frontmatter. Spiegelt die Hardcoded-
 // Konstanten aus der alten Engine 1:1 wider, damit Bestand ohne Migration
@@ -92,9 +98,9 @@ export interface FillResult {
 export function findVariablesInTemplate(content: string): string[] {
   const found: string[] = [];
   const seen = new Set<string>();
-  TOKEN_RE.lastIndex = 0;
+  const tokenRe = makeTokenRe();
   let match: RegExpExecArray | null;
-  while ((match = TOKEN_RE.exec(content)) !== null) {
+  while ((match = tokenRe.exec(content)) !== null) {
     const name = match[1];
     if (name === undefined) continue;
     if (seen.has(name)) continue;
@@ -113,7 +119,7 @@ export function fillTemplateVariables(
   const missingRequired: string[] = [];
   const seenMissing = new Set<string>();
 
-  const filled = content.replace(TOKEN_RE, (match, name: string) => {
+  const filled = content.replace(makeTokenRe(), (match, name: string) => {
     const spec = schema.variables[name];
     if (!spec) {
       // Token ohne Schema-Eintrag → literal. Bewusst KEINE Warnung mehr —

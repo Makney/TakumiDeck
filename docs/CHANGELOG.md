@@ -17,6 +17,22 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-06-01 — v0.4.0 — OFFEN-Abarbeiten Charge 3+4: MODALS · PANELS · MAIN_SERVICES · BUILD
+
+### Was jetzt geht
+
+- **Die Sensitive-File-Warnung deckt mehr Geheimnis-Träger ab.** Vor einem Commit schlagen jetzt auch `*.pfx`/`*.p12` (Keystores), `.npmrc`/`.pypirc` (Registry-Auth-Tokens) und `.htpasswd` an — vorher nur `.env*`, `*secret*`, `*token*`, Keys/PEM.
+- **Templates mit Frontmatter, aber ohne `## Vorlage`-Block, leaken kein YAML mehr in den Prompt.** Legt man ein eigenes Template ohne den Vorlage-Heading an, landet der `variables:`-Frontmatter-Block nicht mehr im Paste ans Terminal.
+- **Die Titelleiste zeigt das echte P90-Fenster.** Statt fest „192 h" zieht der System-Status-Slot den Wert jetzt aus den Settings — konsistent mit der PlanPane.
+- **Robustere Settings.** Ein leer gemachtes Zahlen-Feld schreibt nicht mehr still `0`; das Löschen eines Custom-Modells, das als Default gesetzt war, fällt sauber auf ein Built-in zurück und räumt das verwaiste Limit mit auf; und eine `settings.json` mit einem unvollständigen Unter-Objekt lädt wieder, statt den Start mit einem Schema-Fehler abzubrechen.
+- **Der Diff-Viewer verschluckt echte Git-Fehler nicht mehr.** Schlägt das Laden der Vergleichsbasis aus einem echten Grund fehl, erscheint ein Fehler statt eines irreführenden „alle Zeilen neu"-Diffs.
+
+### Aufräum-Arbeiten und Härtung
+
+Fortsetzung des OFFEN-Abarbeitungs-Laufs über die vier verbleibenden Bereiche: **18 dokumentierte Befunde** aus den `OFFEN_*.md`-Backlogs abgearbeitet und archiviert (MODALS 13, PANELS 2, MAIN_SERVICES 3), der Rest bewusst weiter geparkt (Trigger nicht erreicht). Darunter drei Architektur-Entscheidungen: Custom-Model-Remove-Cleanup samt defensivem Select-Guard, der **Scoped Deep-Merge** der fixen Settings-Sub-Objekte (siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md) — schließt ein latentes Read-Crash-Risiko beim Hinzufügen künftiger Settings-Felder) und die Vereinheitlichung der Datei-Status-Marker zwischen Pre-Commit-Liste und Diff-Ansicht. Im BUILD-Bereich wurde die CI-Release-Maker-Regression mit **Variante A** (Runner auf `windows-2022` gepinnt) angegangen — die Bestätigung steht noch aus, weil der Befund nur auf dem GitHub-Runner reproduzierbar ist (siehe [TECH_SCHULDEN.md](./TECH_SCHULDEN.md)). Gezielte neue Tests: erweiterte `sensitive-files`, `models`, `template-body` und `settings-store` Suites.
+
+---
+
 ## 2026-05-31 — v0.4.0 — Code-Review STORES: 6 Fixes (Cleanup-Lücken + Stale-Guards)
 
 ### Was jetzt geht

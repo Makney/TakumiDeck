@@ -147,6 +147,11 @@ function OverviewView({ easterEggEnabled }: { easterEggEnabled: boolean }) {
     void refreshHeatmap(activeProjectId);
   }, [refreshHeatmap, activeProjectId, scope, heatmapWeeks]);
 
+  // Push-Listener-Effekt: bewusst OHNE scope/range in den Deps — anders als der
+  // erste Refresh-Effekt oben (der bei jedem Filter-Wechsel sofort neu laden
+  // soll). Hier ist die Asymmetrie gewollt: refresh/refreshHeatmap lesen ihre
+  // aktuellen Filter store-intern via get(), nicht ueber Closure-Argumente. Ein
+  // Re-Subscribe bei jedem scope/range-Wechsel waere also nur unnoetige Churn.
   useEffect(() => {
     const unsubscribe = window.api.usage.onUpdate(() => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);

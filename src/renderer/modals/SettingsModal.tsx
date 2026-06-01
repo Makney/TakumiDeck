@@ -12,6 +12,7 @@ import {
   BUILT_IN_MODEL_OPTIONS,
   buildModelOptions,
   diffNewModels,
+  resolveModelSelectValue,
   validateNewCustomModel,
   type CustomModelValidationError,
 } from '@shared/models';
@@ -479,6 +480,7 @@ function ScreenshotRetentionBlock({
             className="td-settings-input td-settings-input--narrow"
             value={settings.screenshot_retention.max_age_days}
             onChange={(e) => {
+              if (e.target.value === '') return;
               const n = Number(e.target.value);
               if (Number.isFinite(n) && n >= 0 && n <= 3650) {
                 onChange({ max_age_days: Math.floor(n) });
@@ -496,6 +498,7 @@ function ScreenshotRetentionBlock({
             className="td-settings-input td-settings-input--narrow"
             value={settings.screenshot_retention.max_total_mib}
             onChange={(e) => {
+              if (e.target.value === '') return;
               const n = Number(e.target.value);
               if (Number.isFinite(n) && n >= 0 && n <= 1_000_000) {
                 onChange({ max_total_mib: Math.floor(n) });
@@ -653,8 +656,21 @@ function ModelsTab({ settings, setField }: TabBaseProps) {
         'custom_models',
         settings.custom_models.filter((m) => m.id !== id),
       );
+      // War das entfernte Modell das Default-Modell, faellt es auf das erste
+      // Built-in zurueck — sonst zeigt default_model auf eine nicht mehr im
+      // Dropdown vorhandene ID (Controlled-<select>-Mismatch).
+      const fallbackModel = BUILT_IN_MODEL_OPTIONS[0]?.id;
+      if (settings.default_model === id && fallbackModel) {
+        setField('default_model', fallbackModel);
+      }
+      // Verwaisten Per-Modell-Limit-Eintrag mit aufraeumen (Karteileiche).
+      if (id in settings.model_limits) {
+        const rest = { ...settings.model_limits };
+        delete rest[id];
+        setField('model_limits', rest);
+      }
     },
-    [settings.custom_models, setField],
+    [settings.custom_models, settings.default_model, settings.model_limits, setField],
   );
 
   return (
@@ -665,7 +681,7 @@ function ModelsTab({ settings, setField }: TabBaseProps) {
       >
         <select
           className="td-settings-input"
-          value={settings.default_model}
+          value={resolveModelSelectValue(settings.default_model, modelOptions)}
           onChange={(e) => setField('default_model', e.target.value)}
         >
           {modelOptions.map((m) => (
@@ -993,6 +1009,18 @@ function UsageTab({
     [settings.token_warning_thresholds, setField],
   );
 
+  // Patch-Setter fuer context_soft_warning — analog zu setThreshold/setTopN,
+  // damit das Sub-Feld an einer Stelle zusammengebaut wird statt zweimal inline.
+  const setSoftWarning = useCallback(
+    (patch: Partial<AppSettings['context_soft_warning']>) => {
+      setField('context_soft_warning', {
+        ...settings.context_soft_warning,
+        ...patch,
+      });
+    },
+    [settings.context_soft_warning, setField],
+  );
+
   // Phase 2 Season Flacsh: Wochen-Reset. Liest den existierenden reset_schedule
   // der ersten Wochen-Bar (window_hours >= 168) als Defaultwert. Beim Apply
   // wird das Schema in alle Wochen-Bars geschrieben — der JSON-Editor unten
@@ -1044,7 +1072,10 @@ function UsageTab({
               max={100}
               className="td-settings-input td-settings-input--narrow"
               value={settings.token_warning_thresholds.yellow}
-              onChange={(e) => setThreshold('yellow', Number(e.target.value))}
+              onChange={(e) => {
+                if (e.target.value === '') return;
+                setThreshold('yellow', Number(e.target.value));
+              }}
             />
           </label>
           <label className="td-settings-grid-row">
@@ -1055,7 +1086,10 @@ function UsageTab({
               max={100}
               className="td-settings-input td-settings-input--narrow"
               value={settings.token_warning_thresholds.orange}
-              onChange={(e) => setThreshold('orange', Number(e.target.value))}
+              onChange={(e) => {
+                if (e.target.value === '') return;
+                setThreshold('orange', Number(e.target.value));
+              }}
             />
           </label>
           <label className="td-settings-grid-row">
@@ -1066,7 +1100,10 @@ function UsageTab({
               max={100}
               className="td-settings-input td-settings-input--narrow"
               value={settings.token_warning_thresholds.red}
-              onChange={(e) => setThreshold('red', Number(e.target.value))}
+              onChange={(e) => {
+                if (e.target.value === '') return;
+                setThreshold('red', Number(e.target.value));
+              }}
             />
           </label>
         </div>
@@ -1087,12 +1124,7 @@ function UsageTab({
               type="checkbox"
               className="td-settings-input td-settings-input--narrow"
               checked={settings.context_soft_warning.enabled}
-              onChange={(e) =>
-                setField('context_soft_warning', {
-                  ...settings.context_soft_warning,
-                  enabled: e.target.checked,
-                })
-              }
+              onChange={(e) => setSoftWarning({ enabled: e.target.checked })}
             />
           </label>
           <label className="td-settings-grid-row">
@@ -1105,12 +1137,10 @@ function UsageTab({
               value={settings.context_soft_warning.threshold_percent}
               disabled={!settings.context_soft_warning.enabled}
               onChange={(e) => {
+                if (e.target.value === '') return;
                 const n = Number(e.target.value);
                 if (!Number.isFinite(n) || n < 0 || n > 100) return;
-                setField('context_soft_warning', {
-                  ...settings.context_soft_warning,
-                  threshold_percent: n,
-                });
+                setSoftWarning({ threshold_percent: n });
               }}
             />
           </label>
@@ -1152,6 +1182,7 @@ function UsageTab({
               className="td-settings-input td-settings-input--narrow"
               value={weeklyResetCurrent.hour}
               onChange={(e) => {
+                if (e.target.value === '') return;
                 const n = Number(e.target.value);
                 if (!Number.isFinite(n) || n < 0 || n > 23) return;
                 applyWeeklyReset({ hour: n });
@@ -1167,6 +1198,7 @@ function UsageTab({
               className="td-settings-input td-settings-input--narrow"
               value={weeklyResetCurrent.minute}
               onChange={(e) => {
+                if (e.target.value === '') return;
                 const n = Number(e.target.value);
                 if (!Number.isFinite(n) || n < 0 || n > 59) return;
                 applyWeeklyReset({ minute: n });
@@ -1234,6 +1266,7 @@ function TemplatesTab({ settings, setField }: TabBaseProps) {
               className="td-settings-input td-settings-input--narrow"
               value={settings.template_top_n.schulden}
               onChange={(e) => {
+                if (e.target.value === '') return;
                 const n = Number(e.target.value);
                 if (Number.isFinite(n) && n >= 0 && n <= 20) {
                   setTopN({ schulden: Math.floor(n) });
@@ -1251,6 +1284,7 @@ function TemplatesTab({ settings, setField }: TabBaseProps) {
               className="td-settings-input td-settings-input--narrow"
               value={settings.template_top_n.entscheidungen}
               onChange={(e) => {
+                if (e.target.value === '') return;
                 const n = Number(e.target.value);
                 if (Number.isFinite(n) && n >= 0 && n <= 20) {
                   setTopN({ entscheidungen: Math.floor(n) });

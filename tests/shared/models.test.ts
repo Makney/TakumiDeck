@@ -4,6 +4,7 @@ import {
   buildModelOptions,
   diffNewModels,
   parseAnthropicModelsResponse,
+  resolveModelSelectValue,
   validateNewCustomModel,
 } from '../../src/shared/models';
 import type { CustomModel, FetchedModel } from '../../src/shared/types';
@@ -11,6 +12,25 @@ import type { CustomModel, FetchedModel } from '../../src/shared/types';
 // Phase-2 Season-34: gemeinsamer Modell-Helper fuer SettingsModal +
 // NewSessionModal. Built-ins + Custom werden vereinigt; ID-Konflikt zwischen
 // Custom und Built-in laesst das Custom-Label den Built-in-Eintrag uebernehmen.
+
+describe('resolveModelSelectValue', () => {
+  const options = buildModelOptions([{ id: 'claude-future-1', label: 'Future 1' }]);
+
+  it('liefert den Wert unveraendert, wenn er in den Optionen vorkommt', () => {
+    expect(resolveModelSelectValue('claude-sonnet-4-6', options)).toBe('claude-sonnet-4-6');
+    expect(resolveModelSelectValue('claude-future-1', options)).toBe('claude-future-1');
+  });
+
+  it('faellt auf die erste Option zurueck, wenn der Wert nicht in der Liste ist', () => {
+    expect(resolveModelSelectValue('geloeschtes-custom-modell', options)).toBe(
+      options[0]?.id,
+    );
+  });
+
+  it('gibt den Wert zurueck, wenn die Optionsliste leer ist (kein Fallback moeglich)', () => {
+    expect(resolveModelSelectValue('irgendwas', [])).toBe('irgendwas');
+  });
+});
 
 describe('buildModelOptions', () => {
   it('liefert die fuenf Built-ins in fester Reihenfolge bei leerer Custom-Liste', () => {

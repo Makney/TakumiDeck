@@ -41,6 +41,18 @@ import { useProjectStore } from '../stores/projects';
 // Editor verlangt aber projekt-relative Pfade) — der Edit-Stift ist dort
 // disabled mit Tooltip-Hinweis.
 
+// Layout-Konstanten fuer das verschiebbare Format-Modal (Phase-2 Season-4 V2).
+// Die Werte sind reine Pixel-Schwellen — als benannte Konstanten statt nackter
+// Zahlen im Effekt, damit der Bezug (Modal-Groesse vs. Drag-Bounding) klar ist.
+const MODAL_WIDTH_PX = 820;
+const MODAL_MAX_HEIGHT_PX = 800;
+// Beim Drag soll das Modal nie ganz aus dem Viewport verschwinden: links darf
+// es bis -200 px wandern, rechts/unten muss ein sichtbarer Greif-Streifen
+// bleiben (80 px Rest rechts, 60 px Header-Streifen unten).
+const DRAG_MIN_LEFT_PX = -200;
+const DRAG_VISIBLE_RIGHT_PX = 80;
+const DRAG_VISIBLE_BOTTOM_PX = 60;
+
 // Phase-2 Season-23: Default-Labels fuer Tokens, deren Schema-Eintrag kein
 // eigenes `label` setzt. Greift fuer Bestand (LEGACY_TEMPLATE_SCHEMA) und als
 // Fallback bei neuen Templates ohne expliziten Label. Token-Namen sind UPPER_
@@ -136,13 +148,13 @@ export function TemplatesModal({
   }, [onClose, newName]);
 
   // Phase-2 Season-4 (V2): Initial-Position beim Mount auf Viewport-Mitte.
-  // Geschaetzte Modal-Groesse (820 breit, 80vh hoch) — wir kennen die exakte
-  // Hoehe erst nach Layout, aber fuer das initiale Zentrieren reicht eine
+  // Geschaetzte Modal-Groesse (MODAL_WIDTH_PX breit, 80vh hoch) — wir kennen die
+  // exakte Hoehe erst nach Layout, aber fuer das initiale Zentrieren reicht eine
   // konservative Schaetzung. Mit Math.max(16, ...) verhindern wir, dass das
   // Modal in einem kleinen Window negative Koordinaten bekommt.
   useEffect(() => {
-    const modalW = 820;
-    const modalH = Math.min(window.innerHeight * 0.8, 800);
+    const modalW = MODAL_WIDTH_PX;
+    const modalH = Math.min(window.innerHeight * 0.8, MODAL_MAX_HEIGHT_PX);
     setPos({
       x: Math.max(16, Math.round((window.innerWidth - modalW) / 2)),
       y: Math.max(16, Math.round((window.innerHeight - modalH) / 2)),
@@ -160,12 +172,12 @@ export function TemplatesModal({
       // verschwinden (sonst kann der User den Drag-Griff nicht mehr greifen).
       // 60px Header-Streifen muss sichtbar bleiben.
       const nextX = Math.min(
-        Math.max(-200, e.clientX - dragOffset.x),
-        window.innerWidth - 80,
+        Math.max(DRAG_MIN_LEFT_PX, e.clientX - dragOffset.x),
+        window.innerWidth - DRAG_VISIBLE_RIGHT_PX,
       );
       const nextY = Math.min(
         Math.max(0, e.clientY - dragOffset.y),
-        window.innerHeight - 60,
+        window.innerHeight - DRAG_VISIBLE_BOTTOM_PX,
       );
       setPos({ x: nextX, y: nextY });
     };
@@ -285,9 +297,14 @@ export function TemplatesModal({
       .then((result) => {
         if (cancelled) return;
         if (result.ok) setServerAutoVars(result.data);
-        // Fehler werden nicht als UI-Error gemeldet — Tokens bleiben dann
-        // literal im Prompt stehen, was den User sichtbar auf die fehlende
-        // Quelle hinweist.
+        // Result-Fehlerfall (!result.ok) wird bewusst nicht als UI-Error
+        // gemeldet — Tokens bleiben dann literal im Prompt stehen, was den User
+        // sichtbar auf die fehlende Quelle hinweist.
+      })
+      .catch(() => {
+        // Echte Bridge-Rejection (kein Result-Objekt): serverAutoVars leeren,
+        // damit alle Tokens literal bleiben statt einem stale-Stand.
+        if (!cancelled) setServerAutoVars({});
       });
     return () => {
       cancelled = true;
@@ -736,9 +753,10 @@ function AutoVarRow({ label, value }: AutoVarRowProps) {
       </div>
     );
   }
-  // Mehrzeilig: Snippet zeigt Anzahl Eintrage (Eintrag = Zeile mit `- `-Prefix)
-  // + Zeichen-Count + die erste nicht-leere Zeile als Vorschau.
-  const bulletCount = lines.filter((l) => l.startsWith('- ')).length;
+  // Mehrzeilig: Snippet zeigt Anzahl Eintrage (Eintrag = Bullet-Zeile) +
+  // Zeichen-Count + die erste nicht-leere Zeile als Vorschau. Erkennung gegen
+  // `/^\s*[-*]\s/`, damit auch `*`- und eingerueckte Bullets als Eintrag zaehlen.
+  const bulletCount = lines.filter((l) => /^\s*[-*]\s/.test(l)).length;
   const previewLine = lines.find((l) => l.trim().length > 0) ?? '';
   return (
     <div>
@@ -754,15 +772,6 @@ function AutoVarRow({ label, value }: AutoVarRowProps) {
               type="button"
               className="td-btn-link"
               onClick={() => setExpanded(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'inherit',
-                cursor: 'pointer',
-                padding: 0,
-                textDecoration: 'underline',
-                font: 'inherit',
-              }}
             >
               Mehr
             </button>
@@ -783,15 +792,6 @@ function AutoVarRow({ label, value }: AutoVarRowProps) {
               type="button"
               className="td-btn-link"
               onClick={() => setExpanded(false)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'inherit',
-                cursor: 'pointer',
-                padding: 0,
-                textDecoration: 'underline',
-                font: 'inherit',
-              }}
             >
               Weniger
             </button>

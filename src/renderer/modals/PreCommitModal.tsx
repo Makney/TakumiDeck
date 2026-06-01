@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AppSettings,
   ClaudeMdFrontmatter,
@@ -78,6 +78,19 @@ export function PreCommitModal({
     };
   }, []);
 
+  // Manuelles Schliessen (Esc/Backdrop/×): laufenden Auto-Close-Timer abbrechen
+  // und `sent` zuruecksetzen. Heute unmountet das Modal beim Schliessen
+  // (Conditional-Render), aber falls es je per Sichtbarkeit gehalten wird,
+  // bliebe der Send-Button sonst auf „✓ Gesendet" haengen.
+  const handleClose = useCallback(() => {
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setSent(false);
+    onClose();
+  }, [onClose]);
+
   // Phase-2 Season-11: Frontmatter beim Modal-Open frisch laden. Sonst zeigt
   // der Commit-Trigger (workbench.trigger_phrases.commit) den Stand vom letzten
   // Project-Switch — wenn der User die Trigger-Phrase zwischenzeitlich in
@@ -119,11 +132,11 @@ export function PreCommitModal({
   // Esc schließt das Modal — gleicher Handler wie in den anderen Modals.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') handleClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [handleClose]);
 
   const triggerPhrase = frontmatter?.workbench.trigger_phrases.commit ?? 'commit';
   // changedFiles muss stabilisiert sein, sonst läuft das nachfolgende useMemo
@@ -175,7 +188,7 @@ export function PreCommitModal({
   };
 
   return (
-    <div className="td-modal-backdrop" onClick={onClose}>
+    <div className="td-modal-backdrop" onClick={handleClose}>
       <div
         className="td-modal td-precommit-modal"
         onClick={(e) => e.stopPropagation()}
@@ -187,7 +200,7 @@ export function PreCommitModal({
           <button
             type="button"
             className="td-modal-close"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label="Schließen"
           >
             ×
@@ -274,7 +287,7 @@ export function PreCommitModal({
           )}
         </div>
         <div className="td-modal-footer">
-          <button type="button" className="td-action-btn" onClick={onClose}>
+          <button type="button" className="td-action-btn" onClick={handleClose}>
             Abbrechen
           </button>
           <button
@@ -311,15 +324,24 @@ function FileRow({ file, sensitive }: FileRowProps) {
   const mark = file.worktreeStatus !== 'unchanged' ? file.worktreeStatus : file.indexStatus;
   return (
     <div className={`td-precommit-file ${mark}${sensitive ? ' sensitive' : ''}`}>
-      <span className="td-precommit-file-mark">{markChar(mark)}</span>
+      <span className="td-precommit-file-mark">
+        {markChar(file.worktreeStatus, file.indexStatus)}
+      </span>
       <span className="td-precommit-file-path">{file.path}</span>
       {sensitive && <span className="td-precommit-file-warn">⚠ sensitive</span>}
     </div>
   );
 }
 
-function markChar(s: GitFileChange['worktreeStatus']): string {
-  switch (s) {
+// Single-Char-Status-Marker. Worktree-Aenderungen bekommen Grossbuchstaben,
+// reine Index-Aenderungen (worktreeStatus === 'unchanged') Kleinbuchstaben —
+// dieselbe Index-vs-Worktree-Unterscheidung wie DiffViewer.markFor, damit die
+// Marker-Sprache zwischen Pre-Commit-Liste und Diff-Liste identisch ist.
+function markChar(
+  worktree: GitFileChange['worktreeStatus'],
+  index: GitFileChange['indexStatus'],
+): string {
+  switch (worktree) {
     case 'modified':
       return 'M';
     case 'added':
@@ -334,6 +356,21 @@ function markChar(s: GitFileChange['worktreeStatus']): string {
       return 'C';
     case 'unmerged':
       return 'U';
+  }
+  // worktree === 'unchanged' → Status kommt aus dem Index (Kleinbuchstabe).
+  switch (index) {
+    case 'modified':
+      return 'm';
+    case 'added':
+      return 'a';
+    case 'deleted':
+      return 'd';
+    case 'renamed':
+      return 'r';
+    case 'copied':
+      return 'c';
+    case 'unmerged':
+      return 'u';
     default:
       return '·';
   }

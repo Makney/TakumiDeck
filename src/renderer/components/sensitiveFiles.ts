@@ -14,6 +14,9 @@
 //   - credentials.json / credentials.yaml (gcloud-/aws-Style)
 //   - *.key (private Keys, jegliche Endung-.key)
 //   - *.pem (Zertifikate / Private Keys im PEM-Format)
+//   - *.pfx / *.p12 (PKCS#12-Keystores mit Private-Key + Zertifikat)
+//   - .npmrc / .pypirc (enthalten haeufig Auth-Tokens fuer Registries)
+//   - .htpasswd (Basic-Auth-Passwort-Hashes)
 //
 // Wir matchen ausschließlich auf den BASENAME der Datei (nicht auf den ganzen
 // Pfad), damit z.B. ein File `docs/notes/api.md` nicht versehentlich als
@@ -27,6 +30,9 @@ const SENSITIVE_BASENAME_PATTERNS: ReadonlyArray<RegExp> = [
   /^credentials\.(json|yaml|yml)$/i,      // gcloud/aws credentials-Files
   /\.key$/i,            // *.key
   /\.pem$/i,            // *.pem
+  /\.(pfx|p12)$/i,      // *.pfx, *.p12 (PKCS#12-Keystores)
+  /^\.(npmrc|pypirc)$/i, // .npmrc, .pypirc (Registry-Auth-Tokens)
+  /^\.htpasswd$/i,      // .htpasswd (Basic-Auth-Hashes)
 ];
 
 // User-Patterns werden bei jedem Aufruf neu kompiliert (klein, kein Hot-Path).

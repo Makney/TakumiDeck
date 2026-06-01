@@ -56,6 +56,19 @@ export function buildModelOptions(customModels: ReadonlyArray<CustomModel>): Mod
   return out;
 }
 
+// Defensive Normalisierung fuer Controlled-<select>: zeigt der gespeicherte Wert
+// auf eine ID, die nicht (mehr) in den Optionen ist (z.B. geloeschtes Custom-
+// Modell, CLAUDE.md-Default), faellt die Anzeige auf die erste Option zurueck,
+// damit der Select nicht still die erste Option rendert, waehrend der value-Prop
+// auf einen unsichtbaren Wert zeigt.
+export function resolveModelSelectValue(
+  value: string,
+  options: ReadonlyArray<{ id: string }>,
+): string {
+  if (options.some((o) => o.id === value)) return value;
+  return options[0]?.id ?? value;
+}
+
 export type CustomModelValidationError =
   | 'empty_id'
   | 'empty_label'

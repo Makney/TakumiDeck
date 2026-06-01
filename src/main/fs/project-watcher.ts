@@ -102,8 +102,10 @@ export class ProjectFilesWatcher {
       // < 50 ms dauern. 50/30 reicht, der 200-ms-Debounce darunter buendelt eh.
       awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 30 },
       usePolling: false,
-      // Tiefen-Limit analog zum fs:list-tree-Scanner (default 5). Mehr braucht
-      // der Daily-Use nicht; sehr tiefe Projekte hätten sonst chokidar-Lag.
+      // Tiefen-Limit: 8 Ebenen — bewusst tiefer als der fs:list-tree-Scanner-
+      // Default (5), weil der Watcher auch tiefer verschachtelte Edits melden
+      // soll. Mehr braucht der Daily-Use nicht; sehr tiefe Projekte hätten sonst
+      // chokidar-Lag.
       depth: 8,
       // Skip-Filter: Verzeichnisse + Files in den Skip-Dirs aussperren.
       // chokidar ruft den Predicate sowohl mit Dirs als auch mit Files auf.

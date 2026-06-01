@@ -15,6 +15,8 @@
 // Konvention dokumentiert in docs/templates/SEASON_PROMPT.md selbst — dort
 // liegt der Block heute schon unter `## Vorlage (Inhalt)` in einem ``` -Fence.
 
+import { stripFrontmatter } from '@shared/docs-sync';
+
 // Heading-Erkennung: ## oder ### (vier+ # behandeln wir nicht — Vorlage gehört
 // nicht auf Level 4+). Whitespace nach den #-Zeichen ist Pflicht laut CommonMark.
 const VORLAGE_HEADING_RE = /^(#{2,3})\s+vorlage\b/i;
@@ -26,7 +28,12 @@ const VORLAGE_HEADING_RE = /^(#{2,3})\s+vorlage\b/i;
 const FENCE_OPEN_RE = /^(\s*)(`{3,}|~{3,})/;
 
 export function extractTemplateBody(content: string): string {
-  const lines = content.split(/\r?\n/);
+  // YAML-Frontmatter (`---`-Block am Datei-Anfang) vorab strippen. Sonst wuerde
+  // er im Fallback-Pfad (kein `## Vorlage`-Heading/Fence) komplett in den Prompt
+  // fliessen. Der Happy-Path ist unbeeinflusst, weil der Vorlage-Fence ohnehin
+  // unterhalb des Frontmatters liegt.
+  const body = stripFrontmatter(content);
+  const lines = body.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line === undefined) continue;
@@ -73,7 +80,7 @@ export function extractTemplateBody(content: string): string {
     // Heading gefunden, aber kein Fence darunter — abbrechen und Fallback.
     break;
   }
-  return content;
+  return body;
 }
 
 function trimEdgeBlankLines(lines: string[]): string[] {

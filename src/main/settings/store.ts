@@ -10,6 +10,17 @@ import {
   type SettingsMigration,
 } from './migrations';
 
+// Fixe Sub-Objekte mit fester Form (keine zod-Defaults auf den Inner-Feldern),
+// die in `read()` tief gemergt werden — siehe Begruendung dort. Bewusst NICHT
+// dabei: die offenen Maps `model_limits` und `shortcuts` (z.record), bei denen
+// die User-Map komplett gewinnen soll.
+const FIXED_SUB_OBJECTS = [
+  'token_warning_thresholds',
+  'context_soft_warning',
+  'screenshot_retention',
+  'template_top_n',
+] as const satisfies ReadonlyArray<keyof AppSettings>;
+
 // Settings-Store: liest und schreibt settings.json atomar.
 // Schreiben geht über eine .tmp-Datei + rename — verhindert halb geschriebene Dateien
 // bei Crash oder Stromausfall.
@@ -61,7 +72,28 @@ export class SettingsStore {
     // Mit Defaults mergen, bevor wir validieren: ältere Versionen der settings.json
     // (z.B. Sprint 1, ohne claude_binary_path) bekommen so neu hinzugekommene Felder
     // automatisch befüllt, anstatt am Vollschema zu scheitern.
-    const merged = { ...buildDefaultSettings(), ...migrated };
+    //
+    // Top-Level ist ein flacher Spread (User-Werte gewinnen). Fuer die fixen
+    // Sub-Objekte reicht das aber nicht: ihre Inner-Felder haben keine zod-
+    // Defaults — ein partielles User-Sub-Objekt wuerde das Default ersetzen und
+    // beim Hinzufuegen eines neuen Inner-Felds die Validierung crashen lassen.
+    // Diese Sub-Objekte daher tief mergen (Inner-Defaults auffuellen, User-Wert
+    // gewinnt pro Feld). Die offenen Maps (model_limits, shortcuts als z.record)
+    // bleiben bewusst Shallow — dort soll die User-Map komplett gewinnen, nicht
+    // vom User geprunte Built-in-/Shortcut-Eintraege wieder zurueckholen.
+    const defaults = buildDefaultSettings();
+    const merged: Record<string, unknown> = { ...defaults, ...migrated };
+    for (const key of FIXED_SUB_OBJECTS) {
+      const userSub = migrated[key];
+      if (userSub !== null && typeof userSub === 'object' && !Array.isArray(userSub)) {
+        merged[key] = {
+          ...(defaults[key] as Record<string, unknown>),
+          ...(userSub as Record<string, unknown>),
+        };
+      }
+      // Fehlt der Key in migrated komplett, hat der Shallow-Spread oben bereits
+      // den Default gesetzt — nichts zu tun.
+    }
     const validated = AppSettingsSchema.parse(merged);
 
     // Persist nur dann, wenn die Pipeline tatsaechlich etwas geaendert hat —

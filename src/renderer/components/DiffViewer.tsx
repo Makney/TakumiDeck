@@ -368,8 +368,13 @@ function DiffPaneSingleFile({
       if (origRes.ok) {
         setOriginal(origRes.data.content);
       } else {
-        setOriginal('');
-        console.warn(`[DiffViewer] original load fuer ${relPath} (${mode}) fehlgeschlagen: ${origRes.error}`);
+        // Der Treiber (git/driver.ts showFile) faengt den „existiert auf Platte,
+        // aber nicht im ref"-Fall echter neuer Dateien bereits intern ab und
+        // liefert dafuer ok:'' — dieser Else-Zweig wird also nur bei echten
+        // Infrastruktur-Fehlern (Projekt nicht aufloesbar, IPC-Validierung)
+        // erreicht. Symmetrisch zum doc-Pfad als Fehler zeigen, statt still
+        // alle Working-Tree-Zeilen als Hinzufuegung darzustellen.
+        setError(origRes.error);
       }
       if (docRes.ok) {
         setWorking(docRes.data.content);
