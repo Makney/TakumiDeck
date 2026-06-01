@@ -17,6 +17,21 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-06-01 — v0.4.0 — Syntax-Highlighting für Programmiersprachen im Editor
+
+### Was jetzt geht
+
+- **Code-Files lassen sich direkt in TakumiDeck mit Syntax-Highlighting bearbeiten — kein Plain-Text-Modus mehr.** Der Editor erkennt die Sprache am Datei-Suffix und färbt `.ts/.tsx/.js/.jsx/.mjs/.cjs/.mts/.cts` · `.py/.pyi` · `.rs` · `.go` · `.json` · `.css` · `.html/.htm` ein — zusätzlich zu Markdown und YAML wie bisher. Auto-Indent und Bracket-Matching kommen pro Sprache automatisch mit.
+- **Der Editor bleibt schlank beim Start.** Markdown und YAML (die häufigsten Files) sind sofort da, alle anderen Grammatiken werden erst beim ersten Öffnen einer Datei dieser Sprache nachgeladen — der Initial-Bundle schleppt nicht alle Sprachen mit.
+- **Code-Files zeigen keine Preview-Pille mehr.** Bei `.ts`, `.py`, `.json` & Co. blendet die Toolbar den Markdown-Preview-Toggle aus und der Editor läuft direkt vollflächig; der Drei-Modi-Toggle bleibt echten Markdown-Files vorbehalten.
+- **Exoten ohne CM6-Grammatik bleiben sauber Plain-Text.** `.toml`, `.proto` und `.ini` sind bewusst (dokumentiert) als Plain-Text gemappt — kein Fehler, sondern eine benannte Entscheidung.
+
+### Architektur
+
+Variante A (siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)): die bestehende Editor-Komponente wurde erweitert statt einen zweiten Code-Editor anzulegen — die Sprache hängt an einer CodeMirror-`Compartment`, die nach dem Lazy-Load ohne Re-Mount umkonfiguriert wird. Phase-3-Feature, wegen des Daily-Use-Drucks aus Season 29 (Auto-Open-Pairing macht jedes Working-Tree-File per Klick öffenbar) vorgezogen. Pre-Commit-Gate grün (typecheck · eslint · 1079/1079 Tests, davon 13 neue für die Sprach-Erkennung).
+
+---
+
 ## 2026-06-01 — v0.4.0 — Datei-Längen-Refactor: types.ts · SettingsModal · TerminalTab unter die 1200-Zeilen-Grenze
 
 ### Aufräum-Arbeiten ohne sichtbare Wirkung

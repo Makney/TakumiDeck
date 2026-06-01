@@ -20,11 +20,37 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
-## Phase 2 Season 36 — TerminalTab.tsx aufteilen (Datei-Längen-Refactor, Teil 3/3)
+## Phase 3 Season 37 — Unterstützung für Programmiersprachen-Syntax (vorgezogen)
 
-**Ziel:** `src/renderer/panels/TerminalTab.tsx` (1301 Zeilen) war die letzte der drei Dateien über der 1200-Zeilen-Pflichtgrenze (`types.ts` und `SettingsModal.tsx` waren in Season 35 zerlegt). Ziel: unter 1200, Richtung 500. Erschwernis im Brief explizit benannt: ~920 der Zeilen stecken in einer Komponente, davon ~550 in einem einzigen Init-`useEffect`, der den kompletten xterm-Lifecycle hält (StrictMode-Guards, Dispose-Reihenfolge, Buffer-Restore aus Season 33). Verhalten muss bit-identisch bleiben. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.
+> _Hinweis zur Nummer: Das Kickoff-Brief war mit „Season 36" betitelt, aber Season 36 war bereits durch den Datei-Längen-Refactor (TerminalTab) belegt — diese Season ist die nächste freie Nummer (37). Erstes vorgezogenes Phase-3-Feature; Phase 2 ist formal noch nicht abgeschlossen, der Trigger (Daily-Use-Druck) war aber erreicht._
 
-**Ergebnis:** Variante B umgesetzt (Sweet-Spot): die vier UI-Logik-Gruppen (Suche, Kontextmenü, Drag-Drop, Font-Zoom) in Custom-Hooks unter `panels/terminal/`, dazu die zwei Subkomponenten und die Pure-Helfer in eigene Files — der monolithische Init-Effekt bleibt unangetastet als geschlossene Einheit in der Shell. 1301 → **846 Zeilen**; 7 neue Files, alle ≤ 154 Zeilen. Refs werden den Hooks als Parameter durchgereicht. Verhaltensneutral inkl. der stale Closure-Capture von `searchVisible` im Init-Effekt. Pflichtgrenze (<1200) erfüllt, 500-Ziel bewusst verfehlt — der Init-Effekt-Split (Variante C) ist als TECH_SCHULDEN-Eintrag mit Trigger geparkt. Voller Pre-Commit-Gate grün (typecheck beide tsconfigs, `eslint --max-warnings=0`, 1066/1066 Tests); manueller Smoke-Test (spawnen, tippen, resize, Suche, Kontextmenü, Screenshot-Drop, Resume-Buffer-Restore, Font-Zoom, TUI-Status) sauber. Auf User-Wunsch zusammen mit der noch uncommitteten Season-35-Arbeit als ein Datei-Längen-Refactor-Commit veröffentlicht.
+**Ziel:** Der CodeMirror-Editor kannte nur Markdown + YAML; Code-Files liefen ohne Highlighting im Plain-Text-Modus. Scope laut Brief: Sprach-Erkennung aus dem Suffix (inkl. `.mjs/.cjs/.mts/.cts`-Fallbacks), CM6-Sprachpakete lazy beim ersten Treffer laden (Initial-Bundle schlank halten), Auto-Indent/Bracket-Matching pro Sprache über das `lang-*`-Paket, optionale dokumentierte Plain-Text-Map für Exoten ohne Paket (`.toml/.proto/.ini`), Preview-Toggle nur für Markdown. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.
+
+**Ergebnis:** Variante A umgesetzt — die bestehende Editor-Komponente erweitert statt einen zweiten Code-Editor anzulegen. Sprache via CodeMirror-`Compartment`: markdown + yaml synchron im Bundle (kein Lazy-Flash bei den häufigsten Files), alle weiteren Grammatiken (js/jsx/ts/tsx/py/rs/go/json/css/html) per `import()` beim ersten Treffer nachgeladen und ohne Re-Mount in die Compartment eingespielt. Neues Pure-Modul `editorLanguage.ts` (Suffix-Map + `detectLanguageId`/`isPreviewableMarkdown`/gecachter `loadLanguageExtension`). `.toml/.proto/.ini` als benannte Plain-Text-Menge dokumentiert. Preview-Pillen nur bei echten Markdown-Files; Code-Files editor-only über das bestehende `td-md-body-editor`-Layout (keine neue CSS). 6 neue `@codemirror/lang-*`-Dependencies, 13 neue Tests. Voller Pre-Commit-Gate grün (typecheck beide tsconfigs, eslint 0 Warnungen, 1079/1079 Tests). Scope 1:1 erfüllt, inkl. des „optionalen" Sonderfall-Maps.
+
+**Gut gelaufen:**
+
+- **Variante A trug den Scope ohne Abstraktion.** Die Komponente machte den Markdown/YAML-Split schon synchron — die Compartment + ein kleiner Lazy-Loader waren die natürliche Fortsetzung. Kein gemeinsamer Editor-Kern extrahiert (B), kein voreiliger zweiter Editor: genau die CODING-RULES-Linie „erst beim zweiten echten Call-Site abstrahieren". Der gesamte Diff blieb auf ein neues Pure-Modul + gezielte Edits an einer Komponente begrenzt.
+- **Pure-Modul = billige, vollständige Test-Abdeckung.** Suffix-Erkennung, Fallbacks, Sonderfälle, Dotfiles, Case-Insensitivität und der Loader-Cache ließen sich ohne DOM/jsdom in der bestehenden Node-Vitest-Umgebung testen (13 Tests, < 0,4 s). Die CM6-`lang-*`-Pakete importieren in Node sauber, weil sie am Modul-Top-Level kein DOM anfassen — der Loader-Vertrag (Extension ≠ null bzw. null für md/yaml/plaintext) war damit direkt prüfbar.
+- **Lazy-`import()`-Produktions-Risiko vorab geklärt.** Die „leeres ASAR / Externals"-Falle aus dem Memory betrifft nur den Main-Prozess; der Renderer-Vite-Build hat kein `external` und bundelt dynamische Imports als eigene Chunks (file://-`self`, CSP erlaubt sie). Kurz in der Renderer-Config verifiziert, bevor der Pfad gewählt wurde — kein böses Erwachen im Package-Build.
+
+**Gebremst durch:**
+
+- **Season-Nummern-Drift im Kickoff-Brief.** Der Brief war als „Season 36" betitelt, obwohl 36 bereits vergeben war. Kein Blocker, aber es zwang zu einer Reconciliation gegen SEASON_LOG + Git-Log, um die richtige Nummer (37) zu setzen. Lehre: bei Season-Start die nächste freie Nummer aus dem SEASON_LOG verifizieren, nicht blind aus dem Brief übernehmen.
+- **Vorab-uncommittete SEASON_LOG-Politur im Tree.** Beim Doku-Commit lag eine ältere, nicht von dieser Season stammende SEASON_LOG-Verfeinerung (Season 35/36-Wording) uncommittet im Working Tree — sie reist im Doku-Commit mit. Sauber wäre, solche Doku-Politur eigenständig zu committen, bevor die nächste Season den Tree teilt.
+
+**Für nächste Season:**
+
+- **Neue Editor-Sprache = ein Map-Eintrag + ein Loader-`case`.** Das Pattern steht; eine weitere Sprache mit echtem CM6-Paket ist Minimal-Aufwand. Sprachen ohne Paket gehören in die dokumentierte Plain-Text-Menge, nicht stillschweigend übersprungen.
+- **Phase 2 ist weiterhin formal offen.** Dies war ein vorgezogenes Phase-3-Feature — vor dem nächsten „Phase-Abschluss"-Label prüfen, ob die verbleibenden Phase-2-Roadmap-Items wirklich alle ✅ sind (Memory: „Abschluss" vs. „Zwischenstand").
+
+---
+
+## Phase 2 Season 36 — Datei-Längen-Refactor: types.ts · SettingsModal · TerminalTab
+
+**Ziel:** Die drei Dateien über der 1200-Zeilen-Pflichtgrenze zerlegen (Ziel max. 500 Zeilen/Datei, 1200 als Obergrenze). Der Refactor lief in drei Teilen: `types.ts` (Teil 1) und `SettingsModal.tsx` (Teil 2) wurden in einer früheren Session erledigt und lagen noch uncommittet im Tree; **diese Session war Teil 3/3 — `TerminalTab.tsx` (1301 Zeilen)**, das schwierigste Stück. Ziel hier: unter 1200, Richtung 500. Erschwernis im Brief explizit benannt: ~920 der Zeilen stecken in einer Komponente, davon ~550 in einem einzigen Init-`useEffect`, der den kompletten xterm-Lifecycle hält (StrictMode-Guards, Dispose-Reihenfolge, Buffer-Restore aus Season 33). Verhalten muss bit-identisch bleiben. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.
+
+**Ergebnis:** Variante B umgesetzt (Sweet-Spot): die vier UI-Logik-Gruppen (Suche, Kontextmenü, Drag-Drop, Font-Zoom) in Custom-Hooks unter `panels/terminal/`, dazu die zwei Subkomponenten und die Pure-Helfer in eigene Files — der monolithische Init-Effekt bleibt unangetastet als geschlossene Einheit in der Shell. 1301 → **846 Zeilen**; 7 neue Files, alle ≤ 154 Zeilen. Refs werden den Hooks als Parameter durchgereicht. Verhaltensneutral inkl. der stale Closure-Capture von `searchVisible` im Init-Effekt. Pflichtgrenze (<1200) erfüllt, 500-Ziel bewusst verfehlt — der Init-Effekt-Split (Variante C) ist als TECH_SCHULDEN-Eintrag mit Trigger geparkt. Voller Pre-Commit-Gate grün (typecheck beide tsconfigs, `eslint --max-warnings=0`, 1066/1066 Tests); manueller Smoke-Test (spawnen, tippen, resize, Suche, Kontextmenü, Screenshot-Drop, Resume-Buffer-Restore, Font-Zoom, TUI-Status) sauber. Auf User-Wunsch zusammen mit den noch uncommitteten Teilen 1+2 (types.ts + SettingsModal) als ein Datei-Längen-Refactor-Commit veröffentlicht (`acd537e`).
 
 **Gut gelaufen:**
 
@@ -34,13 +60,36 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 **Gebremst durch:**
 
-- **Zwei uncommittete Seasons im Working Tree.** Beim Commit lagen Season 35 (types.ts + SettingsModal, noch nicht committet) und meine Season-36-Arbeit gemischt im Tree. Das war keine Eigenleistung des Refactors, zwang aber zu einer Scope-Rückfrage (ein Commit / zwei Commits / nur Season 36), statt direkt durchcommitten zu können. Lehre: mehrteilige Refactor-Efforts sauber Teil-für-Teil committen, sonst sammelt sich der Scope bis zum letzten Teil an.
+- **Uncommittete Vorarbeit im Working Tree.** Beim Commit lagen die noch uncommitteten Teile 1+2 (types.ts + SettingsModal) und meine Teil-3-Arbeit gemischt im Tree. Das zwang zu einer Scope-Rückfrage (ein Commit / zwei Commits / nur Teil 3), statt direkt durchcommitten zu können. Lehre: mehrteilige Refactor-Efforts sauber Teil-für-Teil committen, sonst sammelt sich der Scope bis zum letzten Teil an.
 - **Die B-Zeilen-Schätzung (600–700) lag unter der Realität (846).** Der Brief schätzte B auf ~600–700; tatsächlich ist der Init-Effekt allein ~550 Zeilen und damit ein irreduzibler Sockel — die Schätzung hatte den Monolithen unterveranschlagt. Kein Problem (846 < 1200, B explizit „Init-Effekt bleibt ganz"), aber die Schätzung hätte den Sockel von Anfang an einrechnen müssen.
 
 **Für nächste Season:**
 
 - **Variante C (Init-Effekt → Lifecycle-Hooks) ist in TECH_SCHULDEN mit Trigger geparkt** — anfassen erst, wenn der Init-Effekt durch neue xterm-Features Richtung 1100+ wächst oder ein anderer Grund ihn ohnehin strukturell berührt. Nicht vorzeitig ziehen; das 500-Ziel allein rechtfertigt das StrictMode-/Cleanup-Risiko nicht.
-- **Season 35 (types.ts + SettingsModal) hat keinen SEASON_LOG-Eintrag.** Falls die Prozess-Retrospektive der beiden ersten Refactor-Teile noch Wert hat, vor dem Verblassen des Kontexts nachtragen — dieser Eintrag deckt bewusst nur Teil 3 ab.
+- **Datei-Längen-Pflicht ist damit abgehakt** — keine Datei mehr über 1200 Zeilen. Künftige Wächter-Aufgabe: bei neuen Features früh gegen die 500/1200-Grenze prüfen, statt erneut auf große Sammel-Refactors zu warten.
+
+---
+
+## Phase 2 Season 35 — JSONL-Watcher Performance & Single-Instance
+
+> _Nachgetragen 2026-06-01 aus Kickoff-Doc (`docs/seasons/season-35-jsonl-watcher-performance.md`) + Commit `66a25ff` (2026-05-31). Ziel/Ergebnis sind aus diesen Artefakten rekonstruiert; die Prozess-Retrospektive ist nur soweit belegbar gefüllt, wie Artefakte sie tragen — diese Session wurde nicht live miterlebt._
+
+**Ziel:** Performance-/Stabilitäts-Bugfix (ad-hoc, kein PHASE-Feature). Symptom: TakumiDeck startet im Leerlauf mit 2–3 GB RAM und die Session-UI ist nicht anklickbar, während eine zweite Instanz reaktionsschnell läuft. Befund: chokidar watcht den ganzen `~/.claude/projects`-Baum ohne `depth`-Limit mit `ignoreInitial: false` (~496 `add`-Events beim Start); `handleFile` ruft pro Event `backfillClaudeSessionId` → Full-Table-Scan; synchrone better-sqlite3-Writes laufen im Main-Thread und blockieren die IPC; kein `requestSingleInstanceLock`, daher ein konkurrierender Zweit-Prozess auf derselben `data.sqlite`.
+
+**Ergebnis:** Die zwei risikoarmen Quick-Wins umgesetzt (Commit `66a25ff`): (1) Single-Instance-Lock in `main.ts` (`requestSingleInstanceLock` vor `whenReady`; `second-instance`-Event fokussiert das vorhandene Fenster) — verhindert den konkurrierenden Zweit-Prozess; (2) Backfill-Drossel im `JsonlWatcher` (`backfilledPaths`-Set) — der Full-Table-Scan läuft nur noch einmal pro Datei statt bei jedem `change`-Event, was den IPC-Stall bei aktiven Sessions behebt. Gemessener Start-RAM im Leerlauf danach **~436 MB** (vorher 2–3 GB). Der eigentliche Strukturfix (Schritt 3: JSONL-Ingestion in `utilityProcess`/Worker auslagern) wurde bewusst als TECH_SCHULDEN-Eintrag zurückgestellt, Trigger = Live-Messung. 5 Dateien, +112 Zeilen Tests (`tests/main/jsonl-watcher-backfill.test.ts`).
+
+**Gut gelaufen:**
+
+- **Quick-Wins vor teurem Strukturfix — und der Strukturfix erst nach Messung.** Schritt 1+2 (klein, risikoarm) wurden geliefert und gemessen (436 MB belegt die Wirkung), bevor der aufwendige Worker-Umbau (Schritt 3) angefasst wurde. Genau die „erst Quick-Wins live messen, dann teurer Strukturfix"-Linie aus den Working Rules / Memory — die Messung könnte den Umbau ganz überflüssig machen.
+
+**Gebremst durch:**
+
+- _Keine belegbaren Prozess-Hindernisse aus den Artefakten rekonstruierbar (Session nicht miterlebt). Der Commit lief sauber durch; offene Reibung — falls vorhanden — ist hier nicht dokumentiert._
+
+**Für nächste Season:**
+
+- **Worker-Auslagerung ist in TECH_SCHULDEN mit Trigger geparkt** („JSONL-Ingestion läuft synchron im Main-Prozess"). Trigger: wenn die Live-Messung nach den Quick-Wins weiterhin einen UI-Stall bei aktiver Claude-Session zeigt — dann Schritt 3 als Varianten A/B/C (utilityProcess mit eigener SQLite-Verbindung / worker_threads nur-Parse / Main-seitiges Write-Batching). Bis dahin kein Handlungsbedarf.
+- **Begleit-Schritt Watch-Begrenzung bleibt ebenfalls geparkt** (`depth`-Limit analog `project-watcher.ts`, mtime-Cutoff für alte Session-Ordner) — erst nach der Messung relevant.
 
 ---
 

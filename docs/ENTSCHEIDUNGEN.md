@@ -24,6 +24,22 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Code-Syntax: bestehenden Editor erweitern + Sprache lazy via Compartment (Variante A)
+
+**Entscheidung:** Statt einen zweiten Code-Editor anzulegen, bekommt die bestehende Editor-Komponente die Mehrsprachigkeit. Die Sprache leitet sich aus dem Datei-Suffix ab und hängt an einer CodeMirror-`Compartment`; markdown + yaml liegen statisch im Bundle (synchron gesetzt), alle weiteren Grammatiken werden beim ersten Treffer per `import()` nachgeladen und ohne Re-Mount in die Compartment eingespielt. Preview-Pillen erscheinen nur bei echten Markdown-Files.
+
+**Varianten:**
+
+- **A — bestehenden Editor erweitern** ✅ **gewählt.** Eine Komponente, Sprache via Compartment + Lazy-Loader; Preview bei Code-Files einfach aus.
+- **B — separate Code-Editor-Komponente:** gemeinsamen Kern (Theme/Save/Dirty) extrahieren, daneben ein preview-freier Code-Editor, Eltern entscheidet per Suffix. Sauberste Trennung, aber Extraktions-Aufwand vorab.
+- **C — alle Sprachpakete statisch einbinden:** kein Lazy-Load, kein Plain-Text-Moment beim ersten Öffnen, aber der Initial-Bundle trägt alle Grammatiken (mehrere hundert KB).
+
+**Grund:** Die Komponente macht den Markdown/YAML-Split schon synchron — Sprachen nachladbar zu machen ist die natürliche Fortsetzung, ohne den gemeinsamen Kern vorab zu abstrahieren (CODING_RULES: keine voreilige Abstraktion, der zweite Call-Site rechtfertigt erst die Extraktion — und Markdown- und Code-Editor laufen hier *nicht* auseinander). B ist sauberer, lohnt den Umbau aber erst, wenn die beiden Editoren wirklich divergieren. C scheidet an der ausdrücklichen Lazy-Anforderung aus (Bundle-Größe).
+
+**Konsequenz:** Neue Sprachen sind ein Map-Eintrag in `editorLanguage.ts` plus ein `case` im Lazy-Loader; eine neue Dependency nur, wenn ein echtes CM6-Paket existiert. Sprachen ohne Paket (`.toml`/`.proto`/`.ini`) sind als benannte Plain-Text-Menge dokumentiert, nicht stillschweigend übersprungen. Der Lazy-`import()` im Renderer ist produktions-sicher: Vite bundelt node_modules-Imports (auch dynamische) als eigene Chunks — die Externals-/leeres-ASAR-Falle betrifft nur den Main-Prozess.
+
+---
+
 ## TerminalTab-Aufteilung: UI-Hooks raus, Init-Effekt bleibt ganz (Variante B)
 
 **Entscheidung:** Die 1301-zeilige `TerminalTab.tsx` wird zerlegt, indem die vier UI-Logik-Gruppen (Suche, Kontextmenü, Drag-Drop, Font-Zoom) in Custom-Hooks unter `panels/terminal/` wandern und die Subkomponenten + Pure-Helfer eigene Files bekommen. Der monolithische xterm-Init-`useEffect` (~550 Zeilen) bleibt unangetastet in der Shell (846 Zeilen).

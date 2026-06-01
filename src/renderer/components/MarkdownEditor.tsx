@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, drawSelection, highlightActiveLine } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching } from '@codemirror/language';
@@ -11,6 +11,7 @@ import { oneDark, oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { validateClaudeMdYaml } from './yamlValidator';
 import { markdownEditorThemeOverride } from './markdownEditorTheme';
+import { detectLanguageId, isPreviewableMarkdown, loadLanguageExtension } from './editorLanguage';
 import { isDirty, makeEditorState, markSaved, updateBuffer, type EditorDirtyState } from './editorDirtyState';
 
 // Phase-2 Season-24: Side-by-Side-Modus. 'split' = Editor + Preview parallel
@@ -29,11 +30,13 @@ const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
 // MarkdownEditor (Sprint 7, Phase 3).
 //
 // Zusammenstellung der Architektur-6.8-Spec + der Sprint-7-Variants:
-//   - CodeMirror 6 mit lang-markdown + lang-yaml
+//   - CodeMirror 6, Sprache aus dem Datei-Suffix (Season 36): markdown + yaml
+//     statisch im Bundle, alle weiteren Sprachen (js/ts/py/go/rs/json/css/html)
+//     lazy nachgeladen ueber eine Compartment (siehe editorLanguage.ts)
 //   - oneDark + Custom-Theme-Override (Q5 Variante B; siehe markdownEditorTheme.ts)
 //   - Manueller Save Ctrl+S, Dirty-Indikator (Q1 Variante A)
 //   - 500ms-Debounce-YAML-Linter für CLAUDE.md (Q4 Variante B; CM6-Linter `delay`)
-//   - Preview-Toggle via react-markdown
+//   - Preview-Toggle nur fuer echte Markdown-Files; Code-Files: editor-only
 //
 // Die fs:read/write-Kommunikation läuft über die Eltern-Komponente — der Editor
 // ist ein „kontrolliertes" Widget: er bekommt initialContent + filePath, und
@@ -77,12 +80,24 @@ export function MarkdownEditor({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
+  // Season 36: eine stabile Compartment pro Editor-Instanz, ueber die wir die
+  // Sprache nach dem Lazy-Load austauschen, ohne den View neu zu mounten.
+  const languageCompartmentRef = useRef(new Compartment());
+
+  // Sprache + Preview-Faehigkeit aus dem Suffix. languageId steuert den
+  // initialen (synchronen) Sprach-Zweig und das Lazy-Reconfigure; previewable
+  // entscheidet, ob die Toolbar die Preview-Pillen zeigt.
+  const languageId = useMemo(() => detectLanguageId(filePath), [filePath]);
+  const previewable = isPreviewableMarkdown(filePath);
   const [editorState, setEditorState] = useState<EditorDirtyState>(() =>
     makeEditorState(initialContent),
   );
   // Phase-2 Season-24: Drei-Wege-Mode statt Editor/Preview-Boolean.
   // Mount-Init aus initialLayout (Setting); danach lokal pro Datei wechselbar.
   const [layout, setLayout] = useState<MarkdownEditorLayout>(initialLayout);
+  // Code-Files haben keine Preview: egal welcher gespeicherte Layout-Modus
+  // gilt, sie laufen editor-only. previewable-Files folgen der User-Auswahl.
+  const effectiveLayout: MarkdownEditorLayout = previewable ? layout : 'editor';
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -184,11 +199,13 @@ export function MarkdownEditor({
         ...historyKeymap,
         indentWithTab,
       ]),
-      // Sprache: Markdown ist die Default-Wahl (CLAUDE.md, CHANGELOG.md, README.md).
-      // Wenn der Pfad auf .yaml/.yml endet, wechseln wir auf YAML pur.
-      filePath.toLowerCase().endsWith('.yaml') || filePath.toLowerCase().endsWith('.yml')
-        ? yamlLang()
-        : markdown(),
+      // Sprache via Compartment (Season 36). Markdown + YAML liegen statisch im
+      // Bundle und werden sofort gesetzt (haeufigste Files, kein Lazy-Flash);
+      // alle weiteren Sprachen starten leer und werden vom Effekt unten nach dem
+      // Lazy-Load eingespielt. JSON/Code/plaintext → zunaechst Plain-Text.
+      languageCompartmentRef.current.of(
+        languageId === 'markdown' ? markdown() : languageId === 'yaml' ? yamlLang() : [],
+      ),
       oneDark,
       syntaxHighlighting(oneDarkHighlightStyle),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
@@ -206,7 +223,9 @@ export function MarkdownEditor({
     // tokens.css; dadurch passt der Editor visuell zur App-Chrome.
     exts.push(markdownEditorThemeOverride);
     return exts;
-  }, [filePath, yamlLinter, performSave]);
+    // filePath nicht noetig: die Sprache leitet sich ueber languageId ab, und
+    // der Mount-Effekt unten re-mountet ohnehin bei filePath-Wechsel.
+  }, [languageId, yamlLinter, performSave]);
 
   // Mount: EditorView erstellen.
   useEffect(() => {
@@ -258,6 +277,27 @@ export function MarkdownEditor({
     });
   }, [initialContent]);
 
+  // Season 36: Lazy-Sprache nachladen und in die Compartment einspielen.
+  // markdown/yaml sind bereits synchron gesetzt, plaintext braucht keine
+  // Grammatik → loadLanguageExtension liefert dort null, der Effekt ist ein
+  // no-op. Fuer alle Lazy-Sprachen kommt das Paket per dynamic import und wird
+  // ohne Re-Mount per reconfigure aktiv. cancelled-Guard gegen schnellen
+  // Datei-Wechsel; der View kann zwischen Promise-Start und -Resolve neu
+  // gemountet worden sein — dann zielt das dispatch auf den aktuellen View
+  // (gleiche Compartment-Referenz).
+  useEffect(() => {
+    let cancelled = false;
+    void loadLanguageExtension(languageId).then((ext) => {
+      if (cancelled || ext === null) return;
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({ effects: languageCompartmentRef.current.reconfigure(ext) });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [languageId]);
+
   const dirty = isDirty(editorState);
 
   // onDirtyChange-Push: Eltern (Datei-Tab-Store) bekommen den Dirty-Status für
@@ -283,7 +323,7 @@ export function MarkdownEditor({
   // Layout-Wechsel auf/von 'split', damit Listener im Editor-/Preview-Only-
   // Modus nicht unnoetig feuern und keine fremden DOM-Knoten halten.
   useEffect(() => {
-    if (layout !== 'split') return;
+    if (effectiveLayout !== 'split') return;
     const view = viewRef.current;
     const cmScroller = view?.scrollDOM ?? null;
     const previewEl = previewScrollRef.current;
@@ -328,37 +368,43 @@ export function MarkdownEditor({
       previewEl.removeEventListener('scroll', onPreviewScroll);
       if (resetHandle !== null) cancelAnimationFrame(resetHandle);
     };
-  }, [layout]);
+  }, [effectiveLayout]);
 
   return (
     <div className="td-md-edit">
       <div className="td-md-toolbar">
         <span className="td-md-path" title={filePath}>{filePath}</span>
         <span className="td-md-spacer" />
-        <button
-          type="button"
-          className={`td-md-mode${layout === 'split' ? ' active' : ''}`}
-          onClick={() => setLayout('split')}
-          title="Editor und Preview parallel mit synchronem Scrolling"
-        >
-          ▤⎘ Beide
-        </button>
-        <button
-          type="button"
-          className={`td-md-mode${layout === 'editor' ? ' active' : ''}`}
-          onClick={() => setLayout('editor')}
-          title="Nur Editor (Ctrl+S speichert)"
-        >
-          ▤ Editor
-        </button>
-        <button
-          type="button"
-          className={`td-md-mode${layout === 'preview' ? ' active' : ''}`}
-          onClick={() => setLayout('preview')}
-          title="Nur Markdown-Preview (read-only)"
-        >
-          ⎘ Preview
-        </button>
+        {/* Season 36: Preview-Pillen nur fuer echte Markdown-Files. Code-Files
+            (js/ts/py/json/css/...) laufen editor-only ohne Preview-Toggle. */}
+        {previewable && (
+          <>
+            <button
+              type="button"
+              className={`td-md-mode${layout === 'split' ? ' active' : ''}`}
+              onClick={() => setLayout('split')}
+              title="Editor und Preview parallel mit synchronem Scrolling"
+            >
+              ▤⎘ Beide
+            </button>
+            <button
+              type="button"
+              className={`td-md-mode${layout === 'editor' ? ' active' : ''}`}
+              onClick={() => setLayout('editor')}
+              title="Nur Editor (Ctrl+S speichert)"
+            >
+              ▤ Editor
+            </button>
+            <button
+              type="button"
+              className={`td-md-mode${layout === 'preview' ? ' active' : ''}`}
+              onClick={() => setLayout('preview')}
+              title="Nur Markdown-Preview (read-only)"
+            >
+              ⎘ Preview
+            </button>
+          </>
+        )}
         <button
           type="button"
           className="td-md-save"
@@ -376,13 +422,13 @@ export function MarkdownEditor({
       {/* CodeMirror bleibt im DOM verankert (auch im Preview-Only-Modus),
           damit ein Layout-Wechsel den Buffer/History/Cursor nicht verliert.
           Sichtbarkeit ueber CSS (display:none), nicht via React-Mount/Unmount. */}
-      <div className={`td-md-body td-md-body-${layout}`}>
+      <div className={`td-md-body td-md-body-${effectiveLayout}`}>
         <div
           ref={containerRef}
           className="td-md-cm"
-          style={{ display: layout === 'preview' ? 'none' : 'flex' }}
+          style={{ display: effectiveLayout === 'preview' ? 'none' : 'flex' }}
         />
-        {layout !== 'editor' && (
+        {effectiveLayout !== 'editor' && (
           <div ref={previewScrollRef} className="td-md-preview">
             <ReactMarkdown remarkPlugins={MARKDOWN_REMARK_PLUGINS}>
               {editorState.buffer}

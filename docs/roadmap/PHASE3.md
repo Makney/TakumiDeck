@@ -14,7 +14,7 @@ Features haben keine feste Reihenfolge. Alle sind optional.
 
 ## Bereich: Editor
 
-### Feature: Unterstützung für Programmiersprachen-Syntax
+### Feature: Unterstützung für Programmiersprachen-Syntax ✅
 
 Heute kennt der CodeMirror-Editor nur Markdown + YAML. Programmiersprachen-Files (`.ts`/`.tsx`/`.js`/`.jsx`/`.py`/`.go`/`.rs`/`.json`/`.css`/`.html`/...) werden ohne Syntax-Highlighting im Plain-Text-Modus angezeigt — beim direkten Editieren der Projekt-Files unhandlich.
 
