@@ -24,6 +24,22 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## TerminalTab-Aufteilung: UI-Hooks raus, Init-Effekt bleibt ganz (Variante B)
+
+**Entscheidung:** Die 1301-zeilige `TerminalTab.tsx` wird zerlegt, indem die vier UI-Logik-Gruppen (Suche, Kontextmenü, Drag-Drop, Font-Zoom) in Custom-Hooks unter `panels/terminal/` wandern und die Subkomponenten + Pure-Helfer eigene Files bekommen. Der monolithische xterm-Init-`useEffect` (~550 Zeilen) bleibt unangetastet in der Shell (846 Zeilen).
+
+**Varianten:**
+
+- **A — nur Subkomponenten + Pure-Helfer auslagern:** Kern bliebe ~1010 Zeilen. Erfüllt die <1200-Pflicht, verfehlt das 500-Ziel klar. Sehr niedriges Risiko.
+- **B — A plus UI-Logik in Custom-Hooks** ✅ **gewählt.** Kern ~846 Zeilen, Init-Effekt bleibt geschlossen.
+- **C — B plus Init-Effekt in mehrere Lifecycle-Hooks zerlegen:** Kern ~350–450 Zeilen, berührt aber StrictMode-Guards, Dispose-Reihenfolge und Buffer-Restore. Hohes Risiko.
+
+**Grund:** Der Init-Effekt ist das StrictMode-/Cleanup-kritische Stück: forward-declared `let`s (TUI-Timer, `restoreReady`, `bufferDirty`, Spawn-RAF, Prompt-Timer) werden über Spawn-, TUI-, Buffer- und Listener-Pfade geteilt und in *einer* Cleanup-Funktion mit heikler Dispose-Reihenfolge (Renderer-Addon zuerst und separat, Bugfix 2026-05-19) abgeräumt. C müsste diese geteilten Closures über Hook-Grenzen via Refs synchronisieren und die einteilige Cleanup-Sequenz über mehrere `return`-Funktionen nachbauen — ~250 gesparte Zeilen für genau das Risiko, das die Season als heikel markiert hat. Die vier UI-Gruppen sind dagegen logisch unabhängig vom xterm-Lifecycle; ihr Schnitt ist sauber und verhaltensneutral (sogar die stale Closure-Capture von `searchVisible` im Init-Effekt bleibt 1:1 erhalten). A allein verfehlt das Strukturziel zu deutlich.
+
+**Konsequenz:** Refs werden den Hooks als Parameter durchgereicht und in deren Dep-Arrays gelistet (Ref-Identität ist stabil, also verhaltensneutral — nur eslint braucht den Eintrag, weil es den useRef-Stabilitäts-Hint über die Funktionsgrenze verliert). Der Init-Effekt-Split (Variante C) ist als TECH_SCHULDEN-Eintrag mit Trigger geparkt.
+
+---
+
 ## Settings-Default-Merge: Scoped Deep-Merge der fixen Sub-Objekte (Variante A)
 
 **Entscheidung:** `SettingsStore.read()` mergt fehlende Keys aus den Defaults **rekursiv** in die fixen Sub-Objekte (`token_warning_thresholds`, `context_soft_warning`, `screenshot_retention`, `template_top_n`); die offenen Maps (`model_limits`, `shortcuts` als `z.record`) bleiben Shallow (die User-Map gewinnt komplett). Top-Level bleibt ein flacher Spread.

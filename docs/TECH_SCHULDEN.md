@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## TerminalTab-Init-Effekt nicht in Lifecycle-Hooks zerlegt — Shell bleibt bei 846 Zeilen (2026-06-01)
+
+**Bereich:** `src/renderer/panels/TerminalTab.tsx`. Nach dem Datei-Längen-Refactor (Variante B, siehe ENTSCHEIDUNGEN „TerminalTab-Aufteilung: UI-Hooks raus, Init-Effekt bleibt ganz") liegt die Shell bei 846 Zeilen — über dem 500-Ziel, klar unter der 1200-Pflichtgrenze. Der Überhang steckt fast vollständig im monolithischen xterm-Init-`useEffect` (~550 Zeilen), der bewusst nicht aufgetrennt wurde.
+
+**Was:** Der Init-Effekt hält den kompletten xterm-Lifecycle in einer Closure: Terminal-Erzeugung, Key-/Wheel-Handler, Renderer-Addon mit WebGL/Canvas-Fallback, Pre-Frame-Queue + Buffer-Restore (Season 33), Resize-Pipeline, Spawn + Docs-Sync-Auto-Send, TUI-Poll, PTY-`data`/`exit`-Listener und die Cleanup-Funktion mit der Dispose-Reihenfolge (Renderer-Addon zuerst). Forward-declared `let`s (`tuiTimer`, `restoreReady`, `bufferDirty`, `spawnRafHandle`, `initialPromptTimer` …) werden über all diese Pfade geteilt.
+
+**Warum so:** Variante C (Aufspaltung in xterm-Instanz-, TUI-Poll-, PTY-Spawn- und Buffer-Persist-Hooks) hätte die geteilten mutablen Closures über Hook-Grenzen via Refs synchronisieren und die einteilige Cleanup-Sequenz über mehrere `return`-Funktionen nachbauen müssen — genau die StrictMode-/Cleanup-kritischen Stellen (Spawn-Guard `spawnDispatchedRef`, Dispose-Reihenfolge Renderer-Addon-zuerst, `restoreReady`/`bufferDirty`-Gating des Snapshot-Saves). Die ~250 gesparten Zeilen rechtfertigten dieses Regressions-Risiko im Season-Scope nicht; die Pflichtgrenze (<1200) ist mit B erfüllt.
+
+**Risiko:** Niedrig. 846 < 1200, also kein akuter Verstoß gegen die Datei-Längen-Regel — offen ist rein das 500-Ziel. Kein Runtime-Effekt. Pattern-Risiko: künftige Erweiterungen am Init-Effekt lassen die Shell weiter wachsen, weil der dickste Block unangetastet bleibt; bei Annäherung an 1200 wird C unausweichlich.
+
+**Auflösung:** **Trigger:** wenn der Init-Effekt durch neue xterm-Features Richtung 1100+ Zeilen wächst, ODER wenn ein anderer Grund den Effekt ohnehin strukturell anfasst. Dann Variante C: Init-Effekt in Lifecycle-Hooks zerlegen (xterm-Instanz, TUI-Poll, PTY-Session/Spawn, Buffer-Persistierung), die geteilten `let`s in ein gemeinsames Ref-Bündel heben, die Cleanup-Reihenfolge exakt erhalten (Renderer-Addon zuerst + separat, dann Terminal). Verhaltens-Probe vor dem Merge: „frische Session sofort schließen" (StrictMode-Double-Mount, kein doppeltes `pty:create`) plus Resume-Buffer-Restore müssen grün bleiben.
+
+---
+
 ## JSONL-Ingestion läuft synchron im Main-Prozess — Worker-Auslagerung zurückgestellt (2026-05-31)
 
 **Bereich:** `src/main/jsonl/watcher.ts` (`handleFile` → `messages.insert` / `usage.upsertBucket`). Die Parse-Pipeline und die better-sqlite3-Writes laufen im Main-Prozess — demselben Thread, der die IPC zum Renderer-Fenster bedient. Season 35 (Performance-/Stabilitäts-Fix) hat die beiden Quick-Wins (Single-Instance-Lock in `main.ts`, Backfill-Drossel per `backfilledPaths`-Set im Watcher) umgesetzt; die strukturelle Auslagerung in einen eigenen Prozess (`utilityProcess`/`worker_threads`) ist bewusst auf später verschoben, bis die Quick-Wins im echten Build gegen das Symptom gemessen sind.

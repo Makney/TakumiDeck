@@ -17,6 +17,20 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-06-01 — v0.4.0 — Datei-Längen-Refactor: types.ts · SettingsModal · TerminalTab unter die 1200-Zeilen-Grenze
+
+### Aufräum-Arbeiten ohne sichtbare Wirkung
+
+Die drei letzten Dateien über der 1200-Zeilen-Pflichtgrenze wurden zerlegt — reines Refactoring, Verhalten bit-identisch, kein User-sichtbarer Unterschied.
+
+- **`src/shared/types.ts` (1254 Z.)** → Barrel-Verzeichnis `src/shared/types/` mit 13 thematischen Modulen (`core`, `session`, `project`, `settings`, `git`, `fs`, `api`, `stats`, `usage`, `templates`, `docs`, `updater`), re-exportiert über `index.ts`. Der Import-Pfad `@shared/types` bleibt unverändert, größtes Modul jetzt 275 Zeilen.
+- **`src/renderer/modals/SettingsModal.tsx` (281 Z.)** → Die sieben Tab-Inhalte wandern in `modals/settings/` (plus `shared.tsx` für gemeinsame Bausteine); die Modal-Shell hält nur noch Tab-Routing und gemeinsamen State. Größter Tab 363 Zeilen.
+- **`src/renderer/panels/TerminalTab.tsx` (1301 → 846 Z.)** → Die UI-Logik (Suche, Kontextmenü, Drag-Drop, Font-Zoom) steckt jetzt in vier Custom-Hooks unter `panels/terminal/`, dazu die zwei Subkomponenten und die Pure-Helfer in eigenen Files. Der monolithische xterm-Init-Effekt (StrictMode-Guards, Dispose-Reihenfolge, Buffer-Restore aus Season 33) bleibt bewusst geschlossen in der Shell — Variante B, das *Warum* steht in [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md). Export `TerminalTab` + Typ `TerminalTabProps` und der Datei-Pfad bleiben stabil.
+
+Ziel war max. 500 Zeilen/Datei (Obergrenze 1200): `types.ts` und `SettingsModal` voll erreicht, `TerminalTab` landet bei 846, weil der ~550-zeilige Init-Effekt nicht aufgetrennt wurde — der verbleibende Schnitt (Init-Effekt in Lifecycle-Hooks, Variante C) ist mit Trigger als [TECH_SCHULDEN.md](./TECH_SCHULDEN.md)-Eintrag geparkt. Bestehende Terminal-Tests grün; manueller Smoke-Test (spawnen, tippen, resize, Ctrl+Shift+F-Suche, Rechtsklick-Menü, Screenshot-Drop, Resume-Buffer-Restore, Ctrl+Mausrad-Zoom, TUI-Status) sauber durchgelaufen.
+
+---
+
 ## 2026-06-01 — v0.4.0 — OFFEN-Abarbeiten Charge 3+4: MODALS · PANELS · MAIN_SERVICES · BUILD
 
 ### Was jetzt geht

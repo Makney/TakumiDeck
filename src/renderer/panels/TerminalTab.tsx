@@ -1,28 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
-import { CanvasAddon } from '@xterm/addon-canvas';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
 import type { AppSettings, SessionStatus } from '@shared/types';
 import { detectFromBuffer, type TuiDetectedState } from '@shared/tui-patterns';
-import {
-  createCopyPasteKeyHandler,
-  type ImagePasteSaver,
-} from '../components/clipboardKeyHandler';
-import {
-  actionsToInsertText,
-  bytesToBase64,
-  classifyClipboardItems,
-  classifyDrop,
-  isAllowedImageMime,
-  type ScreenshotMime,
-} from '../components/terminalDropHandler';
+import { createCopyPasteKeyHandler } from '../components/clipboardKeyHandler';
 import { clampFontSize, nextZoomFontSize } from '../components/terminalFontZoom';
-import { quotePathIfNeeded } from '../components/pathQuoting';
 import {
   safeDisposeAddon,
   safeDisposeTerminal,
@@ -31,6 +17,19 @@ import {
 import { trimBufferSnapshot } from '@shared/buffer-snapshot';
 import { useProjectStore } from '../stores/projects';
 import { useSessionStore } from '../stores/sessions';
+import { TerminalSearchBar } from './terminal/TerminalSearchBar';
+import { TerminalContextMenu } from './terminal/TerminalContextMenu';
+import {
+  createImagePasteSaver,
+  loadRendererAddonWithFallback,
+  safeFit,
+  showError,
+  snapshotBufferLines,
+} from './terminal/terminalHelpers';
+import { useTerminalFontZoom } from './terminal/useTerminalFontZoom';
+import { useTerminalSearch } from './terminal/useTerminalSearch';
+import { useTerminalContextMenu } from './terminal/useTerminalContextMenu';
+import { useTerminalDragDrop } from './terminal/useTerminalDragDrop';
 
 // Phase-2 Season-1: Tick-Intervall für TUI-Pattern-Match auf dem xterm-Buffer.
 // 1 s ist der Sweet-Spot zwischen Permission-Prompt-Reaktionszeit und CPU-Last
@@ -116,17 +115,43 @@ export function TerminalTab({
   // die Implementierungen leben aber im Init-Effect (Closure ueber lastPushedState
   // usw.). Ref ist der einfachste Weg ueber die Effect-Grenze ohne Re-Bindings.
   const tuiControlRef = useRef<{ start: () => void; pause: () => void } | null>(null);
-  // Lokaler Font-Size-Override pro Tab. null = User hat nicht gezoomt, dann
-  // gilt settings.terminal_font_size. Bei einem Settings-Hot-Update setzen wir
-  // den Override zurueck (Settings sind die Wahrheit, sobald der User sie
-  // explizit aendert).
-  const [fontSizeOverride, setFontSizeOverride] = useState<number | null>(null);
-  // UI-States fuer Search-Bar, Kontextmenue, Scroll-to-Bottom-Button.
-  const [searchVisible, setSearchVisible] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
-    null,
+  // Phase-2 Season-36: UI-Logik in Custom-Hooks ausgelagert (Font-Zoom, Suche,
+  // Kontextmenue, Drag-Drop). Der Init-Effekt unten bleibt unangetastet; die
+  // Hooks reichen die noetigen Refs + Setter durch, die er weiterhin schliesst
+  // (fontSizeOverride/setFontSizeOverride fuer Wheel-Zoom, searchVisible/
+  // setSearchVisible fuer Ctrl+Shift+F + Escape-Routing).
+  const { fontSizeOverride, setFontSizeOverride } = useTerminalFontZoom(
+    terminalRef,
+    fitRef,
+    settings,
   );
+  const {
+    searchVisible,
+    setSearchVisible,
+    searchQuery,
+    setSearchQuery,
+    handleSearchNext,
+    handleSearchPrev,
+    closeSearch,
+  } = useTerminalSearch(terminalRef, searchAddonRef);
+  const {
+    contextMenu,
+    setContextMenu,
+    handleContextMenu,
+    handleMenuCopy,
+    handleMenuPaste,
+    handleMenuClear,
+    handleMenuSearch,
+  } = useTerminalContextMenu(terminalRef, setSearchVisible);
+  const {
+    isDropTarget,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useTerminalDragDrop(terminalRef);
+  // Scroll-to-Bottom-Button-State bleibt lokal — der Init-Effekt (onScroll)
+  // setzt ihn, der Button im JSX liest ihn.
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   // Zustand-Store-Setter fuer den Bell-Marker. Wird vom onBell-Handler im Effect
   // gerufen — nur wenn der Tab inaktiv ist (sonst sieht der User es ohnehin).
@@ -137,12 +162,6 @@ export function TerminalTab({
   useEffect(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
-  // Phase-2 Season-2: dragenter/dragleave triggern hier — wir zählen, weil
-  // dragleave auch beim Wechsel zwischen Kind-Elementen feuert (jeder Move
-  // über ein neues Child-Element gibt ein leave + ein enter ab). Ein simpler
-  // Bool-Toggle würde dabei flackern.
-  const [isDropTarget, setIsDropTarget] = useState(false);
-  const dragDepthRef = useRef(0);
   // Guard gegen React-StrictMode-Double-Effect: pty:create darf pro Tab-Instanz nur
   // EINMAL gefeuert werden, sonst kollidiert der zweite Aufruf an der UNIQUE-Constraint
   // auf sessions.id. Die Ref überlebt die StrictMode-Mount→Cleanup→Remount-Sequenz,
@@ -773,34 +792,6 @@ export function TerminalTab({
     return () => window.removeEventListener('td-template-send', handler);
   }, [isActive, sessionId]);
 
-  // Hot-Update der Schriftart, wenn der User die Settings ändert.
-  // Phase-2 Season-28: Wenn der User in den Settings die Schriftgroesse aendert,
-  // hat das Vorrang vor dem lokalen Ctrl+Mausrad-Override — sonst wuerde der
-  // User das Settings-Modal anpassen und das Terminal wuerde sich nicht ruehren.
-  // Der Override wird zurueckgesetzt; spaetere Wheel-Aktionen starten dann auf
-  // dem neuen Settings-Wert.
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    const fit = fitRef.current;
-    if (!terminal) return;
-    terminal.options.fontFamily = settings.terminal_font_family;
-    terminal.options.fontSize = clampFontSize(settings.terminal_font_size);
-    setFontSizeOverride(null);
-    safeFit(fit);
-  }, [settings.terminal_font_family, settings.terminal_font_size]);
-
-  // Phase-2 Season-28: Wenn der Override sich aendert (Ctrl+Mausrad), die
-  // xterm-Schriftgroesse aktualisieren und Layout neu fitten. Bei Override=null
-  // ist Setting-Wert die Wahrheit und der obige Effect uebernimmt.
-  useEffect(() => {
-    if (fontSizeOverride === null) return;
-    const terminal = terminalRef.current;
-    const fit = fitRef.current;
-    if (!terminal) return;
-    terminal.options.fontSize = clampFontSize(fontSizeOverride);
-    safeFit(fit);
-  }, [fontSizeOverride]);
-
   // Fokus-Fang: ein Klick irgendwo im Terminal-Bereich (auch ins Padding um die
   // xterm-Canvas) fordert den Fokus für xterms hidden textarea zurück. Sonst muss
   // der User exakt auf die Canvas klicken, sonst bleibt der Fokus auf dem zuletzt
@@ -818,134 +809,12 @@ export function TerminalTab({
     terminalRef.current?.focus();
   };
 
-  // Phase-2 Season-28: Rechtsklick-Kontextmenue. Discoverability fuer die
-  // Ctrl+Shift+*-Shortcuts — neue User wissen nicht von selbst, dass
-  // Ctrl+Shift+C kopiert.
-  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  };
-
-  // Phase-2 Season-28: Search-Bar-Handler. Such-Logik laeuft direkt gegen das
-  // Addon — kein State-Sync ueber die useEffect-Grenze, weil findNext/Previous
-  // den xterm-Buffer in-place markiert.
-  const handleSearchNext = useCallback(
-    (query: string) => {
-      if (query.length === 0) return;
-      searchAddonRef.current?.findNext(query, { incremental: false });
-    },
-    [],
-  );
-  const handleSearchPrev = useCallback(
-    (query: string) => {
-      if (query.length === 0) return;
-      searchAddonRef.current?.findPrevious(query, { incremental: false });
-    },
-    [],
-  );
-  const closeSearch = useCallback(() => {
-    setSearchVisible(false);
-    setSearchQuery('');
-    searchAddonRef.current?.clearDecorations();
-    terminalRef.current?.focus();
-  }, []);
-
-  // Phase-2 Season-28: Kontextmenue-Aktionen rufen direkt die xterm/Clipboard-
-  // APIs; gleicher Pfad wie die Tastatur-Shortcuts, nur ueber Menue-Klick.
-  const handleMenuCopy = useCallback(async () => {
-    const term = terminalRef.current;
-    const sel = term?.getSelection() ?? '';
-    if (sel.length > 0) {
-      try {
-        await navigator.clipboard.writeText(sel);
-        term?.clearSelection();
-      } catch (e) {
-        console.warn('[TerminalTab] clipboard.writeText failed', e);
-      }
-    }
-    setContextMenu(null);
-  }, []);
-  const handleMenuPaste = useCallback(async () => {
-    const term = terminalRef.current;
-    if (!term) {
-      setContextMenu(null);
-      return;
-    }
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text.length > 0) term.paste(text);
-    } catch (e) {
-      console.warn('[TerminalTab] clipboard.readText failed', e);
-    }
-    setContextMenu(null);
-  }, []);
-  const handleMenuClear = useCallback(() => {
-    terminalRef.current?.clear();
-    setContextMenu(null);
-  }, []);
-  const handleMenuSearch = useCallback(() => {
-    setSearchVisible(true);
-    setContextMenu(null);
-  }, []);
-
   // Scroll-to-Bottom-Klick: xterm bietet scrollToBottom direkt. Nach dem
   // Scroll feuert onScroll und der Button-State setzt sich von selbst zurueck.
   const handleScrollToBottom = useCallback(() => {
     terminalRef.current?.scrollToBottom();
     terminalRef.current?.focus();
   }, []);
-
-  // Phase-2 Season-2: Drag-Drop für Screenshots ins Terminal.
-  // dragover MUSS preventDefault rufen, sonst lehnt der Browser den drop ab
-  // (Default-Verhalten: navigieren zur Datei-URL → würde den Renderer
-  // wegnavigieren, was zusätzlich vom will-navigate-Handler im Main geblockt
-  // wäre, aber der Drop kommt erst gar nicht zustande).
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!hasImageFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    dragDepthRef.current++;
-    if (dragDepthRef.current === 1) setIsDropTarget(true);
-  };
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!hasImageFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    // Cursor zur „Copy"-Variante — signalisiert dem User, dass der Drop OK ist.
-    e.dataTransfer.dropEffect = 'copy';
-  };
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!hasImageFiles(e.dataTransfer)) return;
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) setIsDropTarget(false);
-  };
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!hasImageFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    dragDepthRef.current = 0;
-    setIsDropTarget(false);
-    const files = Array.from(e.dataTransfer.files);
-    void handleDroppedFiles(files);
-  };
-
-  const handleDroppedFiles = async (files: File[]) => {
-    const term = terminalRef.current;
-    if (!term) return;
-    const actions = await classifyDrop(files, {
-      getPathForFile: (f) => window.api.fs.getPathForFile(f),
-      readAsBytes: readFileAsBytes,
-    });
-    const text = await actionsToInsertText(actions, {
-      saveScreenshot: async ({ mime, base64 }) => {
-        const res = await window.api.fs.saveScreenshot({ mime, base64 });
-        return res.ok
-          ? { ok: true, absolutePath: res.data.absolutePath }
-          : { ok: false, error: res.error };
-      },
-      log: (msg, err) => console.warn(`[TerminalTab] ${msg}`, err),
-    });
-    if (text.length === 0) return;
-    term.paste(text);
-    term.focus();
-  };
 
   return (
     <div
@@ -1000,301 +869,6 @@ export function TerminalTab({
       <div ref={errorRef} className="td-terminal-error" hidden />
     </div>
   );
-}
-
-// Phase-2 Season-28: Mini-Suchbar oben im Terminal. Bewusst klein gehalten —
-// kein Reg-Ex, kein Case-Toggle, kein Match-Counter. Wenn das spaeter gewuenscht
-// ist, sind diese Schalter alle als Optionen am SearchAddon vorhanden.
-interface TerminalSearchBarProps {
-  query: string;
-  onQueryChange: (q: string) => void;
-  onNext: () => void;
-  onPrev: () => void;
-  onClose: () => void;
-}
-
-function TerminalSearchBar({
-  query,
-  onQueryChange,
-  onNext,
-  onPrev,
-  onClose,
-}: TerminalSearchBarProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  // Bei Mount sofort fokussieren, damit der User direkt tippen kann.
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (e.shiftKey) onPrev();
-      else onNext();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
-    }
-  };
-  return (
-    <div className="td-terminal-search">
-      <input
-        ref={inputRef}
-        type="text"
-        className="td-terminal-search-input"
-        placeholder="Suchen …"
-        value={query}
-        onChange={(e) => onQueryChange(e.target.value)}
-        onKeyDown={handleKey}
-        aria-label="Im Terminal suchen"
-      />
-      <button
-        type="button"
-        className="td-terminal-search-btn"
-        onClick={onPrev}
-        title="Vorheriger Treffer (Shift+Enter)"
-        aria-label="Vorheriger Treffer"
-      >
-        ↑
-      </button>
-      <button
-        type="button"
-        className="td-terminal-search-btn"
-        onClick={onNext}
-        title="Naechster Treffer (Enter)"
-        aria-label="Naechster Treffer"
-      >
-        ↓
-      </button>
-      <button
-        type="button"
-        className="td-terminal-search-btn"
-        onClick={onClose}
-        title="Schliessen (Esc)"
-        aria-label="Suche schliessen"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-// Phase-2 Season-28: Rechtsklick-Kontextmenue. Position kommt von clientX/Y
-// des Mouse-Events; das CSS clampt das Menue ans Viewport.
-interface TerminalContextMenuProps {
-  x: number;
-  y: number;
-  onCopy: () => void;
-  onPaste: () => void;
-  onClear: () => void;
-  onSearch: () => void;
-  onDismiss: () => void;
-}
-
-function TerminalContextMenu({
-  x,
-  y,
-  onCopy,
-  onPaste,
-  onClear,
-  onSearch,
-  onDismiss,
-}: TerminalContextMenuProps) {
-  // Click-Outside + Escape schliessen das Menue. Wir benutzen capture-phase
-  // auf document, damit ein Klick auf das Terminal-Pane sicher erfasst wird,
-  // bevor das pane-handleHostMouseDown den Fokus zurueckholt.
-  useEffect(() => {
-    const onDown = (ev: MouseEvent) => {
-      const target = ev.target as HTMLElement | null;
-      if (target?.closest('.td-terminal-context-menu')) return;
-      onDismiss();
-    };
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') onDismiss();
-    };
-    document.addEventListener('mousedown', onDown, true);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown, true);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [onDismiss]);
-  return (
-    <ul
-      className="td-terminal-context-menu"
-      style={{ left: x, top: y }}
-      role="menu"
-    >
-      <li>
-        <button type="button" onClick={onCopy} role="menuitem">
-          Kopieren <span className="td-shortcut-hint">Ctrl+Shift+C</span>
-        </button>
-      </li>
-      <li>
-        <button type="button" onClick={onPaste} role="menuitem">
-          Einfuegen <span className="td-shortcut-hint">Ctrl+Shift+V</span>
-        </button>
-      </li>
-      <li>
-        <button type="button" onClick={onSearch} role="menuitem">
-          Suchen … <span className="td-shortcut-hint">Ctrl+Shift+F</span>
-        </button>
-      </li>
-      <li>
-        <button type="button" onClick={onClear} role="menuitem">
-          Buffer leeren <span className="td-shortcut-hint">Ctrl+Shift+L</span>
-        </button>
-      </li>
-    </ul>
-  );
-}
-
-function safeFit(fit: FitAddon | null): void {
-  if (!fit) return;
-  try {
-    fit.fit();
-  } catch {
-    // ResizeObserver feuert manchmal mit 0×0 (Tab inaktiv, Animationen) — dann ignorieren.
-  }
-}
-
-// Phase-2 Season-28: Renderer-Wahl WebGL primaer, Canvas als Fallback. Die
-// Funktion sitzt aussen, damit sie nicht pro Tab-Mount neu allokiert wird.
-// Zwei Fallback-Pfade:
-//   1. WebglAddon-Konstruktor wirft (z.B. WebGL2 nicht verfuegbar) → catch
-//      faellt auf CanvasAddon zurueck.
-//   2. Laufzeit-Context-Loss (Treiber-Reset/GPU-Crash) → onContextLoss
-//      disposed das Addon und laedt Canvas nach. xterm rendert dann bis
-//      zur naechsten App-Session weiter ueber Canvas.
-//
-// Bugfix 2026-05-19: Rueckgabe ist der aktuell aktive Addon (WebGL oder
-// Canvas-Fallback). Caller (TerminalTab) haelt ihn in einer Ref, um beim
-// Cleanup vor `terminal.dispose()` separat zu disposen — der WebGL-Dispose-
-// Pfad wirft sonst eine TypeError, wenn der GL-Renderer beim Schliessen
-// noch nicht voll initialisiert war. Bei Context-Loss-Tausch meldet der
-// Callback `onAddonReplaced` den neuen Addon nach, damit die Ref aktuell
-// bleibt.
-function loadRendererAddonWithFallback(
-  terminal: Terminal,
-  onAddonReplaced: (next: WebglAddon | CanvasAddon | null) => void,
-): WebglAddon | CanvasAddon | null {
-  try {
-    const webgl = new WebglAddon();
-    webgl.onContextLoss(() => {
-      console.warn('[TerminalTab] WebGL Context-Loss, weiche auf CanvasAddon aus');
-      safeDisposeAddon(webgl, 'webgl-context-loss');
-      // Ref auf null setzen, bis der Canvas-Fallback erfolgreich geladen ist —
-      // ansonsten zeigt sie auf den disposed Addon und Cleanup wuerde ihn
-      // erneut disposen (Idempotenz erforderlich).
-      onAddonReplaced(null);
-      try {
-        const canvas = new CanvasAddon();
-        terminal.loadAddon(canvas);
-        onAddonReplaced(canvas);
-      } catch (canvasErr) {
-        console.warn(
-          '[TerminalTab] CanvasAddon-Fallback nach WebGL-Context-Loss fehlgeschlagen',
-          canvasErr,
-        );
-      }
-    });
-    terminal.loadAddon(webgl);
-    // Erfolg-Log: User kann in den DevTools schnell pruefen, welcher Renderer
-    // aktiv ist. Bei mehreren parallelen Tabs einmal pro Tab.
-    console.info('[TerminalTab] Renderer: WebGL');
-    return webgl;
-  } catch (err) {
-    console.warn(
-      '[TerminalTab] WebglAddon nicht ladbar, weiche auf CanvasAddon aus',
-      err,
-    );
-    try {
-      const canvas = new CanvasAddon();
-      terminal.loadAddon(canvas);
-      console.info('[TerminalTab] Renderer: Canvas (Fallback)');
-      return canvas;
-    } catch (canvasErr) {
-      console.warn(
-        '[TerminalTab] CanvasAddon-Initial-Fallback fehlgeschlagen',
-        canvasErr,
-      );
-      return null;
-    }
-  }
-}
-
-function showError(el: HTMLDivElement | null, msg: string): void {
-  if (!el) return;
-  el.textContent = `Fehler: ${msg}`;
-  el.hidden = false;
-}
-
-// Phase-2 Season-2: Beim Drag enthält das DataTransfer.items oft nur die
-// MIME-Typen, .files dagegen leeres Array — wir prüfen beide Pfade. Wenn
-// kein passender Image-Typ dabei ist, lassen wir das Event durchlaufen
-// (z.B. wenn der User aus Versehen Text in den Terminal-Bereich zieht).
-function hasImageFiles(dt: DataTransfer): boolean {
-  for (const item of Array.from(dt.items)) {
-    if (item.kind === 'file' && isAllowedImageMime(item.type)) return true;
-  }
-  for (const file of Array.from(dt.files)) {
-    if (isAllowedImageMime(file.type)) return true;
-  }
-  return false;
-}
-
-// Liest ein File komplett in ein Uint8Array. Sandbox-konform — kein Node-FS,
-// nur die Browser-FileReader-API.
-async function readFileAsBytes(file: File): Promise<Uint8Array> {
-  const buf = await file.arrayBuffer();
-  return new Uint8Array(buf);
-}
-
-// Phase-2 Season-2: Driver für den Clipboard-Image-Paste-Pfad. Sucht im
-// Clipboard das erste image/*-Item, speichert es via IPC und gibt den
-// fertigen Path-Insert-Text zurück (mit Quoting bei Whitespace im Pfad).
-function createImagePasteSaver(): ImagePasteSaver {
-  return {
-    tryReadAndSaveAsPathInsert: async () => {
-      // navigator.clipboard.read ist im Renderer nur verfügbar, wenn die
-      // clipboard-read-Permission greift — die ist in main.ts whitelisted.
-      // Auf älteren Electron-Pfaden oder im jsdom-Test-Setup kann die API
-      // fehlen; dann verhält sich der Driver wie „kein Bild gefunden".
-      if (typeof navigator === 'undefined' || !navigator.clipboard?.read) return null;
-      const items = await navigator.clipboard.read();
-      const action = await classifyClipboardItems(items, {
-        readBlobAsBytes: async (blob) => new Uint8Array(await blob.arrayBuffer()),
-      });
-      if (action === null) return null;
-      // action ist garantiert save-and-paste — classifyClipboardItems hat
-      // schon das Image-MIME geprüft.
-      if (action.kind !== 'save-and-paste') return null;
-      const base64 = bytesToBase64(action.bytes);
-      const res = await window.api.fs.saveScreenshot({
-        mime: action.mime as ScreenshotMime,
-        base64,
-      });
-      if (!res.ok) return '';
-      return quotePathIfNeeded(res.data.absolutePath);
-    },
-  };
-}
-
-// Liefert die letzten n Buffer-Zeilen als reinen Text (ohne ANSI-Escapes).
-// translateToString(true) trimt rechte Whitespace-Padding, das xterm für leere
-// Zellen einfügt — wichtig für den TUI-Pattern-Match (sonst wären selbst leere
-// Buffer-Reihen randvoll mit Spaces).
-function snapshotBufferLines(term: Terminal, n: number): string[] {
-  const buf = term.buffer.active;
-  const total = buf.length;
-  const start = Math.max(0, total - n);
-  const lines: string[] = [];
-  for (let i = start; i < total; i++) {
-    const line = buf.getLine(i);
-    if (!line) continue;
-    lines.push(line.translateToString(true));
-  }
-  return lines;
 }
 
 export type { Props as TerminalTabProps };
