@@ -131,14 +131,6 @@ Daten-Struktur (`{ key: keyof SessionHistoryInput, sql: string, bindKey: string 
 beide Treiber laufen die gleiche Liste durch und applizieren sie SQL-seitig vs.
 In-Memory.
 
-### K-3 – Mischung `?`-Bind und `@named`-Bind innerhalb desselben Repo
-**Datei:** `src/main/db/repos/jsonl-offsets.ts:40 (`?`)` vs. `:43-48 (`@named`)` – **NEU**
-
-Andere Repos sind innerhalb sich konsistent. Hier ist `get` mit `?` und
-`upsert` mit `@named`. Nur Stil.
-
-→ Auf `@named` vereinheitlichen (lesbarer bei mehreren Bindings).
-
 ### K-5 – `migrations/0001_init.sql` nutzt `BOOLEAN`, das in SQLite zu INTEGER aliasiert
 **Datei:** `src/main/db/migrations/0001_init.sql:8-9` – **NEU (klein)**
 
@@ -200,7 +192,7 @@ Callbacks (wie aktuell), aber: wenn das Interface jemals einen Wert braucht
 
 ## Status
 
-**Behoben (siehe [archiv/ARCHIV_DB.md](./archiv/ARCHIV_DB.md)):** B-1, B-2, D-1, D-2, K-1, K-4, P-1 (Erst-Review 2026-05-11) · P-3 + „Notiz zu P-3" (DB-Review 2026-05-31).
+**Behoben (siehe [archiv/ARCHIV_DB.md](./archiv/ARCHIV_DB.md)):** B-1, B-2, D-1, D-2, K-1, K-4, P-1 (Erst-Review 2026-05-11) · P-3 + „Notiz zu P-3" (DB-Review 2026-05-31) · K-3, S-6, K-7 (OFFEN-Abarbeiten 2026-06-01).
 
 **Offen:**
 
@@ -215,9 +207,8 @@ Callbacks (wie aktuell), aber: wenn das Interface jemals einen Wert braucht
 - **K-2** — Filter-Refactor in `listHistoryForProject` (Cyclomatic 20).
   Cache-Layer (B-2) entschärft die Performance, die Komplexität bleibt aber.
   Separat planen.
-- **K-3, K-5, K-6** — reine Stil-Findings, nicht prioritär.
+- **K-5, K-6** — reine Stil-Findings, nicht prioritär.
 - **P-2** — Awareness-Hinweis, kein Fix nötig.
-- **S-6, K-7** — siehe v0.3.0-Block unten.
 - **D-3, D-4, K-8** — siehe v0.4.0-Block unten.
 
 ---
@@ -225,22 +216,6 @@ Callbacks (wie aktuell), aber: wenn das Interface jemals einen Wert braucht
 ## Release-Review v0.3.0 (2026-05-19)
 
 Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (Migration 0009 `sessions.start_commit_sha` + neue `messages.timestampsInRange`-Methode für den 5h-Session-Block-Anker), die bewusst nicht release-blockierend sind und in eigenen Seasons aufgelöst werden. *(P-3 aus diesem Block ist erledigt → Archiv.)*
-
-### S-6 – `timestampsInRange` JSDoc dokumentiert nicht die globale Aggregation
-
-**Datei:** `src/main/db/repos/messages.ts:33-37` – **NEU**
-
-Die Query summiert global über `messages` (kein Projekt-/Session-Scope). Für das aktuelle Feature (globaler 5h-Block der Anthropic-Quota) ist das die korrekte Anzeige — aber der Methoden-Name suggeriert keine Scope-Einschränkung und es gibt kein Dokumentations-Anker im JSDoc Zeile 33-37, der diese Absicht festhält. Bei späterer Wiederverwendung (z.B. Per-Projekt-Burn-Rate) leicht zu übersehen.
-
-→ JSDoc um den expliziten „global über alle Sessions/Projekte"-Hinweis ergänzen. Beim nächsten Touch am Repo mitnehmen.
-
-### K-7 – `setStartCommitSha`-Fehler werden im PTY-Caller in generische „revParse fehlgeschlagen"-Log-Message gepackt
-
-**Datei:** `src/main/db/repos/sessions.ts:552-555` ↔ Caller `src/main/ipc/pty.ts:214-227` – **NEU (Stil-Drift)**
-
-Der PTY-Caller wrapt den fire-and-forget Baseline-SHA-Capture in einem `.catch()`, der sowohl `revParse`-Fehler als auch DB-Fehler in einem generischen Log-Eintrag zusammenfasst („revParse für Baseline-SHA fehlgeschlagen"). Wenn `setStartCommitSha` (z.B. wegen DB-Lock) wirft, ist die Fehler-Quelle aus dem Log nicht erkennbar. Der Driver selbst hat keinen try/catch — das ist konsistent mit anderen Driver-Methoden, aber die irreführende Log-Message bleibt.
-
-→ Im PTY-Handler den `.then()` separat fangen oder die Log-Message neutral formulieren („Baseline-SHA-Setzen fehlgeschlagen"). Keine Verhaltensänderung, nur Diagnose-Klarheit.
 
 ---
 

@@ -60,6 +60,9 @@ export function registerTerminalBufferIpc(deps: {
       buffers.upsert(input.sessionId, input.snapshot);
       return ok(null);
     } catch (e) {
+      // Symmetrisch zum load-buffer-Catch (Diagnose-Konsistenz): ein Save-Fail
+      // (zod-Reject bei >1 MiB, DB-Lock) soll nicht still im IpcResult verschwinden.
+      log.warn(`[terminal:save-buffer] fehlgeschlagen: ${String(e)}`);
       return errFromUnknown(e, 'TERMINAL_SAVE_BUFFER');
     }
   });

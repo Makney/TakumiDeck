@@ -337,7 +337,7 @@ export const TemplateSchemaSchema = z.object({
 // Renderer schickt die aktive Session-ID; der Main resolved dazu das Projekt
 // und alloziert eine Season-Nummer (idempotent, siehe Channel-Doku).
 export const TemplatesAllocateSeasonForSessionInputSchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().uuid(),
 });
 
 // Phase-2 Season-21: docs:sync-status. Renderer schickt die projectId; der
@@ -459,7 +459,7 @@ export const GitShowStagedInputSchema = z.object({
 // weil der Main das Projekt + den Baseline-SHA aus der Session-Row resolved.
 // Damit kann der Renderer keinen freien Baseline-SHA reinschmuggeln.
 export const GitSessionDiffInputSchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().uuid(),
 });
 
 // --- Workspace / Projects (Sprint 4) ---------------------------------

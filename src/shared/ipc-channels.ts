@@ -127,7 +127,9 @@ export const Channels = {
   FsScreenshotsSummary: 'fs:screenshots-summary',
   FsClearScreenshots: 'fs:clear-screenshots',
   // Phase-2 Season-29 (Multi-Tab-Diff Auto-Refresh): Renderer setzt das
-  // aktive Projekt fuer den chokidar-Watcher; null stoppt den Watcher.
+  // aktive Projekt fuer den chokidar-Watcher. `projectId` ist Pflichtfeld
+  // (string | null) — explizit `null` stoppt den Watcher; ein fehlendes/
+  // undefined-Feld ist KEIN Stop-Signal, sondern failt die zod-Parse.
   FsSetWatchedProject: 'fs:set-watched-project',
   // Push-Channel: Main → Renderer, wenn ein File im aktiven Projekt
   // geaendert / neu / geloescht wurde. Debounced 200 ms; Liste der

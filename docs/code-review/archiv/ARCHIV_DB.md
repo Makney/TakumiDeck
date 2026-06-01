@@ -132,3 +132,43 @@ Der v0.3.0-Commit-Text behauptet zwar, der vorhandene `idx_messages_session_ts`/
 ### ✅ Notiz zu P-3 – Migrations-Nummer 0010 ist jetzt vergeben
 
 Der für **P-3** (v0.3.0-Block, `idx_messages_ts`) vorgeschlagene Index war als „Mini-Migration 0010" skizziert. Migration 0010 ist die Buffer-Snapshot-Tabelle geworden, daher landete der Index erwartungsgemäß in **0011** (`0011_stats_and_backfill_indexes.sql`, 2026-05-31). P-3 damit erledigt.
+
+---
+
+## 2026-06-01 — Per archive-resolved.py archiviert
+
+Verschoben aus [`OFFEN_DB.md`](../OFFEN_DB.md). Aufloesung steht je Eintrag in der **Behoben:**-Zeile.
+
+### K-3 – Mischung `?`-Bind und `@named`-Bind innerhalb desselben Repo
+**Datei:** `src/main/db/repos/jsonl-offsets.ts:40 (`?`)` vs. `:43-48 (`@named`)` – **NEU**
+
+Andere Repos sind innerhalb sich konsistent. Hier ist `get` mit `?` und
+`upsert` mit `@named`. Nur Stil.
+
+→ Auf `@named` vereinheitlichen (lesbarer bei mehreren Bindings).
+
+**Behoben:** 2026-06-01 · Stil-Vereinheitlichung · `getStmt` von positional `?` auf `@file_path` umgestellt (inkl. Statement-Typ + `.get({ file_path })`-Aufruf), konsistent mit dem `upsert`; typecheck + lint grün.
+
+---
+
+### S-6 – `timestampsInRange` JSDoc dokumentiert nicht die globale Aggregation
+
+**Datei:** `src/main/db/repos/messages.ts:33-37` – **NEU**
+
+Die Query summiert global über `messages` (kein Projekt-/Session-Scope). Für das aktuelle Feature (globaler 5h-Block der Anthropic-Quota) ist das die korrekte Anzeige — aber der Methoden-Name suggeriert keine Scope-Einschränkung und es gibt kein Dokumentations-Anker im JSDoc Zeile 33-37, der diese Absicht festhält. Bei späterer Wiederverwendung (z.B. Per-Projekt-Burn-Rate) leicht zu übersehen.
+
+→ JSDoc um den expliziten „global über alle Sessions/Projekte"-Hinweis ergänzen. Beim nächsten Touch am Repo mitnehmen.
+
+**Behoben:** 2026-06-01 · JSDoc-Ergänzung · Kommentar an `timestampsInRange` (Interface in `messages.ts`) um den expliziten „aggregiert GLOBAL über alle Sessions/Projekte, kein Scope-Filter"-Hinweis erweitert; typecheck grün.
+
+---
+
+### K-7 – `setStartCommitSha`-Fehler werden im PTY-Caller in generische „revParse fehlgeschlagen"-Log-Message gepackt
+
+**Datei:** `src/main/db/repos/sessions.ts:552-555` ↔ Caller `src/main/ipc/pty.ts:214-227` – **NEU (Stil-Drift)**
+
+Der PTY-Caller wrapt den fire-and-forget Baseline-SHA-Capture in einem `.catch()`, der sowohl `revParse`-Fehler als auch DB-Fehler in einem generischen Log-Eintrag zusammenfasst („revParse für Baseline-SHA fehlgeschlagen"). Wenn `setStartCommitSha` (z.B. wegen DB-Lock) wirft, ist die Fehler-Quelle aus dem Log nicht erkennbar. Der Driver selbst hat keinen try/catch — das ist konsistent mit anderen Driver-Methoden, aber die irreführende Log-Message bleibt.
+
+→ Im PTY-Handler den `.then()` separat fangen oder die Log-Message neutral formulieren („Baseline-SHA-Setzen fehlgeschlagen"). Keine Verhaltensänderung, nur Diagnose-Klarheit.
+
+**Behoben:** 2026-06-01 · Log-Message neutralisiert · Catch-Message im PTY-Caller von „revParse fuer Baseline-SHA fehlgeschlagen" auf „Baseline-SHA-Capture fehlgeschlagen" geändert (deckt revParse- UND `setStartCommitSha`-Fehler), mit Inline-Kommentar; keine Verhaltensänderung; typecheck + lint grün.

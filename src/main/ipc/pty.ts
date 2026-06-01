@@ -252,6 +252,11 @@ export function registerPtyIpc(deps: {
       // Wechsel auf den Session-Modus nach, da reichen die ~50-100 ms revParse-
       // Roundtrip allemal. Bei has_git=0, detached HEAD oder Git-Fehler bleibt
       // start_commit_sha auf NULL — der Renderer zeigt dann den Empty-State.
+      //
+      // setStartCommitSha ist idempotent + race-frei via `WHERE start_commit_sha
+      // IS NULL` (siehe sessions.ts) — laeuft dieses fire-and-forget nach einem
+      // Session-Archive/Close auf, ist es ein No-op. Ein isShuttingDown()-Check
+      // ist deshalb nicht noetig.
       if (gitDriver && project.has_git === 1) {
         void gitDriver
           .revParse(cwd, 'HEAD')
@@ -261,8 +266,11 @@ export function registerPtyIpc(deps: {
             }
           })
           .catch((e) => {
+            // Neutral formuliert: der catch faengt sowohl revParse- als auch
+            // setStartCommitSha-Fehler (DB), daher keine revParse-spezifische
+            // Message.
             log.warn(
-              `[pty] revParse fuer Baseline-SHA fehlgeschlagen sessionId=${input.sessionId}: ${e}`,
+              `[pty] Baseline-SHA-Capture fehlgeschlagen sessionId=${input.sessionId}: ${e}`,
             );
           });
       }

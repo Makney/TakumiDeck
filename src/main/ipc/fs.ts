@@ -280,6 +280,9 @@ export function registerFsIpc(deps: {
     if (!guard.ok) return guard;
     try {
       const input = FsSetWatchedProjectInputSchema.parse(payload);
+      // Diagnose-Konsistenz zu den anderen fs:*-Handlern: IPC-Eintrittspunkt
+      // im Main-Log sichtbar machen (null = Stop-Signal).
+      log.info(`[fs:set-watched-project] projectId=${input.projectId ?? 'null (stop)'}`);
       if (!projectWatcher) {
         // Kein Watcher konfiguriert (z.B. Test-Setup) — Renderer-Aufruf
         // schluckt das still.

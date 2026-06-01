@@ -33,6 +33,10 @@ export interface MessageDbDriver {
   // Sortierte ms-Zeitstempel im Range [fromMs, toMs] (beide inklusiv), optional
   // gefiltert auf Modell-Pattern. Wird vom session_block-Resolver gebraucht, um
   // den 5h-Block-Anker minutenpraezise statt stundengerundet zu setzen.
+  // Aggregiert bewusst GLOBAL ueber alle Sessions/Projekte (kein Session-/
+  // Projekt-Scope) — passend zum globalen 5h-Block der Anthropic-Quota. Bei
+  // einer Wiederverwendung fuer Per-Projekt-Aggregate muss ein Scope-Filter
+  // ergaenzt werden.
   timestampsInRange(input: TimestampsRangeQuery): number[];
 }
 

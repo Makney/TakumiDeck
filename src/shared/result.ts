@@ -6,8 +6,11 @@ export function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data };
 }
 
+// Einheitliche Error-Shape: `code` ist immer als Key vorhanden (undefined, wenn
+// nicht gesetzt). So tragen alle Error-Results dasselbe Wire-Format und ein
+// `'code' in result`-Check verhält sich konsistent über IPC.
 export function err<T = never>(error: string, code?: string): IpcResult<T> {
-  return code === undefined ? { ok: false, error } : { ok: false, error, code };
+  return { ok: false, error, code };
 }
 
 // Verwandelt einen unbekannten Fehler in einen Error-Result.

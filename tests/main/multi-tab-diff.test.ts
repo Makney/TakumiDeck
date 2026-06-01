@@ -26,8 +26,13 @@ import { ok, err, errFromUnknown } from '../../src/shared/result';
 
 // ============================================================ test fixtures
 
+// Season-29-Schemas verlangen seit dem Shared-Review 2026-06-01 uuid() statt
+// min(1) fuer sessionId — die Fixtures nutzen daher gueltige UUIDs.
+const SESSION_ID = '11111111-1111-4111-8111-111111111111';
+const UNKNOWN_SESSION_ID = '22222222-2222-4222-8222-222222222222';
+
 const baseSession: SessionRow = {
-  id: 'sess-1',
+  id: SESSION_ID,
   project_id: 'p1',
   title: 'Test',
   type: 'feature',
@@ -212,15 +217,15 @@ describe('SessionRepository.setStartCommitSha — Phase-2 Season-29', () => {
   it('setzt den SHA, wenn die Spalte aktuell null ist', () => {
     const { repo, driver } = makeRepo();
     driver.insert({ ...baseSession });
-    expect(repo.setStartCommitSha('sess-1', 'abc123')).toBe(true);
-    expect(driver.findById('sess-1')?.start_commit_sha).toBe('abc123');
+    expect(repo.setStartCommitSha(SESSION_ID, 'abc123')).toBe(true);
+    expect(driver.findById(SESSION_ID)?.start_commit_sha).toBe('abc123');
   });
 
   it('ueberschreibt NICHT, wenn der SHA schon gesetzt ist (Idempotenz)', () => {
     const { repo, driver } = makeRepo();
     driver.insert({ ...baseSession, start_commit_sha: 'first-sha' });
-    expect(repo.setStartCommitSha('sess-1', 'second-sha')).toBe(false);
-    expect(driver.findById('sess-1')?.start_commit_sha).toBe('first-sha');
+    expect(repo.setStartCommitSha(SESSION_ID, 'second-sha')).toBe(false);
+    expect(driver.findById(SESSION_ID)?.start_commit_sha).toBe('first-sha');
   });
 
   it('returnt false bei nicht-existenter Session', () => {
@@ -298,7 +303,7 @@ describe('git:session-diff IPC-Pfad — Phase-2 Season-29', () => {
   });
 
   it('SESSION_NOT_FOUND, wenn Session unbekannt', async () => {
-    const result = await handler({ sessionId: 'ghost' });
+    const result = await handler({ sessionId: UNKNOWN_SESSION_ID });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('SESSION_NOT_FOUND');
   });
@@ -306,7 +311,7 @@ describe('git:session-diff IPC-Pfad — Phase-2 Season-29', () => {
   it('hasBaseline=false, wenn start_commit_sha null ist (Legacy)', async () => {
     sessions.add({ ...baseSession, start_commit_sha: null });
     projects.add(buildProject());
-    const result = await handler({ sessionId: 'sess-1' });
+    const result = await handler({ sessionId: SESSION_ID });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.hasBaseline).toBe(false);
@@ -322,7 +327,7 @@ describe('git:session-diff IPC-Pfad — Phase-2 Season-29', () => {
   it('hasBaseline=false bei has_git=0 (kein Driver-Call)', async () => {
     sessions.add({ ...baseSession, start_commit_sha: 'abc123' });
     projects.add(buildProject({ has_git: 0 }));
-    const result = await handler({ sessionId: 'sess-1' });
+    const result = await handler({ sessionId: SESSION_ID });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.hasBaseline).toBe(false);
@@ -348,7 +353,7 @@ describe('git:session-diff IPC-Pfad — Phase-2 Season-29', () => {
         deletions: 3,
       },
     ]);
-    const result = await handler({ sessionId: 'sess-1' });
+    const result = await handler({ sessionId: SESSION_ID });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.hasBaseline).toBe(true);
@@ -364,7 +369,7 @@ describe('git:session-diff IPC-Pfad — Phase-2 Season-29', () => {
     sessions.add({ ...baseSession, start_commit_sha: 'abc123' });
     projects.add(buildProject());
     driver.changedFilesAgainstFn.mockRejectedValueOnce(new Error('boom'));
-    const result = await handler({ sessionId: 'sess-1' });
+    const result = await handler({ sessionId: SESSION_ID });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('GIT_SESSION_DIFF_FAILED');
   });

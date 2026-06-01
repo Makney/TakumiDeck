@@ -33,12 +33,13 @@ export class JsonlOffsetRepository {
 // --- SQLite-Driver --------------------------------------------------
 
 export class SqliteJsonlOffsetDriver implements JsonlOffsetDriver {
-  private readonly getStmt: Database.Statement<[string], JsonlOffsetRow>;
+  private readonly getStmt: Database.Statement<[{ file_path: string }], JsonlOffsetRow>;
   private readonly upsertStmt: Database.Statement;
 
   constructor(db: Database.Database) {
-    this.getStmt = db.prepare<[string], JsonlOffsetRow>(
-      'SELECT file_path, offset_bytes, last_seen_at FROM jsonl_offsets WHERE file_path = ?',
+    // @named-Bind (statt positional ?) — konsistent mit dem upsert unten.
+    this.getStmt = db.prepare<{ file_path: string }, JsonlOffsetRow>(
+      'SELECT file_path, offset_bytes, last_seen_at FROM jsonl_offsets WHERE file_path = @file_path',
     );
     this.upsertStmt = db.prepare(
       `INSERT INTO jsonl_offsets (file_path, offset_bytes, last_seen_at)
@@ -50,7 +51,7 @@ export class SqliteJsonlOffsetDriver implements JsonlOffsetDriver {
   }
 
   get(filePath: string): JsonlOffsetRow | null {
-    return this.getStmt.get(filePath) ?? null;
+    return this.getStmt.get({ file_path: filePath }) ?? null;
   }
 
   upsert(row: JsonlOffsetRow): void {

@@ -7,10 +7,10 @@ describe('Result-Helper', () => {
     expect(r).toEqual({ ok: true, data: 42 });
   });
 
-  it('err() ohne Code lässt code-Feld weg', () => {
+  it('err() ohne Code setzt code auf undefined (einheitliche Shape)', () => {
     const r = err('Boom');
-    expect(r).toEqual({ ok: false, error: 'Boom' });
-    expect('code' in r).toBe(false);
+    expect(r).toEqual({ ok: false, error: 'Boom', code: undefined });
+    expect('code' in r).toBe(true);
   });
 
   it('err() mit Code setzt das Feld', () => {

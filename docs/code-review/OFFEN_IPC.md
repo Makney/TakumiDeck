@@ -91,20 +91,6 @@ Befunde aus dem Release-Review von v0.2.1 → v0.3.0 (vier neue Channels: `fs:se
 - **Begründung:** Optionalen `resolveProjectRelative`-Lexikal-Check in `resolveGitProject` aufnehmen, der `relPath` zusätzlich validiert. Heute keine Sicherheits-Lücke, nur Konvention-Bruch.
 - **Trigger:** sobald jemals ein git-Channel User-Pfade an Befehle weiterreicht, die *nicht* tree-internal interpretieren (z.B. ein hypothetisches `git:archive-file` mit absolutem Output-Pfad) — dann zentralen Lexikal-Check ziehen.
 
-### `pty:create` setzt `start_commit_sha` race-frei via WHERE-IS-NULL, Kommentar fehlt
-
-- `src/main/ipc/pty.ts:212-213` · Kategorie: **Verbesserung-Doku**
-- **Beschreibung:** Das fire-and-forget `gitDriver.revParse(...).then(...).catch(...)` kann nach Session-Archive/Close auflaufen. `setStartCommitSha` hat `WHERE start_commit_sha IS NULL` (siehe Driver `src/main/db/repos/sessions.ts:552-555`) und ist deshalb idempotent + race-frei. Der Handler-Kommentar in `pty.ts:212-213` erwähnt aber nur die Spawn-Wahl, nicht die Race-Behandlung — beim nächsten Touch würde jemand eventuell einen `lifecycle.isShuttingDown()`-Check ergänzen wollen, der bei Bestandscode nicht nötig ist.
-- **Begründung:** Inline-Kommentar um „WHERE-Klausel-Idempotenz schützt vor Session-Archive-Race" ergänzen. Kein Code-Fix nötig.
-- **Trigger:** nächste Änderung am PTY-Spawn-Pfad (z.B. bei der in Phase 2 geparkten Terminal-Session-ohne-Claude-Karte) — dann den Kommentar mit-anziehen.
-
-### `fs:set-watched-project` log-frei, andere fs:*-Handler loggen Ergebnis-Bilanz
-
-- `src/main/ipc/fs.ts:278-309` · Kategorie: **Stil**
-- **Beschreibung:** Kein `log.info`-Eintrag bei Watcher-Wechsel/Stop. `fs:list-templates` und `fs:clear-screenshots` loggen ihre Ergebnis-Bilanz; der ProjectFilesWatcher loggt zwar selbst `[project-watcher] ready/gestoppt`, aber der IPC-Eintrittspunkt bleibt im Main-Log unsichtbar (z.B. bei stillem Fail-Path Renderer-Race vs Watcher-Setup).
-- **Begründung:** Später ein `log.info('[fs:set-watched-project] projectId=...')` ergänzen — reine Diagnose-Konsistenz.
-- **Trigger:** wenn ein User-Report „Auto-Refresh feuert nicht trotz aktivem Projekt" auftaucht — dann den Einstiegs-Log zur Diagnose nutzen.
-
 ---
 
 ## Release-Review v0.4.0 (2026-05-29)
@@ -117,13 +103,6 @@ Befunde aus dem Release-Review von v0.3.2 → v0.4.0 (neue Channels `terminal:sa
 - **Beschreibung:** Die Buffer-Persistierung läuft über `terminal:save-buffer` / `terminal:load-buffer`, obwohl die Operation fachlich eine Session-Operation ist (FK auf `sessions.id`, Gate auf `session.type`). Alle anderen Session-Operationen liegen unter `session:*`. Reiner Namens-Drift, kein Funktionsfehler.
 - **Begründung:** Bei nächstem Touch unter `session:*` oder einem eigenen `buffer:*`-Prefix konsolidieren. Heute kein Effekt.
 - **Trigger:** wenn ein dritter type-spezifischer Channel hinzukommt oder die Channel-Konstanten ohnehin angefasst werden.
-
-### `terminal:save-buffer` loggt bei Fehler nicht, `terminal:load-buffer` schon (Asymmetrie)
-
-- `src/main/ipc/terminal-buffer.ts` (Save-Catch vs. Load-Catch) · Kategorie: **Stil**
-- **Beschreibung:** Der Load-Catch macht `log.warn(...)` vor `errFromUnknown`, der Save-Catch nicht. Ein Save-Fail (z.B. zod-Reject bei >1 MiB Snapshot oder DB-Lock) verschwindet still im IpcResult ohne Main-Log-Spur.
-- **Begründung:** Symmetrisch ein `log.warn` im Save-Catch ergänzen — reine Diagnose-Konsistenz.
-- **Trigger:** wenn ein User-Report „Terminal-Verlauf wird nach Resume nicht angezeigt" auftaucht — dann den Save-Log zur Diagnose nutzen.
 
 ---
 
