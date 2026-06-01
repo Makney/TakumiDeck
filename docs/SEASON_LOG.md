@@ -20,6 +20,30 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 2 Season 36 — TerminalTab.tsx aufteilen (Datei-Längen-Refactor, Teil 3/3)
+
+**Ziel:** `src/renderer/panels/TerminalTab.tsx` (1301 Zeilen) war die letzte der drei Dateien über der 1200-Zeilen-Pflichtgrenze (`types.ts` und `SettingsModal.tsx` waren in Season 35 zerlegt). Ziel: unter 1200, Richtung 500. Erschwernis im Brief explizit benannt: ~920 der Zeilen stecken in einer Komponente, davon ~550 in einem einzigen Init-`useEffect`, der den kompletten xterm-Lifecycle hält (StrictMode-Guards, Dispose-Reihenfolge, Buffer-Restore aus Season 33). Verhalten muss bit-identisch bleiben. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.
+
+**Ergebnis:** Variante B umgesetzt (Sweet-Spot): die vier UI-Logik-Gruppen (Suche, Kontextmenü, Drag-Drop, Font-Zoom) in Custom-Hooks unter `panels/terminal/`, dazu die zwei Subkomponenten und die Pure-Helfer in eigene Files — der monolithische Init-Effekt bleibt unangetastet als geschlossene Einheit in der Shell. 1301 → **846 Zeilen**; 7 neue Files, alle ≤ 154 Zeilen. Refs werden den Hooks als Parameter durchgereicht. Verhaltensneutral inkl. der stale Closure-Capture von `searchVisible` im Init-Effekt. Pflichtgrenze (<1200) erfüllt, 500-Ziel bewusst verfehlt — der Init-Effekt-Split (Variante C) ist als TECH_SCHULDEN-Eintrag mit Trigger geparkt. Voller Pre-Commit-Gate grün (typecheck beide tsconfigs, `eslint --max-warnings=0`, 1066/1066 Tests); manueller Smoke-Test (spawnen, tippen, resize, Suche, Kontextmenü, Screenshot-Drop, Resume-Buffer-Restore, Font-Zoom, TUI-Status) sauber. Auf User-Wunsch zusammen mit der noch uncommitteten Season-35-Arbeit als ein Datei-Längen-Refactor-Commit veröffentlicht.
+
+**Gut gelaufen:**
+
+- **Gezielte Edits *um* den Init-Effekt herum statt Datei-Neuschrieb.** Die Shell wurde per präziser Einzel-Edits (Imports, State-Block, entfernte Handler, entfernte Subkomponenten) umgebaut — der ~550-zeilige Init-Effekt wurde nie Teil eines `old_string` und blieb damit byte-identisch auf der Platte. Das StrictMode-/Cleanup-kritischste Stück (Dispose-Reihenfolge Renderer-Addon-zuerst, Spawn-Guard, Pre-Frame-Queue) trug so null Regressions-Risiko. Lehre: bei Refactors mit einem unantastbaren Kern den Kern nicht „mitkopieren", sondern ausschließlich seine Umgebung editieren.
+- **Den Duplikat-Effekt-Bug vor dem Commit gefangen.** Die zwei Font-Sync-Effekte landeten zunächst *doppelt* — im neuen Hook *und* noch in der Shell —, was die Settings-Schrift-Synchronisierung doppelt ausgeführt hätte (Bruch der Bit-Identität). tsc und ein erster eslint-Lauf waren grün; erst das Re-Read der Shell beim Warnungs-Fixen deckte es auf. Lehre: beim Extrahieren von Effekten/State in Custom-Hooks die Originale im *selben* Durchgang aus der Shell löschen — die Falle ist still (Compiler/Linter/Tests schlagen nicht zwingend an).
+- **`--max-warnings=0`-Hook hat den Ref-als-Parameter-Effekt sichtbar gemacht.** Refs, die lokal via `useRef` deklariert sind, kennt eslint-react-hooks als stabil und verlangt sie nicht in Dep-Arrays; als Hook-Parameter geht dieser Hint verloren → 8 neue Warnungen, die den Commit blockiert hätten. Fix war die Refs in die Dep-Arrays zu listen (verhaltensneutral, weil Ref-Identität stabil) statt disable-Kommentare zu streuen — sauber und ohne Rauschen.
+
+**Gebremst durch:**
+
+- **Zwei uncommittete Seasons im Working Tree.** Beim Commit lagen Season 35 (types.ts + SettingsModal, noch nicht committet) und meine Season-36-Arbeit gemischt im Tree. Das war keine Eigenleistung des Refactors, zwang aber zu einer Scope-Rückfrage (ein Commit / zwei Commits / nur Season 36), statt direkt durchcommitten zu können. Lehre: mehrteilige Refactor-Efforts sauber Teil-für-Teil committen, sonst sammelt sich der Scope bis zum letzten Teil an.
+- **Die B-Zeilen-Schätzung (600–700) lag unter der Realität (846).** Der Brief schätzte B auf ~600–700; tatsächlich ist der Init-Effekt allein ~550 Zeilen und damit ein irreduzibler Sockel — die Schätzung hatte den Monolithen unterveranschlagt. Kein Problem (846 < 1200, B explizit „Init-Effekt bleibt ganz"), aber die Schätzung hätte den Sockel von Anfang an einrechnen müssen.
+
+**Für nächste Season:**
+
+- **Variante C (Init-Effekt → Lifecycle-Hooks) ist in TECH_SCHULDEN mit Trigger geparkt** — anfassen erst, wenn der Init-Effekt durch neue xterm-Features Richtung 1100+ wächst oder ein anderer Grund ihn ohnehin strukturell berührt. Nicht vorzeitig ziehen; das 500-Ziel allein rechtfertigt das StrictMode-/Cleanup-Risiko nicht.
+- **Season 35 (types.ts + SettingsModal) hat keinen SEASON_LOG-Eintrag.** Falls die Prozess-Retrospektive der beiden ersten Refactor-Teile noch Wert hat, vor dem Verblassen des Kontexts nachtragen — dieser Eintrag deckt bewusst nur Teil 3 ab.
+
+---
+
 ## Phase 2 Season 34 — User-erweiterbare Modell-Liste + Auto-Refresh (Variante D)
 
 **Ziel:** Ausgangsfrage des Users: Anthropic hat Opus 4.8 released, TakumiDeck kennt es nicht und zeigt noch 4.7 als Top-Modell. Wie kann die App automatisch erkennen, welche Modelle verfügbar sind, und wie passt der User sie an, wenn sie sich ändern? Im Working Tree lag bereits eine halbfertige Season-34-Arbeit (statische Built-in-Liste + `custom_models`-Settings-Feld + Settings-Tab „Modelle"), die den manuellen Teil zu ~90 % abdeckte, aber 4.7 als Top hatte und keine Auto-Erkennung kannte.
