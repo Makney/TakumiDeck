@@ -247,6 +247,20 @@ Trigger-getrieben. Eintrag wird auf 🟡/✅ gesetzt, sobald aus PHASE2.md gezog
 
 ---
 
+## Phase 3 — Power-Features
+
+Trigger-getrieben aus [roadmap/PHASE3.md](./roadmap/PHASE3.md). Versionierung von der Phase entkoppelt (vorerst 0.x).
+
+### Workflow (Phase 3)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Worktree-Support`                   | ✅      | 2026-06-02 (Phase-3, Season 37) — Variante B. Eine Session kann in einem eigenen Git-Worktree laufen: NewSessionModal-Block „In Git-Worktree arbeiten" mit neuem Branch (von HEAD) oder bestehendem Branch (Dropdown, schon ausgecheckte ausgeblendet) + Übersicht bestehender Worktrees. Worktree als Sibling-Ordner `<projekt>-worktrees/<branch>` (Pure-Helper `resolveWorktreePath`), Spawn mit cwd=Worktree, persistiert in `sessions.worktree_path` (Migration 0012) + `worktree_branch`. Frei getippte Branch-Namen werden via `sanitizeBranchName` zu gültigen Git-Refs slugifiziert (Live-Vorschau im Modal). Diff-Viewer-Tab „vs. main" (Worktree ↔ Basis-Branch main/master/origin-HEAD). Pre-Commit-Panel worktree-bewusst (Badge „Worktree", `git:worktree-status`). Cleanup beim Archivieren mit Dirty-Schutz + Rückfrage (`git:worktree-remove`, force erst nach Bestätigung). Neue session-bewusste IPCs (`git:list-branches`/`list-worktrees`/`worktree-diff`/`worktree-remove`/`worktree-status`, `fs:read-worktree`); alle serverseitig pfad-aufgelöst. **Kein** In-App-Merge (→ Roadmap „Pull/Fetch/Branch-Switch"). 27 neue Tests. |
+
+> _Programmiersprachen-Syntax (Phase-3, Season 36) ist historisch unter „Editor (Phase 2)" oben eingetragen._
+
+---
+
 ## Hinweise zur Pflege
 
 - **Ein Feature pro Zeile.** Zu grobe Zeilen verlieren ihre Aussagekraft.

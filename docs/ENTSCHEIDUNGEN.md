@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Worktree-Support: Komfort-Stufe ohne In-App-Merge (Variante B)
+
+**Entscheidung:** Worktree-Sessions werden mit Komfort gebaut (bestehende Branches auscheckbar, Worktree-Übersicht, robustes Cleanup mit Dirty-Schutz), aber der **Merge zurück nach `main` bleibt manuell** (`git merge`) bzw. wartet auf das eigene Roadmap-Feature „Pull/Fetch/Branch-Switch". Worktrees liegen als **Sibling-Ordner** neben dem Projekt, das Cleanup beim Archivieren **schützt** dirty Worktrees mit Rückfrage statt force.
+
+**Varianten:**
+
+- **A — Schlanke vertikale Scheibe:** genau die drei Roadmap-Bullets (Worktree beim Erstellen mit neuem Branch, Cleanup beim Archive, Diff vs. main). Kein Auschecken bestehender Branches, keine Übersicht, force-Cleanup.
+- **B — Komfort (gewählt):** A + bestehende Branches per Dropdown, Worktree-Übersicht im Modal, Dirty-Schutz + Rückfrage beim Cleanup, session-bewusster `git:worktree-status` fürs Pre-Commit-Panel.
+- **C — First-Class-Worktree:** B + Worktree von der Session entkoppelt (mehrere Sessions pro Worktree), Boot-Prune, In-App-Branch-Switch/Merge.
+
+**Grund:** B trifft den Daily-Driver-Bedarf (Memory „UX-Defaults: konvenient vor traditionell") — der Workflow wird gerade erst parallel-experimentell, und „nur neuen Branch anlegen" (A) wäre beim zweiten Worktree-Lauf zu eng. C ist Over-Engineering, solange unklar ist, ob Worktrees wirklich session-übergreifend gebraucht werden — die N:M-Modellierung (Worktree↔Sessions) wäre viel Schema-Arbeit für einen ungesicherten Bedarf. In-App-Merge ist bewusst ausgeklammert: er ist ein eigenständiges Git-Schreib-Feature (Konflikt-UI, Branch-Switch) und gehört zum Roadmap-Punkt „Pull/Fetch/Branch-Switch", nicht in die Worktree-Season.
+
+**Konsequenz:** „Working Tree"/„Staged"-Diff-Tabs und der Datei-Browser zeigen für Worktree-Sessions weiterhin den Haupt-Checkout — nur „vs. main" und das Pre-Commit-Panel sind worktree-bewusst (siehe [TECH_SCHULDEN.md](./TECH_SCHULDEN.md)). Terminal-Sessions bekommen keinen Worktree (eine Quick-Shell braucht keinen Branch; Schema lehnt die Kombi ab).
+
+**Implementierungsdetail:** Sibling-Ordner statt Worktree im Projekt, damit Workspace-Scanner, chokidar-Watcher und Diff-Ignore-Listen den Worktree nicht als Projekt-Teil erfassen. Branch-Namen werden konvenient slugifiziert (`sanitizeBranchName`) statt invalide Eingaben abzulehnen — der User tippt oft einen Titel, kein Git-Ref.
+
+---
+
 ## Code-Syntax: bestehenden Editor erweitern + Sprache lazy via Compartment (Variante A)
 
 **Entscheidung:** Statt einen zweiten Code-Editor anzulegen, bekommt die bestehende Editor-Komponente die Mehrsprachigkeit. Die Sprache leitet sich aus dem Datei-Suffix ab und hängt an einer CodeMirror-`Compartment`; markdown + yaml liegen statisch im Bundle (synchron gesetzt), alle weiteren Grammatiken werden beim ersten Treffer per `import()` nachgeladen und ohne Re-Mount in die Compartment eingespielt. Preview-Pillen erscheinen nur bei echten Markdown-Files.

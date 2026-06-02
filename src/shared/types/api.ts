@@ -36,6 +36,7 @@ import type {
   FsListTreeInput,
   FsReadInput,
   FsReadResult,
+  FsReadWorktreeInput,
   FsSaveScreenshotInput,
   FsSaveScreenshotResult,
   FsScreenshotsSummaryResult,
@@ -47,6 +48,8 @@ import type {
 import type {
   GitDiffInput,
   GitDiffResult,
+  GitListBranchesInput,
+  GitListBranchesResult,
   GitSessionDiffInput,
   GitSessionDiffResult,
   GitShowInput,
@@ -55,6 +58,14 @@ import type {
   GitShowStagedResult,
   GitStatusInput,
   GitStatusResult,
+  GitWorktreeDiffInput,
+  GitWorktreeDiffResult,
+  GitWorktreeListInput,
+  GitWorktreeListResult,
+  GitWorktreeRemoveInput,
+  GitWorktreeRemoveResult,
+  GitWorktreeStatusInput,
+  GitWorktreeStatusResult,
 } from './git';
 import type {
   FsListTemplatesInput,
@@ -176,6 +187,10 @@ export interface RendererApi {
     listTemplates: (input: FsListTemplatesInput) => Promise<IpcResult<TemplateFile[]>>;
     // Sprint 7: Markdown-Editor liest und schreibt nur projekt-relativ.
     read: (input: FsReadInput) => Promise<IpcResult<FsReadResult>>;
+    // Season 37 (Worktree-Support): liest eine Datei aus dem Worktree-
+    // Verzeichnis einer Session (sessions.worktree_path). „doc"-Seite des
+    // Worktree-Diff-Modus im DiffViewer.
+    readWorktree: (input: FsReadWorktreeInput) => Promise<IpcResult<FsReadResult>>;
     write: (input: FsWriteInput) => Promise<IpcResult<FsWriteResult>>;
     // Sprint 7, Phase 5: hierarchischer Datei-Browser-Tree für den Right-Pane.
     listTree: (input: FsListTreeInput) => Promise<IpcResult<FsTreeNode[]>>;
@@ -218,6 +233,20 @@ export interface RendererApi {
     // Phase-2 Season-29 (Multi-Tab-Diff): Aenderungen seit Session-Start.
     // Main resolved sessions.start_commit_sha + Branch + Diff-Counts.
     sessionDiff: (input: GitSessionDiffInput) => Promise<IpcResult<GitSessionDiffResult>>;
+    // Season 37 (Worktree-Support): lokale Branch-Liste fuers Modal-Dropdown.
+    listBranches: (input: GitListBranchesInput) => Promise<IpcResult<GitListBranchesResult>>;
+    // Season 37: bestehende Worktrees eines Projekts (Uebersicht im Modal).
+    worktreeList: (input: GitWorktreeListInput) => Promise<IpcResult<GitWorktreeListResult>>;
+    // Season 37: Worktree-Diff vs. Basis-Branch (main/master).
+    worktreeDiff: (input: GitWorktreeDiffInput) => Promise<IpcResult<GitWorktreeDiffResult>>;
+    // Season 37: Worktree-Cleanup beim Archivieren (mit Dirty-Rueckfrage).
+    worktreeRemove: (
+      input: GitWorktreeRemoveInput,
+    ) => Promise<IpcResult<GitWorktreeRemoveResult>>;
+    // Season 37: Working-Tree-Status des Worktrees einer Session (Pre-Commit).
+    worktreeStatus: (
+      input: GitWorktreeStatusInput,
+    ) => Promise<IpcResult<GitWorktreeStatusResult>>;
   };
   projects: {
     list: () => Promise<IpcResult<ProjectRow[]>>;

@@ -1,5 +1,10 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import type { GitFileChange, GitFileStatus, GitStatusResult } from '@shared/types';
+import type {
+  GitFileChange,
+  GitFileStatus,
+  GitStatusResult,
+  GitWorktreeEntry,
+} from '@shared/types';
 
 // Driver-Wrapper für simple-git (Sprint 7, Architektur 6.7).
 //
@@ -46,6 +51,32 @@ export interface GitDriver {
   // status(), damit der Renderer denselben File-Liste-Komponente nutzen kann.
   // Untracked-Files sind bewusst enthalten — sie sind „neu seit Session-Start".
   changedFilesAgainst(repoPath: string, baselineRef: string): Promise<GitFileChange[]>;
+  // Season 37 (Worktree-Support): lokale Branches + aktueller Branch des
+  // Haupt-Checkouts. Speist das „bestehenden Branch auschecken"-Dropdown.
+  listBranches(repoPath: string): Promise<{ current: string; branches: string[] }>;
+  // Season 37: bestehende Worktrees (`git worktree list --porcelain`). Erster
+  // Eintrag ist der Haupt-Checkout (isMain=true).
+  listWorktrees(repoPath: string): Promise<GitWorktreeEntry[]>;
+  // Season 37: Worktree anlegen. mode='new' → `git worktree add -b <branch>
+  // <path> <baseRef>`, mode='existing' → `git worktree add <path> <branch>`.
+  // Wirft bei Branch-Kollision / bereits ausgechecktem Branch — der Caller
+  // faengt ab und liefert ein Result-Err mit Code.
+  addWorktree(
+    repoPath: string,
+    worktreePath: string,
+    opts: { branch: string; mode: 'new' | 'existing'; baseRef?: string | null },
+  ): Promise<void>;
+  // Season 37: Worktree entfernen. force=true → `--force` (auch bei dirty).
+  // Raeumt anschliessend verwaiste Verwaltungs-Eintraege via `worktree prune`.
+  removeWorktree(repoPath: string, worktreePath: string, force: boolean): Promise<void>;
+  // Season 37: Dirty-State eines Worktrees fuer die Cleanup-Rueckfrage —
+  // uncommittete Dateien + Commits vor dem Upstream (ungepusht).
+  worktreeDirtyState(
+    worktreePath: string,
+  ): Promise<{ uncommittedCount: number; ahead: number }>;
+  // Season 37: Basis-Ref fuer den Worktree-Diff aufloesen (main → master →
+  // origin/HEAD → 'HEAD' als letzter Fallback).
+  resolveBaseBranchRef(repoPath: string): Promise<string>;
 }
 
 // Real-Driver: instanziiert simple-git pro Aufruf am gegebenen Pfad. Kein Caching
@@ -238,7 +269,118 @@ export const realGitDriver: GitDriver = {
     out.sort((a, b) => a.path.localeCompare(b.path));
     return out;
   },
+
+  async listBranches(repoPath: string): Promise<{ current: string; branches: string[] }> {
+    const git = simpleGit(repoPath);
+    // branchLocal() liefert nur lokale Branches (kein git fetch noetig). `all`
+    // ist bereits sortiert; `current` ist '' bei detached HEAD.
+    const summary = await git.branchLocal();
+    return {
+      current: summary.current ?? '',
+      branches: [...summary.all].sort((a, b) => a.localeCompare(b)),
+    };
+  },
+
+  async listWorktrees(repoPath: string): Promise<GitWorktreeEntry[]> {
+    const git = simpleGit(repoPath);
+    const raw = await git.raw(['worktree', 'list', '--porcelain']);
+    return parseWorktreeListPorcelain(raw);
+  },
+
+  async addWorktree(
+    repoPath: string,
+    worktreePath: string,
+    opts: { branch: string; mode: 'new' | 'existing'; baseRef?: string | null },
+  ): Promise<void> {
+    const git = simpleGit(repoPath);
+    if (opts.mode === 'new') {
+      const baseRef = opts.baseRef && opts.baseRef.length > 0 ? opts.baseRef : 'HEAD';
+      // -b legt den Branch an; schlaegt fehl, wenn er schon existiert (der Caller
+      // meldet das als WORKTREE_ADD_FAILED an den Renderer).
+      await git.raw(['worktree', 'add', '-b', opts.branch, worktreePath, baseRef]);
+    } else {
+      await git.raw(['worktree', 'add', worktreePath, opts.branch]);
+    }
+  },
+
+  async removeWorktree(repoPath: string, worktreePath: string, force: boolean): Promise<void> {
+    const git = simpleGit(repoPath);
+    const args = ['worktree', 'remove'];
+    if (force) args.push('--force');
+    args.push(worktreePath);
+    await git.raw(args);
+    // Verwaltungs-Eintraege aufraeumen, falls der Ordner extern schon weg war.
+    await git.raw(['worktree', 'prune']).catch(() => undefined);
+  },
+
+  async worktreeDirtyState(
+    worktreePath: string,
+  ): Promise<{ uncommittedCount: number; ahead: number }> {
+    const git = simpleGit(worktreePath);
+    const status = await git.status();
+    return { uncommittedCount: status.files.length, ahead: status.ahead };
+  },
+
+  async resolveBaseBranchRef(repoPath: string): Promise<string> {
+    const git = simpleGit(repoPath);
+    // Reihenfolge: main → master → origin/HEAD → 'HEAD' (letzter Fallback zeigt
+    // dann nur uncommittete Worktree-Aenderungen, statt zu werfen).
+    for (const candidate of ['main', 'master']) {
+      try {
+        await git.revparse(['--verify', '--quiet', `refs/heads/${candidate}`]);
+        return candidate;
+      } catch {
+        // Branch existiert nicht — naechsten Kandidaten probieren.
+      }
+    }
+    try {
+      const sym = await git.raw(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+      const trimmed = sym.trim();
+      if (trimmed.length > 0) return trimmed;
+    } catch {
+      // Kein origin/HEAD gesetzt.
+    }
+    return 'HEAD';
+  },
 };
+
+// Season 37 (Worktree-Support): Pure-Parser fuer `git worktree list --porcelain`.
+// Pro Worktree ein Block:
+//   worktree <abs-path>
+//   HEAD <sha>
+//   branch refs/heads/<name>        (oder: `detached` ohne branch-Zeile)
+//   <leerzeile>
+// Der erste Block ist per git-Konvention immer der Haupt-Checkout (isMain=true).
+// Exportiert fuer Tests.
+export function parseWorktreeListPorcelain(raw: string): GitWorktreeEntry[] {
+  const entries: GitWorktreeEntry[] = [];
+  let currentPath: string | null = null;
+  let currentBranch: string | null = null;
+  const flush = () => {
+    if (currentPath !== null) {
+      entries.push({
+        path: currentPath,
+        branch: currentBranch,
+        isMain: entries.length === 0,
+      });
+    }
+    currentPath = null;
+    currentBranch = null;
+  };
+  for (const line of raw.split('\n')) {
+    const trimmed = line.replace(/\r$/, '');
+    if (trimmed.startsWith('worktree ')) {
+      flush();
+      currentPath = trimmed.slice('worktree '.length);
+    } else if (trimmed.startsWith('branch ')) {
+      currentBranch = trimmed.slice('branch '.length).replace(/^refs\/heads\//, '');
+    } else if (trimmed === '') {
+      flush();
+    }
+  }
+  flush();
+  return entries;
+}
 
 // Mapping von simple-git's Single-Char-Status auf unser semantisches Vokabular.
 // Codes laut Git-Manual: M=modified, A=added, D=deleted, R=renamed, C=copied,

@@ -182,6 +182,16 @@ export const PtyCreateInputSchema = z
     // Phase-2 Season-5: freie Bezeichnung fuer type='custom'. Pflicht (min. 1
     // Zeichen) bei 'custom', bei allen anderen Typen ignoriert/null.
     customTypeLabel: z.string().min(1).max(60).nullish(),
+    // Season 37 (Worktree-Support): optionale Worktree-Konfiguration. branch ist
+    // auf 100 Zeichen begrenzt (Git-Refs sind praktisch kuerzer). baseRef nur bei
+    // mode='new' relevant.
+    worktree: z
+      .object({
+        branch: z.string().min(1).max(100),
+        mode: z.enum(['new', 'existing']),
+        baseRef: z.string().min(1).max(200).nullish(),
+      })
+      .nullish(),
   })
   .superRefine((val, ctx) => {
     if (val.type === 'custom' && (val.customTypeLabel === null || val.customTypeLabel === undefined)) {
@@ -189,6 +199,15 @@ export const PtyCreateInputSchema = z
         code: z.ZodIssueCode.custom,
         message: 'customTypeLabel ist Pflicht bei type=custom',
         path: ['customTypeLabel'],
+      });
+    }
+    // Season 37: Terminal-Sessions (Quick-Shells) bekommen keinen Worktree —
+    // sie brauchen keinen Branch und keinen Diff-Baseline.
+    if (val.type === 'terminal' && val.worktree !== null && val.worktree !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Worktree ist fuer type=terminal nicht erlaubt',
+        path: ['worktree'],
       });
     }
   });
@@ -371,6 +390,13 @@ export const FsReadInputSchema = z.object({
   relPath: z.string().min(1),
 });
 
+// Season 37 (Worktree-Support): liest aus dem Worktree-Verzeichnis einer
+// Session. sessionId statt projectId — der Main resolved sessions.worktree_path.
+export const FsReadWorktreeInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  relPath: z.string().min(1),
+});
+
 export const FsWriteInputSchema = z.object({
   projectId: z.string().min(1),
   relPath: z.string().min(1),
@@ -459,6 +485,33 @@ export const GitShowStagedInputSchema = z.object({
 // weil der Main das Projekt + den Baseline-SHA aus der Session-Row resolved.
 // Damit kann der Renderer keinen freien Baseline-SHA reinschmuggeln.
 export const GitSessionDiffInputSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+// Season 37 (Worktree-Support): projectId-basiert — Server resolved den Repo-Pfad.
+export const GitListBranchesInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
+export const GitWorktreeListInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
+// Season 37: sessionId statt projectId — der Main resolved Worktree-Pfad +
+// Branch aus der Session-Row (Renderer schickt keinen freien Pfad/Branch).
+export const GitWorktreeDiffInputSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+// Season 37: Cleanup-Aufruf. `force` optional (Default false) — erst nach
+// User-Bestaetigung bei dirty Worktree wird true geschickt.
+export const GitWorktreeRemoveInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  force: z.boolean().optional(),
+});
+
+// Season 37: Worktree-Working-Tree-Status fuers Pre-Commit-Panel.
+export const GitWorktreeStatusInputSchema = z.object({
   sessionId: z.string().uuid(),
 });
 

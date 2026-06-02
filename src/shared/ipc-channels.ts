@@ -63,6 +63,23 @@ export const Channels = {
   // GitFileChange[]. Renderer holt per-File-Inhalt am Baseline via
   // git:show mit ref=baselineSha.
   GitSessionDiff: 'git:session-diff',
+  // Season 37 (Worktree-Support): lokale Branch-Liste fuers „bestehenden Branch
+  // auschecken"-Dropdown im NewSessionModal.
+  GitListBranches: 'git:list-branches',
+  // Season 37: bestehende Worktrees eines Projekts (`git worktree list`) fuer
+  // die Uebersicht im Modal.
+  GitWorktreeList: 'git:list-worktrees',
+  // Season 37: Worktree-Diff vs. Basis-Branch (main/master). Server resolved
+  // Worktree-Pfad + Branch aus der Session-Row und vergleicht gegen den Basis-Ref.
+  GitWorktreeDiff: 'git:worktree-diff',
+  // Season 37: Cleanup eines Worktrees beim Archivieren. Ohne `force` nur bei
+  // sauberem Worktree; bei uncommitteten/ungepushten Aenderungen kommt
+  // dirty=true zurueck (Renderer fragt nach).
+  GitWorktreeRemove: 'git:worktree-remove',
+  // Season 37: Working-Tree-Status DES Worktrees einer Session — fuers
+  // Pre-Commit-Panel, das bei Worktree-Sessions den Worktree statt des
+  // Haupt-Checkouts anzeigen muss.
+  GitWorktreeStatus: 'git:worktree-status',
 
   // Token-Tracking (Sprint 5)
   UsageWindow: 'usage:window',
@@ -91,6 +108,9 @@ export const Channels = {
 
   // Filesystem (Sprint 6/7)
   FsRead: 'fs:read',
+  // Season 37 (Worktree-Support): liest eine Datei aus dem Worktree-Verzeichnis
+  // einer Session (sessions.worktree_path). „doc"-Seite des Worktree-Diff-Modus.
+  FsReadWorktree: 'fs:read-worktree',
   FsWrite: 'fs:write',
   FsListTemplates: 'fs:list-templates',
   // Phase-2 Season-4: Auto-Variablen, die DB- oder Datei-Zugriff brauchen

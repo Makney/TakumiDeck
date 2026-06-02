@@ -134,6 +134,11 @@ export interface CreateSessionInput {
   // als Diff-Baseline. Optional — bei has_git=0 / detached HEAD / revParse-
   // Fehler bleibt das Feld null.
   start_commit_sha?: string | null;
+  // Season 37 (Worktree-Support): bei Worktree-Sessions vom pty:create-Handler
+  // gesetzt (Pfad + Branch des angelegten Worktrees). Normale Sessions lassen
+  // beide weg — der Repo setzt dann null.
+  worktree_path?: string | null;
+  worktree_branch?: string | null;
 }
 
 // Whitelist für PATCH-Keys: schützt davor, dass jemand über die Schema-Boundary
@@ -168,7 +173,7 @@ export class SessionRepository {
       season_number: input.season_number ?? null,
       status: 'running',
       current_model: input.model ?? null,
-      worktree_branch: null,
+      worktree_branch: input.worktree_branch ?? null,
       notes_md: '',
       cwd: input.cwd,
       started_at: Date.now(),
@@ -177,6 +182,7 @@ export class SessionRepository {
       custom_type_label: input.custom_type_label ?? null,
       jsonl_path: input.jsonl_path ?? null,
       start_commit_sha: input.start_commit_sha ?? null,
+      worktree_path: input.worktree_path ?? null,
     };
     this.driver.insert(row);
     return rowFromInsert(row);
@@ -315,11 +321,11 @@ export class SqliteSessionDriver implements SessionDbDriver {
       `INSERT INTO sessions (
         id, project_id, title, type, season_number, status, current_model,
         worktree_branch, notes_md, cwd, started_at, ended_at, claude_session_id,
-        custom_type_label, jsonl_path, start_commit_sha
+        custom_type_label, jsonl_path, start_commit_sha, worktree_path
       ) VALUES (
         @id, @project_id, @title, @type, @season_number, @status, @current_model,
         @worktree_branch, @notes_md, @cwd, @started_at, @ended_at, @claude_session_id,
-        @custom_type_label, @jsonl_path, @start_commit_sha
+        @custom_type_label, @jsonl_path, @start_commit_sha, @worktree_path
       )`,
     );
     this.selectStmt = db.prepare<[string], SessionRow>(

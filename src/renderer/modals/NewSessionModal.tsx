@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import type {
   CustomModel,
+  GitWorktreeEntry,
+  PtyWorktreeOption,
   SessionType,
   DocsSyncFileStatus,
   DocsOnDemandFileStatus,
@@ -13,6 +15,7 @@ import {
   type ContextPreambleItem,
 } from '@shared/docs-sync';
 import { buildModelOptions, resolveModelSelectValue } from '@shared/models';
+import { sanitizeBranchName } from '@shared/worktree';
 
 // NewSessionModal: Sprint-3-Pflicht aus Architektur 6.0.1.
 //
@@ -91,6 +94,9 @@ interface Props {
     // TabContainer nach erfolgreichem PTY-Spawn via Bracketed-Paste an die
     // frische Session gesendet.
     initialPrompt?: string | null;
+    // Season 37 (Worktree-Support): nur gesetzt, wenn der User die Worktree-
+    // Option waehlt. Der Main legt den Worktree an und spawnt die Session dort.
+    worktree?: PtyWorktreeOption | null;
   }) => void;
 }
 
@@ -130,6 +136,22 @@ export function NewSessionModal({
   const [onDemandSelection, setOnDemandSelection] = useState<Set<string>>(
     () => new Set(),
   );
+  // Season 37 (Worktree-Support): Worktree-Optionen. enabled steuert den ganzen
+  // Block; mode unterscheidet neuen Branch von bestehendem. branchInput haelt
+  // den Namen (neuer Branch) bzw. die Auswahl (bestehender Branch).
+  const [worktreeEnabled, setWorktreeEnabled] = useState(false);
+  const [worktreeMode, setWorktreeMode] = useState<'new' | 'existing'>('new');
+  const [worktreeBranchNew, setWorktreeBranchNew] = useState('');
+  const [worktreeBranchExisting, setWorktreeBranchExisting] = useState('');
+  // Git-Status fuer den Worktree-Block: Branch-Liste + bestehende Worktrees.
+  // hasGit=false → das Projekt ist kein Repo, der Block bleibt mit Hinweis aus.
+  const [worktreeGit, setWorktreeGit] = useState<{
+    hasGit: boolean;
+    branches: string[];
+    current: string;
+    worktrees: GitWorktreeEntry[];
+  } | null>(null);
+  const [worktreeLoading, setWorktreeLoading] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const customLabelRef = useRef<HTMLInputElement>(null);
 
@@ -218,6 +240,56 @@ export function NewSessionModal({
     };
   }, [type, projectId, onDemandStatus]);
 
+  // Season 37: Terminal-Sessions bekommen keinen Worktree — beim Wechsel auf
+  // 'terminal' die Auswahl zuruecksetzen, damit kein verborgener Worktree-State
+  // beim Submit mitfaehrt.
+  useEffect(() => {
+    if (type === 'terminal' && worktreeEnabled) {
+      setWorktreeEnabled(false);
+    }
+  }, [type, worktreeEnabled]);
+
+  // Season 37: Branch-Liste + bestehende Worktrees laden, sobald der User den
+  // Worktree-Block aktiviert. Read-only IPC (kein Server-Side-Effect) → kein
+  // useRef-Guard noetig. Einmal laden und cachen.
+  useEffect(() => {
+    if (!worktreeEnabled || !projectId || type === 'terminal') return;
+    if (worktreeGit !== null) return;
+    let cancelled = false;
+    setWorktreeLoading(true);
+    void Promise.all([
+      window.api.git.listBranches({ projectId }),
+      window.api.git.worktreeList({ projectId }),
+    ]).then(([branchesRes, worktreesRes]) => {
+      if (cancelled) return;
+      setWorktreeLoading(false);
+      const hasGit = branchesRes.ok ? branchesRes.data.hasGit : false;
+      setWorktreeGit({
+        hasGit,
+        branches: branchesRes.ok ? branchesRes.data.branches : [],
+        current: branchesRes.ok ? branchesRes.data.current : '',
+        worktrees: worktreesRes.ok ? worktreesRes.data.worktrees : [],
+      });
+      // Default-Auswahl fuer den „bestehenden Branch"-Modus: erster Branch, der
+      // nicht der aktuelle und nicht bereits in einem Worktree ausgecheckt ist.
+      if (branchesRes.ok) {
+        const checkedOut = new Set(
+          (worktreesRes.ok ? worktreesRes.data.worktrees : [])
+            .map((w) => w.branch)
+            .filter((b): b is string => b !== null),
+        );
+        const firstFree = branchesRes.data.branches.find(
+          (b) => b !== branchesRes.data.current && !checkedOut.has(b),
+        );
+        if (firstFree) setWorktreeBranchExisting(firstFree);
+      }
+    });
+    return () => {
+      cancelled = true;
+      setWorktreeLoading(false);
+    };
+  }, [worktreeEnabled, projectId, type, worktreeGit]);
+
   const trimmedCustomLabel = customLabel.trim();
 
   // Phase-2 Season-21: Submit-Validierung. Docs-Sync braucht mindestens eine
@@ -228,10 +300,31 @@ export function NewSessionModal({
     [docsSyncSelection],
   );
 
+  // Season 37: aktiver, gueltiger Worktree-Branch (je nach Modus).
+  const worktreeActive = worktreeEnabled && type !== 'terminal';
+  const worktreeBranch =
+    worktreeMode === 'new' ? worktreeBranchNew.trim() : worktreeBranchExisting;
+  const worktreeValid =
+    !worktreeActive || (worktreeGit?.hasGit === true && worktreeBranch.length > 0);
+
+  // Season 37: Branches, die als „bestehender Branch" auscheckbar sind — ohne
+  // den aktuellen (im Haupt-Checkout aktiv) und ohne bereits in einem anderen
+  // Worktree ausgecheckte. Plus die Linked-Worktrees fuer die Uebersicht.
+  const linkedWorktrees = (worktreeGit?.worktrees ?? []).filter((w) => !w.isMain);
+  const checkedOutBranches = new Set(
+    (worktreeGit?.worktrees ?? [])
+      .map((w) => w.branch)
+      .filter((b): b is string => b !== null),
+  );
+  const existingBranchOptions = (worktreeGit?.branches ?? []).filter(
+    (b) => b !== worktreeGit?.current && !checkedOutBranches.has(b),
+  );
+
   const canSubmit =
     title.trim().length > 0 &&
     (type !== 'custom' || trimmedCustomLabel.length > 0) &&
-    (type !== 'docs-sync' || selectedDocsSyncFiles.length > 0);
+    (type !== 'docs-sync' || selectedDocsSyncFiles.length > 0) &&
+    worktreeValid;
 
   const toggleDocsSyncFile = (sourcePath: string) => {
     setDocsSyncSelection((prev) => {
@@ -283,12 +376,18 @@ export function NewSessionModal({
     } else if (type !== 'terminal' && onDemandPreambleItems.length > 0) {
       preamble = buildContextPreamble(onDemandPreambleItems);
     }
+    // Season 37: Worktree-Option nur, wenn aktiv + gueltiger Branch.
+    const worktreeOption: PtyWorktreeOption | null =
+      worktreeActive && worktreeBranch.length > 0
+        ? { branch: worktreeBranch, mode: worktreeMode, baseRef: null }
+        : null;
     onCreate({
       title: title.trim(),
       type,
       model: type === 'terminal' ? 'none' : model,
       customTypeLabel: type === 'custom' ? trimmedCustomLabel : null,
       initialPrompt: preamble,
+      worktree: worktreeOption,
     });
   };
 
@@ -470,6 +569,108 @@ export function NewSessionModal({
                 ))}
               </select>
             </label>
+          )}
+
+          {/* Season 37 (Worktree-Support): optionaler Block, eine Session in
+              einem eigenen Git-Worktree (paralleler Branch im Sibling-Ordner)
+              laufen zu lassen. Nicht fuer Terminal-Quick-Shells. */}
+          {type !== 'terminal' && (
+            <div className="td-field td-worktree-field">
+              <label className="td-worktree-toggle">
+                <input
+                  type="checkbox"
+                  checked={worktreeEnabled}
+                  onChange={(e) => setWorktreeEnabled(e.target.checked)}
+                />
+                <span>In Git-Worktree arbeiten</span>
+              </label>
+              {worktreeEnabled && (
+                <div className="td-worktree-block">
+                  {worktreeLoading && !worktreeGit && (
+                    <span className="td-form-meta">Branches werden geladen…</span>
+                  )}
+                  {worktreeGit && !worktreeGit.hasGit && (
+                    <span className="td-form-meta td-worktree-warn">
+                      Dieses Projekt ist kein Git-Repository — Worktree nicht möglich.
+                    </span>
+                  )}
+                  {worktreeGit?.hasGit && (
+                    <>
+                      <div className="td-radio-row td-worktree-mode">
+                        <button
+                          type="button"
+                          className={`td-radio ${worktreeMode === 'new' ? 'active' : ''}`}
+                          onClick={() => setWorktreeMode('new')}
+                        >
+                          Neuer Branch
+                        </button>
+                        <button
+                          type="button"
+                          className={`td-radio ${worktreeMode === 'existing' ? 'active' : ''}`}
+                          onClick={() => setWorktreeMode('existing')}
+                        >
+                          Bestehender Branch
+                        </button>
+                      </div>
+                      {worktreeMode === 'new' ? (
+                        <>
+                          <input
+                            type="text"
+                            value={worktreeBranchNew}
+                            onChange={(e) => setWorktreeBranchNew(e.target.value)}
+                            placeholder="z.B. experiment/foo"
+                            maxLength={100}
+                          />
+                          <span className="td-form-meta">
+                            Neuer Branch, abgezweigt von{' '}
+                            <code>{worktreeGit.current || 'HEAD'}</code>.
+                            {worktreeBranchNew.trim().length > 0 && (
+                              <>
+                                {' '}Branch:{' '}
+                                <code>{sanitizeBranchName(worktreeBranchNew)}</code>
+                              </>
+                            )}
+                          </span>
+                        </>
+                      ) : existingBranchOptions.length > 0 ? (
+                        <>
+                          <select
+                            value={worktreeBranchExisting}
+                            onChange={(e) => setWorktreeBranchExisting(e.target.value)}
+                          >
+                            {existingBranchOptions.map((b) => (
+                              <option key={b} value={b}>
+                                {b}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="td-form-meta">
+                            Bestehender Branch wird in einen eigenen Worktree
+                            ausgecheckt.
+                          </span>
+                        </>
+                      ) : (
+                        <span className="td-form-meta td-worktree-warn">
+                          Kein freier Branch — alle sind bereits ausgecheckt.
+                        </span>
+                      )}
+                      {linkedWorktrees.length > 0 && (
+                        <div className="td-worktree-existing">
+                          <span className="td-form-meta">Bestehende Worktrees:</span>
+                          <ul>
+                            {linkedWorktrees.map((w) => (
+                              <li key={w.path} title={w.path}>
+                                <code>{w.branch ?? '(detached)'}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="td-modal-footer">

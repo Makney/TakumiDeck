@@ -34,6 +34,16 @@ export interface FsWriteInput {
   content: string;
 }
 
+// Season 37 (Worktree-Support): liest eine Datei aus dem Worktree-Verzeichnis
+// einer Session (statt aus dem Projekt-Root). Der Worktree-Diff-Modus im
+// DiffViewer braucht den Working-Tree-Stand des Worktrees als „doc"-Seite.
+// Server resolved sessionId → sessions.worktree_path; Renderer schickt nie
+// einen freien Pfad. Ergebnis ist ein FsReadResult wie bei fs:read.
+export interface FsReadWorktreeInput {
+  sessionId: string;
+  relPath: string;
+}
+
 export interface FsReadResult {
   // Voller Datei-Inhalt (UTF-8). Editor lädt diesen als Initial-Content.
   content: string;

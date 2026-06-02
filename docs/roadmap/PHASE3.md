@@ -64,7 +64,7 @@ Konfiguration mehrerer Hauptordner für verschiedene Kontexte.
 
 **Trigger:** Wenn der Workflow mehrere klar getrennte Kontexte hat (z.B. Privat-Projekte und Konsolen-Projekte mit verschiedenen Settings).
 
-### Feature: Worktree-Support
+### Feature: Worktree-Support ✅
 
 Parallele Sessions am selben Code in verschiedenen Branches.
 

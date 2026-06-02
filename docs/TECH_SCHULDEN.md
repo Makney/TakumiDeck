@@ -30,6 +30,34 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Working-Tree-/Staged-Diff + Datei-Browser nicht worktree-bewusst (2026-06-02)
+
+**Bereich:** `src/renderer/components/DiffViewer.tsx` (Modi `working`/`staged`), `src/renderer/panels/RightPaneFilesPanel.tsx`. Beide ziehen ihren Git-Status über `git:status({ projectId })` — also vom **Haupt-Checkout**, nicht vom Worktree der aktiven Session.
+
+**Was:** Bei einer Worktree-Session zeigen die Diff-Tabs „Working Tree" und „Staged" sowie die M/A/D-Marker im Datei-Browser den Stand des Projekt-Roots, nicht des Worktrees. Worktree-bewusst sind in Season 37 nur der neue Tab „vs. main" (`git:worktree-diff`) und das Pre-Commit-Panel (`git:worktree-status`). Der Datei-Browser/Editor öffnet zudem weiterhin Dateien aus dem Projekt-Root (`fs:read({ projectId })`), nicht aus dem Worktree.
+
+**Warum so:** Season 37 war als Variante B auf „Worktree erstellen · Cleanup · Diff vs. main · Committen" geschnitten. Die durchgängige Worktree-Sicht für *alle* Right-Pane-Pfade hätte jeden status-/read-Aufruf session-bewusst machen müssen (Diff-Modi, Datei-Browser-Marker, Editor-Open, Auto-Refresh-Watch) — deutlich breiter als der Season-Scope. „vs. main" + Pre-Commit decken den akuten Bedarf (sehen, was der Branch enthält; committen) ab.
+
+**Risiko:** Mittel-niedrig, primär Verwirrung: Wer in einer Worktree-Session den „Working Tree"-Tab oder den Datei-Browser nutzt, sieht den main-Stand und hält den Worktree fälschlich für leer/unverändert. Kein Datenverlust — der „vs. main"-Tab + Pre-Commit zeigen den echten Worktree-Stand.
+
+**Auflösung:** **Trigger:** wenn das Editieren/Diffen *im* Worktree über die App (statt nur Ansehen + Committen) im Daily-Use spürbar wird. Dann den Right-Pane session-bewusst machen: aktive Session → worktree_path; status/read/watch auf den Worktree-Pfad umlenken (analog `git:worktree-status`/`fs:read-worktree`), idealerweise über einen gemeinsamen „effektiver Repo-Pfad der aktiven Session"-Resolver statt pro Aufruf.
+
+---
+
+## Kein In-App-Merge / Branch-Switch für Worktrees (2026-06-02)
+
+**Bereich:** Worktree-Workflow (`src/main/ipc/git.ts`, NewSessionModal/HistoryActionModal). TakumiDeck legt Worktrees an, zeigt sie, difft sie und räumt sie auf — aber der Merge zurück nach `main` (und Branch-Switch/Pull) fehlt.
+
+**Was:** Nach einer fertigen Worktree-Season muss der User den Branch von Hand zurückführen (`git merge <branch>`), entweder per externer Shell, per `git -C <worktree>` aus einer Terminal-Session (die im Projekt-Root läuft) oder über die claude-Session im Worktree. TakumiDeck-Terminal-Sessions können selbst **nicht** in einem Worktree laufen (Schema schließt `type='terminal'` + worktree aus). Die HistoryPane-Tabellen-Archivierung zeigt bei dirty Worktree nur einen Hinweis (kein Force-Confirm) — die volle Rückfrage gibt es nur im Sidebar-Detail-Modal.
+
+**Warum so:** Bewusste Scope-Grenze (siehe ENTSCHEIDUNGEN „Worktree-Support … ohne In-App-Merge, Variante B"). Merge/Pull/Branch-Switch ist ein eigenständiges Git-Schreib-Feature mit Konflikt-UI und gehört zum Roadmap-Punkt „Pull/Fetch/Branch-Switch in der App" ([PHASE3.md](./roadmap/PHASE3.md)).
+
+**Risiko:** Niedrig, rein Komfort. Der manuelle Weg ist dokumentiert; Datenverlust ist durch den Dirty-Schutz beim Cleanup abgesichert.
+
+**Auflösung:** **Trigger:** wenn der manuelle Merge-Schritt im Daily-Use stört. Dann das Roadmap-Feature „Pull/Fetch/Branch-Switch" ziehen und dort einen „Worktree nach main mergen + aufräumen"-Pfad mitnehmen (Merge → bei Erfolg Worktree entfernen + Branch löschen, mit Konflikt-Anzeige).
+
+---
+
 ## TerminalTab-Init-Effekt nicht in Lifecycle-Hooks zerlegt — Shell bleibt bei 846 Zeilen (2026-06-01)
 
 **Bereich:** `src/renderer/panels/TerminalTab.tsx`. Nach dem Datei-Längen-Refactor (Variante B, siehe ENTSCHEIDUNGEN „TerminalTab-Aufteilung: UI-Hooks raus, Init-Effekt bleibt ganz") liegt die Shell bei 846 Zeilen — über dem 500-Ziel, klar unter der 1200-Pflichtgrenze. Der Überhang steckt fast vollständig im monolithischen xterm-Init-`useEffect` (~550 Zeilen), der bewusst nicht aufgetrennt wurde.

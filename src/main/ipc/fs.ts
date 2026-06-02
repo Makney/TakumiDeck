@@ -8,6 +8,7 @@ import {
   FsListTemplatesInputSchema,
   FsListTreeInputSchema,
   FsReadInputSchema,
+  FsReadWorktreeInputSchema,
   FsSaveScreenshotInputSchema,
   FsScreenshotsSummaryInputSchema,
   FsSetWatchedProjectInputSchema,
@@ -29,6 +30,7 @@ import { scanProjectTree, realFsTreeDriver } from '../fs/treeScanner';
 import { buildScreenshotFilename } from '../fs/screenshotSave';
 import { clearAllScreenshots, summarizeScreenshots } from '../screenshots/retention';
 import type { ProjectRepository } from '../db/repos/projects';
+import type { SessionRepository } from '../db/repos/sessions';
 import type { ProjectFilesWatcher } from '../fs/project-watcher';
 import type { Logger } from '../logger';
 import { assertFromMainWindow } from './sender-guard';
@@ -51,6 +53,10 @@ import { assertFromMainWindow } from './sender-guard';
 
 export function registerFsIpc(deps: {
   projects: ProjectRepository;
+  // Season 37 (Worktree-Support): fuer den fs:read-worktree-Handler, der
+  // sessionId → sessions.worktree_path aufloest. Optional, damit Tests den
+  // Handler ohne Session-Setup pruefen koennen.
+  sessions?: SessionRepository;
   templatesDir: string;
   // Phase-2 Season-2: Ziel-Ordner für gedroppte Screenshots
   // (= <userData>/screenshots/, von configurePaths angelegt).
@@ -61,7 +67,7 @@ export function registerFsIpc(deps: {
   projectWatcher?: ProjectFilesWatcher;
   log: Logger;
 }): void {
-  const { projects, templatesDir, screenshotsDir, projectWatcher, log } = deps;
+  const { projects, sessions, templatesDir, screenshotsDir, projectWatcher, log } = deps;
 
   ipcMain.handle(Channels.FsListTemplates, async (event, payload: unknown) => {
     const guard = assertFromMainWindow(event);
@@ -127,6 +133,65 @@ export function registerFsIpc(deps: {
       }
     } catch (e) {
       return errFromUnknown(e, 'FS_READ');
+    }
+  });
+
+  // Season 37 (Worktree-Support): liest eine Datei aus dem Worktree-Verzeichnis
+  // einer Session. Same Anti-Traversal-Resolve wie fs:read, aber der Root ist
+  // sessions.worktree_path statt project.path. „doc"-Seite des Worktree-Diffs.
+  ipcMain.handle(Channels.FsReadWorktree, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = FsReadWorktreeInputSchema.parse(payload);
+      if (!sessions) {
+        return err('Worktree-Read nicht verfuegbar', 'FS_READ_WORKTREE_UNAVAILABLE');
+      }
+      const session = sessions.findById(input.sessionId);
+      if (!session) {
+        return err(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
+      }
+      if (session.worktree_path === null) {
+        return err('Session hat keinen Worktree', 'FS_NO_WORKTREE');
+      }
+      const absolute = await resolveProjectRelativeReal(
+        session.worktree_path,
+        input.relPath,
+      );
+      if (absolute === null) {
+        return err(`Pfad „${input.relPath}" liegt außerhalb des Worktrees`, 'FS_PATH_ESCAPED');
+      }
+      try {
+        const content = await fs.readFile(absolute, 'utf8');
+        const result: FsReadResult = {
+          content,
+          relPath: input.relPath,
+          absolutePath: absolute,
+        };
+        return ok(result);
+      } catch (e) {
+        if (isFsNotFound(e)) {
+          // Datei existiert im Worktree nicht (z.B. im Branch geloescht) — leerer
+          // Inhalt, damit der Diff-Viewer das als Loeschung gegen den Basis-Ref
+          // zeigt, statt einen Fehler zu werfen.
+          const result: FsReadResult = {
+            content: '',
+            relPath: input.relPath,
+            absolutePath: absolute,
+          };
+          return ok(result);
+        }
+        if (isFsPermissionDenied(e)) {
+          return err(
+            `Keine Lese-Berechtigung für „${input.relPath}" im Worktree.`,
+            'FS_PERMISSION',
+          );
+        }
+        log.warn(`[fs:read-worktree] readFile fehlgeschlagen path=${absolute}`, e);
+        return err('Datei konnte nicht gelesen werden', 'FS_READ_WORKTREE_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'FS_READ_WORKTREE');
     }
   });
 

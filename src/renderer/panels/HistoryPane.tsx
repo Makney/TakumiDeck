@@ -300,6 +300,7 @@ export function HistoryPane({ project, settings }: Props) {
         return;
       }
       setResumeError(null);
+      await cleanupWorktreeAfterArchive(entry.id, setError);
       setEntries((prev) =>
         prev.map((e) => (e.id === entry.id ? { ...e, status: 'archived' as const } : e)),
       );
@@ -353,6 +354,7 @@ export function HistoryPane({ project, settings }: Props) {
         setError(`Archivieren fehlgeschlagen: ${result.error}`);
         return;
       }
+      await cleanupWorktreeAfterArchive(entry.id, setError);
       // Liste lokal aktualisieren — refresh holt sie sonst per filter-Useeffect-Re-Run.
       setEntries((prev) =>
         prev.map((e) => (e.id === entry.id ? { ...e, status: 'archived' as const } : e)),
@@ -745,6 +747,25 @@ function ModelsBreakdown({ entry }: { entry: SessionHistoryEntry }) {
       </div>
     </div>
   );
+}
+
+// Season 37 (Worktree-Support): nach dem Archivieren den Worktree der Session
+// aufraeumen. No-op fuer normale Sessions (der Handler liefert removed=false/
+// dirty=false). Bei einem dirty Worktree wird er NICHT entfernt — der User
+// bekommt einen Hinweis und kann ihn ueber das Session-Detail-Modal (Sidebar)
+// gezielt mit Bestaetigung entfernen. Hier in der Tabellen-Ansicht bleibt es
+// bewusst beim Hinweis (kein zusaetzliches Force-Overlay).
+async function cleanupWorktreeAfterArchive(
+  sessionId: string,
+  setError: (msg: string) => void,
+): Promise<void> {
+  const wt = await window.api.git.worktreeRemove({ sessionId, force: false });
+  if (wt.ok && wt.data.dirty) {
+    setError(
+      'Worktree mit uncommitteten/ungepushten Aenderungen behalten — ' +
+        'über das Session-Detail (Sidebar-Klick) gezielt entfernbar.',
+    );
+  }
 }
 
 function formatDate(epochMs: number): string {

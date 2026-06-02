@@ -327,6 +327,8 @@ void app.whenReady().then(async () => {
 
     registerFsIpc({
       projects: projectRepo,
+      // Season 37 (Worktree-Support): fuer den fs:read-worktree-Handler.
+      sessions,
       templatesDir: templatesDirFromUserData(getDataDir()),
       screenshotsDir: screenshotsDirFromUserData(getDataDir()),
       projectWatcher: projectFilesWatcher,

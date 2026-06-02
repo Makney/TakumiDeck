@@ -2658,6 +2658,53 @@ body,
   color: var(--td-text);
 }
 
+/* Season 37 (Worktree-Support): Worktree-Block im NewSessionModal. */
+.td-worktree-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.td-worktree-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  background: var(--td-panel);
+}
+
+.td-worktree-mode {
+  margin-bottom: 2px;
+}
+
+.td-worktree-warn {
+  color: var(--td-orange, var(--td-red));
+}
+
+.td-worktree-existing {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.td-worktree-existing ul {
+  margin: 4px 0 0;
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.td-worktree-existing code {
+  font-family: var(--td-mono);
+  font-size: 11px;
+  color: var(--td-text);
+}
+
 /* ----- Sprint 6: HistoryPane ----- */
 
 .td-history-pane {
@@ -3830,6 +3877,18 @@ body,
   font-size: 11.5px;
 }
 
+/* Season 37 (Worktree-Support): Badge im Pre-Commit-Panel, wenn der Status aus
+   dem Worktree der aktiven Session stammt. */
+.td-precommit-worktree-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid var(--td-accent);
+  color: var(--td-accent);
+}
+
 .td-precommit-ahead {
   color: var(--td-accent);
   font-size: 10.5px;
@@ -4999,6 +5058,27 @@ body,
   border-radius: 2px;
   color: var(--td-red);
   font-size: 12px;
+}
+
+/* Season 37 (Worktree-Support): Rueckfrage-Block, wenn der Worktree der
+   archivierten Session uncommittete/ungepushte Aenderungen hat. */
+.td-history-action-worktree-warn {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(230, 160, 60, 0.1);
+  border: 1px solid var(--td-orange, var(--td-red));
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.td-history-action-worktree-warn p {
+  margin: 0 0 8px;
+}
+
+.td-history-action-worktree-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .td-history-action-footer {

@@ -1,0 +1,14 @@
+-- Season 37 (Worktree-Support): sessions.worktree_path haelt den absoluten Pfad
+-- des Git-Worktrees, in dem eine Session laeuft. Die Spalte worktree_branch
+-- existiert seit 0001_init.sql (war bis hierher Forward-Compat, immer NULL) und
+-- haelt den dazugehoerigen Branch-Namen.
+--
+-- Befuellung:
+-- Beim pty:create, wenn der User im NewSessionModal die Worktree-Option waehlt:
+-- der Main legt via `git worktree add` ein Worktree-Verzeichnis an, schreibt den
+-- Pfad hierher und spawnt die Session mit cwd = worktree_path. session:resume
+-- nutzt das gespeicherte cwd, laeuft also automatisch im Worktree weiter.
+--
+-- NULL fuer alle normalen Sessions (cwd = Projekt-Root) und alle Bestands-
+-- Sessions vor Season 37.
+ALTER TABLE sessions ADD COLUMN worktree_path TEXT;

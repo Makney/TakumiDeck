@@ -7,13 +7,23 @@ import {
   GitShowInputSchema,
   GitShowStagedInputSchema,
   GitSessionDiffInputSchema,
+  GitListBranchesInputSchema,
+  GitWorktreeListInputSchema,
+  GitWorktreeDiffInputSchema,
+  GitWorktreeRemoveInputSchema,
+  GitWorktreeStatusInputSchema,
 } from '@shared/schemas';
 import type {
   GitDiffResult,
+  GitListBranchesResult,
   GitSessionDiffResult,
   GitShowResult,
   GitShowStagedResult,
   GitStatusResult,
+  GitWorktreeDiffResult,
+  GitWorktreeListResult,
+  GitWorktreeRemoveResult,
+  GitWorktreeStatusResult,
   IpcResult,
   ProjectRow,
 } from '@shared/types';
@@ -205,6 +215,221 @@ export function registerGitIpc(deps: {
       }
     } catch (e) {
       return errFromUnknown(e, 'GIT_SESSION_DIFF');
+    }
+  });
+
+  // Season 37 (Worktree-Support): lokale Branch-Liste fuers Modal-Dropdown.
+  ipcMain.handle(Channels.GitListBranches, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitListBranchesInputSchema.parse(payload);
+      const project = resolveGitProject(projects, input.projectId);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        const result: GitListBranchesResult = { hasGit: false, current: '', branches: [] };
+        return ok(result);
+      }
+      try {
+        const { current, branches } = await driver.listBranches(project.data.path);
+        const result: GitListBranchesResult = { hasGit: true, current, branches };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:list-branches] fehlgeschlagen path=${project.data.path}`, e);
+        return err('Branch-Liste konnte nicht geladen werden', 'GIT_LIST_BRANCHES_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_LIST_BRANCHES');
+    }
+  });
+
+  // Season 37: bestehende Worktrees eines Projekts (Uebersicht im Modal).
+  ipcMain.handle(Channels.GitWorktreeList, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitWorktreeListInputSchema.parse(payload);
+      const project = resolveGitProject(projects, input.projectId);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        const result: GitWorktreeListResult = { hasGit: false, worktrees: [] };
+        return ok(result);
+      }
+      try {
+        const worktrees = await driver.listWorktrees(project.data.path);
+        const result: GitWorktreeListResult = { hasGit: true, worktrees };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:list-worktrees] fehlgeschlagen path=${project.data.path}`, e);
+        return err('Worktree-Liste konnte nicht geladen werden', 'GIT_WORKTREE_LIST_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_WORKTREE_LIST');
+    }
+  });
+
+  // Season 37: Worktree-Diff vs. Basis-Branch (main/master). Renderer schickt
+  // die sessionId; der Main resolved Worktree-Pfad + Branch aus der Session-Row.
+  // Die per-File-Inhalte holt der Renderer separat: Original via git:show mit
+  // ref=baseRef (der Basis-Branch lebt im geteilten Objekt-Store, also liefert
+  // der Haupt-Checkout den Blob), doc via fs:read-worktree aus dem Worktree-Pfad.
+  ipcMain.handle(Channels.GitWorktreeDiff, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitWorktreeDiffInputSchema.parse(payload);
+      const session = sessions.findById(input.sessionId);
+      if (!session) {
+        return err(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
+      }
+      const project = resolveGitProject(projects, session.project_id);
+      if (!project.ok) return project;
+      if (
+        project.data.has_git === 0 ||
+        session.worktree_path === null ||
+        session.worktree_branch === null
+      ) {
+        const result: GitWorktreeDiffResult = {
+          hasWorktree: false,
+          branch: '',
+          baseRef: '',
+          files: [],
+        };
+        return ok(result);
+      }
+      try {
+        const baseRef = await driver.resolveBaseBranchRef(project.data.path);
+        const files = await driver.changedFilesAgainst(session.worktree_path, baseRef);
+        const result: GitWorktreeDiffResult = {
+          hasWorktree: true,
+          branch: session.worktree_branch,
+          baseRef,
+          files,
+        };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:worktree-diff] fehlgeschlagen path=${session.worktree_path}`, e);
+        return err('Worktree-Diff-Aufruf fehlgeschlagen', 'GIT_WORKTREE_DIFF_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_WORKTREE_DIFF');
+    }
+  });
+
+  // Season 37: Worktree-Cleanup beim Archivieren. Ohne `force` wird ein
+  // dirty Worktree (uncommittete/ungepushte Aenderungen) NICHT entfernt —
+  // stattdessen kommt dirty=true zurueck, und das UI fragt nach. Mit `force`
+  // wird bedingungslos entfernt.
+  ipcMain.handle(Channels.GitWorktreeRemove, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitWorktreeRemoveInputSchema.parse(payload);
+      const session = sessions.findById(input.sessionId);
+      if (!session) {
+        return err(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
+      }
+      // Keine Worktree-Session → No-op-Erfolg, damit der Archive-Flow im
+      // Renderer einheitlich aufrufen kann, ohne vorher zu pruefen.
+      if (session.worktree_path === null) {
+        const result: GitWorktreeRemoveResult = {
+          removed: false,
+          dirty: false,
+          uncommittedCount: 0,
+          ahead: 0,
+        };
+        return ok(result);
+      }
+      const project = resolveGitProject(projects, session.project_id);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        const result: GitWorktreeRemoveResult = {
+          removed: false,
+          dirty: false,
+          uncommittedCount: 0,
+          ahead: 0,
+        };
+        return ok(result);
+      }
+      const force = input.force ?? false;
+      try {
+        if (!force) {
+          const dirty = await driver.worktreeDirtyState(session.worktree_path);
+          if (dirty.uncommittedCount > 0 || dirty.ahead > 0) {
+            const result: GitWorktreeRemoveResult = {
+              removed: false,
+              dirty: true,
+              uncommittedCount: dirty.uncommittedCount,
+              ahead: dirty.ahead,
+            };
+            return ok(result);
+          }
+        }
+        await driver.removeWorktree(project.data.path, session.worktree_path, force);
+        const result: GitWorktreeRemoveResult = {
+          removed: true,
+          dirty: false,
+          uncommittedCount: 0,
+          ahead: 0,
+        };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:worktree-remove] fehlgeschlagen path=${session.worktree_path}`, e);
+        return err('Worktree konnte nicht entfernt werden', 'GIT_WORKTREE_REMOVE_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_WORKTREE_REMOVE');
+    }
+  });
+
+  // Season 37: Working-Tree-Status DES Worktrees einer Session. Das Pre-Commit-
+  // Panel ruft das fuer die aktive Session; laeuft sie in einem Worktree, zeigt
+  // das Panel dessen Branch + geaenderte Dateien (statt des Haupt-Checkouts).
+  // hasWorktree=false → die Session laeuft im Projekt-Root, der Renderer faellt
+  // auf git:status zurueck.
+  ipcMain.handle(Channels.GitWorktreeStatus, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitWorktreeStatusInputSchema.parse(payload);
+      const session = sessions.findById(input.sessionId);
+      if (!session) {
+        return err(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
+      }
+      if (session.worktree_path === null) {
+        const result: GitWorktreeStatusResult = {
+          hasWorktree: false,
+          hasGit: true,
+          status: null,
+        };
+        return ok(result);
+      }
+      const project = resolveGitProject(projects, session.project_id);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        const result: GitWorktreeStatusResult = {
+          hasWorktree: true,
+          hasGit: false,
+          status: null,
+        };
+        return ok(result);
+      }
+      try {
+        // status() laeuft direkt im Worktree-Pfad — derselbe Driver wie fuer den
+        // Haupt-Checkout, nur mit anderem Repo-Pfad.
+        const status = await driver.status(session.worktree_path);
+        const result: GitWorktreeStatusResult = {
+          hasWorktree: true,
+          hasGit: true,
+          status,
+        };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:worktree-status] fehlgeschlagen path=${session.worktree_path}`, e);
+        return err('Worktree-Status-Aufruf fehlgeschlagen', 'GIT_WORKTREE_STATUS_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_WORKTREE_STATUS');
     }
   });
 }

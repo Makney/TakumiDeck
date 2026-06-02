@@ -18,6 +18,7 @@ const baseSession: Omit<SessionRow, 'id' | 'claude_session_id' | 'started_at' | 
   season_number: null,
   current_model: 'claude-sonnet-4-6',
   worktree_branch: null,
+  worktree_path: null,
   notes_md: '',
   ended_at: null,
   custom_type_label: null,

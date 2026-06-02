@@ -17,6 +17,22 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-06-02 — v0.4.0 — Worktree-Support: parallele Sessions in eigenen Branches
+
+### Was jetzt geht
+
+- **Eine Session kann in einem eigenen Git-Worktree laufen.** Im „Neue Session"-Dialog gibt es „In Git-Worktree arbeiten": entweder ein **neuer Branch** (von HEAD abgezweigt) oder ein **bestehender Branch** (Dropdown der lokalen Branches, schon ausgecheckte sind ausgeblendet). TakumiDeck legt den Worktree als **Sibling-Ordner** neben dem Projekt an (`<projekt>-worktrees/<branch>`) und startet die Session dort. So laufen mehrere Sessions parallel am selben Code in verschiedenen Branches, ohne sich gegenseitig den Working-Tree umzuschreiben. Resume läuft automatisch wieder im Worktree.
+- **Frei getippte Branch-Namen werden zu gültigen Git-Refs.** Tippt man einen Titel mit Leerzeichen/Sonderzeichen, slugifiziert TakumiDeck ihn (`Zeilenabstand Rand einstellbar` → `Zeilenabstand-Rand-einstellbar`) und zeigt das Ergebnis als Live-Vorschau — kein `fatal: not a valid branch name` mehr.
+- **Der Diff-Viewer zeigt den Worktree gegen den Basis-Branch.** Neuer vierter Tab „vs. main": vergleicht den Working-Tree des Worktrees gegen `main` (bzw. `master`/`origin/HEAD`) — committet **und** uncommittet, inkl. neuer Dateien.
+- **Committen funktioniert auch aus dem Worktree.** Das Pre-Commit-Panel erkennt, wenn die aktive Session in einem Worktree läuft, und zeigt dann dessen Branch + geänderte Dateien (Badge „Worktree") statt des sauberen Haupt-Checkouts — vorher war der Commit-Button fälschlich gesperrt.
+- **Aufräumen beim Archivieren mit Schutz.** Archivieren einer Worktree-Session entfernt den Worktree automatisch — aber nur, wenn er sauber ist. Bei uncommitteten oder ungepushten Änderungen bleibt er stehen und es kommt eine Rückfrage („Worktree behalten" / „Trotzdem entfernen"), damit keine Arbeit still verloren geht.
+
+### Architektur
+
+Variante B (siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)): Komfort-Stufe über den drei Roadmap-Bullets hinaus (bestehende Branches, Worktree-Übersicht, robustes Cleanup), aber **ohne** In-App-Merge — der Weg zurück nach `main` bleibt manueller `git merge` bzw. das spätere Roadmap-Feature „Pull/Fetch/Branch-Switch". Worktree-Pfad in neuer Spalte `sessions.worktree_path` (Migration 0012), Branch im seit 0001 vorhandenen `worktree_branch`. Neue session-bewusste IPCs (`git:list-branches`, `git:list-worktrees`, `git:worktree-diff`, `git:worktree-remove`, `git:worktree-status`, `fs:read-worktree`) lösen alle serverseitig über die Session-/Projekt-ID auf — kein freier Pfad über die Renderer-Grenze. Pre-Commit-Gate grün (typecheck · eslint · 1106/1106 Tests, davon 27 neue).
+
+---
+
 ## 2026-06-01 — v0.4.0 — Syntax-Highlighting für Programmiersprachen im Editor
 
 ### Was jetzt geht

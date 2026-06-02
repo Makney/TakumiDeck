@@ -43,6 +43,7 @@ const baseInsert: Omit<SessionInsert, 'id' | 'cwd' | 'started_at' | 'claude_sess
   status: 'completed',
   current_model: 'claude-sonnet-4-6',
   worktree_branch: null,
+  worktree_path: null,
   notes_md: '',
   ended_at: null,
   custom_type_label: null,

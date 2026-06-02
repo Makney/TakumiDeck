@@ -7,7 +7,12 @@ import { yaml as yamlLang } from '@codemirror/lang-yaml';
 import { unifiedMergeView } from '@codemirror/merge';
 import { oneDark, oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { markdownEditorThemeOverride } from './markdownEditorTheme';
-import type { GitFileChange, GitSessionDiffResult, GitStatusResult } from '@shared/types';
+import type {
+  GitFileChange,
+  GitSessionDiffResult,
+  GitStatusResult,
+  GitWorktreeDiffResult,
+} from '@shared/types';
 
 // DiffViewer (Sprint 7 — Phase 6; Season 29 Multi-Tab-Diff).
 //
@@ -35,7 +40,9 @@ import type { GitFileChange, GitSessionDiffResult, GitStatusResult } from '@shar
 // chokidar eine Datei-Aenderung im Projekt-Root meldet. Wir nutzen das, um
 // den session-Mode-Fetch und die Per-File-Inhalte neu zu laden.
 
-export type DiffMode = 'working' | 'staged' | 'session';
+// Season 37 (Worktree-Support): vierter Modus 'worktree' — Working-Tree des
+// Worktrees gegen den Basis-Branch (main/master).
+export type DiffMode = 'working' | 'staged' | 'session' | 'worktree';
 
 interface Props {
   projectId: string;
@@ -103,6 +110,34 @@ export function DiffViewer({
     // den Session-Fetch ebenfalls anstoesst.
   }, [mode, activeSessionId, refreshKey]);
 
+  // Season 37 (Worktree-Support): analoger Fetch fuer den 'worktree'-Modus.
+  const [worktreeDiff, setWorktreeDiff] = useState<GitWorktreeDiffResult | null>(null);
+  const [worktreeLoading, setWorktreeLoading] = useState(false);
+  const [worktreeError, setWorktreeError] = useState<string | null>(null);
+  const worktreeSeq = useRef(0);
+  useEffect(() => {
+    if (mode !== 'worktree') return;
+    if (!activeSessionId) {
+      setWorktreeDiff(null);
+      setWorktreeError(null);
+      setWorktreeLoading(false);
+      return;
+    }
+    const mySeq = ++worktreeSeq.current;
+    setWorktreeLoading(true);
+    setWorktreeError(null);
+    void window.api.git.worktreeDiff({ sessionId: activeSessionId }).then((result) => {
+      if (worktreeSeq.current !== mySeq) return;
+      setWorktreeLoading(false);
+      if (result.ok) {
+        setWorktreeDiff(result.data);
+      } else {
+        setWorktreeDiff(null);
+        setWorktreeError(result.error);
+      }
+    });
+  }, [mode, activeSessionId, refreshKey]);
+
   // File-Liste je nach Modus. Memoisiert, damit der useEffect unten nicht
   // pro Render einen neuen activeFile-Default zieht.
   const showableFiles = useMemo<GitFileChange[]>(() => {
@@ -112,8 +147,11 @@ export function DiffViewer({
     if (mode === 'staged') {
       return status?.files.filter((f) => f.indexStatus !== 'unchanged') ?? [];
     }
+    if (mode === 'worktree') {
+      return worktreeDiff?.files ?? [];
+    }
     return sessionDiff?.files ?? [];
-  }, [mode, status, sessionDiff]);
+  }, [mode, status, sessionDiff, worktreeDiff]);
 
   // Bei Modi-/Status-Wechsel die aktive Datei initialisieren — wenn die alte
   // Auswahl in der neuen Liste vorkommt, behalten; sonst auf erste springen.
@@ -131,8 +169,11 @@ export function DiffViewer({
     if (mode === 'session') {
       return sessionDiff?.branch ?? '';
     }
+    if (mode === 'worktree') {
+      return worktreeDiff?.branch ?? '';
+    }
     return status?.branch ?? '';
-  }, [mode, status, sessionDiff]);
+  }, [mode, status, sessionDiff, worktreeDiff]);
 
   if (!hasGit) {
     return (
@@ -150,10 +191,21 @@ export function DiffViewer({
   // Empty-State fuer Session-Modus ohne Baseline.
   const sessionEmpty =
     mode === 'session' && (!activeSessionId || sessionDiff?.hasBaseline === false);
+  // Season 37: Empty-State fuer Worktree-Modus, wenn keine Session aktiv ist
+  // oder die aktive Session nicht in einem Worktree laeuft.
+  const worktreeEmpty =
+    mode === 'worktree' && (!activeSessionId || worktreeDiff?.hasWorktree === false);
 
   const isLoadingForMode =
-    (mode !== 'session' && loading) || (mode === 'session' && sessionLoading);
-  const errorForMode = mode === 'session' ? sessionError : loadError;
+    (mode === 'session' && sessionLoading) ||
+    (mode === 'worktree' && worktreeLoading) ||
+    (mode !== 'session' && mode !== 'worktree' && loading);
+  const errorForMode =
+    mode === 'session'
+      ? sessionError
+      : mode === 'worktree'
+        ? worktreeError
+        : loadError;
 
   return (
     <div className="td-diff">
@@ -185,7 +237,9 @@ export function DiffViewer({
               >−{countByStatus(showableFiles, ['deleted'])}</span>
             </>
           )}
-          <span className="source-hint">{sourceHintFor(mode)}</span>
+          <span className="source-hint">
+            {sourceHintFor(mode, worktreeDiff?.baseRef ?? null)}
+          </span>
         </div>
       </div>
       {isLoadingForMode ? (
@@ -197,6 +251,12 @@ export function DiffViewer({
           {!activeSessionId
             ? 'Keine aktive Session — Session-Diff zeigt Aenderungen seit dem Spawn der aktiven Session.'
             : 'Diese Session hat keinen Baseline-Commit (Legacy-Session, kein Git-Repo zum Spawn-Zeitpunkt oder revParse-Fehler).'}
+        </div>
+      ) : worktreeEmpty ? (
+        <div className="td-skeleton">
+          {!activeSessionId
+            ? 'Keine aktive Session — der Worktree-Diff vergleicht den Worktree der aktiven Session gegen den Basis-Branch.'
+            : 'Diese Session laeuft nicht in einem Worktree.'}
         </div>
       ) : showableFiles.length === 0 ? (
         <div className="td-skeleton">{emptyMessageFor(mode)}</div>
@@ -247,6 +307,8 @@ export function DiffViewer({
                 relPath={activeFile}
                 mode={mode}
                 baselineSha={sessionDiff?.baselineSha ?? null}
+                worktreeBaseRef={worktreeDiff?.baseRef ?? null}
+                activeSessionId={activeSessionId}
                 refreshKey={refreshKey}
               />
             ) : (
@@ -281,6 +343,17 @@ function DiffModeToggle({ mode, onSelect, hasActiveSession }: DiffModeToggleProp
           hasActiveSession
             ? 'Aenderungen seit dem Start der aktiven Session'
             : 'Aenderungen seit Session-Start — aktiv erst, wenn eine Session laeuft'
+        }
+      />
+      <ModePill
+        mode="worktree"
+        active={mode === 'worktree'}
+        onSelect={onSelect}
+        label="vs. main"
+        title={
+          hasActiveSession
+            ? 'Worktree der aktiven Session gegen den Basis-Branch (main/master)'
+            : 'Worktree-Diff — aktiv erst, wenn eine Worktree-Session laeuft'
         }
       />
     </div>
@@ -318,6 +391,11 @@ interface DiffPaneProps {
   mode: DiffMode;
   // Nur fuer mode='session' relevant; null in den anderen Modi.
   baselineSha: string | null;
+  // Season 37: nur fuer mode='worktree' — Basis-Ref (main/master) fuer die
+  // Original-Seite, plus die Session, deren Worktree-Working-File die doc-Seite
+  // liefert.
+  worktreeBaseRef: string | null;
+  activeSessionId: string | null;
   refreshKey: number;
 }
 
@@ -326,6 +404,8 @@ function DiffPaneSingleFile({
   relPath,
   mode,
   baselineSha,
+  worktreeBaseRef,
+  activeSessionId,
   refreshKey,
 }: DiffPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -352,12 +432,23 @@ function DiffPaneSingleFile({
         // Hinzufuegung markieren laesst.
         return window.api.git.show({ projectId, relPath, ref: baselineSha });
       }
+      if (mode === 'worktree' && worktreeBaseRef) {
+        // Season 37: Original am Basis-Branch (main/master). Der Blob lebt im
+        // geteilten Objekt-Store, also liefert der Haupt-Checkout ihn — keine
+        // separate Worktree-Aufloesung noetig.
+        return window.api.git.show({ projectId, relPath, ref: worktreeBaseRef });
+      }
       // working + staged vergleichen beide gegen HEAD.
       return window.api.git.show({ projectId, relPath });
     })();
     const docPromise = (() => {
       if (mode === 'staged') {
         return window.api.git.showStaged({ projectId, relPath });
+      }
+      if (mode === 'worktree' && activeSessionId) {
+        // Season 37: doc-Seite ist der Working-Tree-Stand IM Worktree — die
+        // Datei liegt im Worktree-Verzeichnis, nicht im Projekt-Root.
+        return window.api.fs.readWorktree({ sessionId: activeSessionId, relPath });
       }
       // working + session zeigen den Working-Tree-Inhalt als doc.
       return window.api.fs.read({ projectId, relPath });
@@ -383,7 +474,7 @@ function DiffPaneSingleFile({
         setError(docRes.error);
       }
     });
-  }, [projectId, relPath, mode, baselineSha, refreshKey]);
+  }, [projectId, relPath, mode, baselineSha, worktreeBaseRef, activeSessionId, refreshKey]);
 
   // CodeMirror-View aufbauen, sobald beide Inhalte da sind. Bei Pfad-/Modus-
   // Wechsel oder Auto-Refresh re-mounten wir komplett — unifiedMergeView
@@ -439,7 +530,7 @@ function countByStatus(files: GitFileChange[], wanted: GitFileChange['worktreeSt
   return n;
 }
 
-function sourceHintFor(mode: DiffMode): string {
+function sourceHintFor(mode: DiffMode, worktreeBaseRef: string | null): string {
   switch (mode) {
     case 'working':
       return 'HEAD ↔ working tree';
@@ -447,6 +538,8 @@ function sourceHintFor(mode: DiffMode): string {
       return 'HEAD ↔ index';
     case 'session':
       return 'baseline ↔ working tree';
+    case 'worktree':
+      return `${worktreeBaseRef ?? 'main'} ↔ worktree`;
   }
 }
 
@@ -458,6 +551,8 @@ function emptyMessageFor(mode: DiffMode): string {
       return 'Index ist leer — keine gestagten Aenderungen (`git add`).';
     case 'session':
       return 'Keine Aenderungen seit Session-Start.';
+    case 'worktree':
+      return 'Keine Aenderungen gegenüber dem Basis-Branch.';
   }
 }
 

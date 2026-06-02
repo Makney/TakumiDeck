@@ -56,6 +56,11 @@ export interface SessionRow {
   // Legacy-Sessions, has_git=0-Projekten, detached HEAD ohne Commit oder
   // wenn der revParse-Aufruf beim Spawn fehlgeschlagen ist.
   start_commit_sha: string | null;
+  // Season 37 (Worktree-Support): absoluter Pfad des Git-Worktrees, in dem
+  // diese Session laeuft. NULL fuer normale Sessions (cwd = Projekt-Root). Bei
+  // Worktree-Sessions ist `cwd` gleich diesem Pfad — Resume spawnt dort weiter.
+  // `worktree_branch` haelt den dazugehoerigen Branch-Namen.
+  worktree_path: string | null;
 }
 
 // PTY-IPC-Payloads (Renderer → Main).
@@ -74,6 +79,23 @@ export interface PtyCreateInput {
   // Phase-2 Season-5: nur bei type='custom' gesetzt — freie User-Bezeichnung
   // (z.B. "Refactor"). Bei den vier festen Typen weglassen oder null.
   customTypeLabel?: string | null;
+  // Season 37 (Worktree-Support): optionale Worktree-Konfiguration. Wenn
+  // gesetzt, legt der Main vor dem Spawn `git worktree add` an und spawnt die
+  // Session im Worktree-Verzeichnis statt im Projekt-Root. Nicht fuer
+  // type='terminal' (eine Quick-Shell braucht keinen Branch).
+  worktree?: PtyWorktreeOption | null;
+}
+
+// Season 37: Worktree-Optionen aus dem NewSessionModal.
+export interface PtyWorktreeOption {
+  // Ziel-Branch-Name. Bei mode='new' der anzulegende Branch, bei mode='existing'
+  // der auszucheckende bestehende Branch.
+  branch: string;
+  // 'new'      → neuer Branch von `baseRef` (Default HEAD) + Worktree.
+  // 'existing' → bestehenden Branch in einen neuen Worktree auschecken.
+  mode: 'new' | 'existing';
+  // Nur bei mode='new': Basis-Ref fuer den neuen Branch (Default HEAD).
+  baseRef?: string | null;
 }
 
 export interface PtyWriteInput {

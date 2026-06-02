@@ -104,3 +104,97 @@ export interface GitSessionDiffResult {
   branch: string;
   files: GitFileChange[];
 }
+
+// Season 37 (Worktree-Support): Liste der lokalen Branches eines Projekts.
+// Speist das „bestehenden Branch auschecken"-Dropdown im NewSessionModal.
+// Server resolved projectId → Repo-Pfad; Renderer schickt nie einen freien Pfad.
+export interface GitListBranchesInput {
+  projectId: string;
+}
+
+export interface GitListBranchesResult {
+  // hasGit=false → Renderer blendet das Worktree-Feature aus (kein Repo).
+  hasGit: boolean;
+  // Aktueller Branch des Haupt-Checkouts (leer bei detached HEAD / kein Repo).
+  current: string;
+  // Alle lokalen Branch-Namen, alphabetisch.
+  branches: string[];
+}
+
+// Season 37: Ein Eintrag der `git worktree list`-Ausgabe. Speist die
+// „bestehende Worktrees"-Uebersicht im Modal, damit der User Branch-/Pfad-
+// Kollisionen vor dem Erstellen sieht.
+export interface GitWorktreeEntry {
+  // Absoluter Pfad des Worktree-Verzeichnisses.
+  path: string;
+  // Ausgecheckter Branch (null bei detached HEAD).
+  branch: string | null;
+  // True fuer den Haupt-Checkout (das Projekt selbst), false fuer Linked-Worktrees.
+  isMain: boolean;
+}
+
+export interface GitWorktreeListInput {
+  projectId: string;
+}
+
+export interface GitWorktreeListResult {
+  hasGit: boolean;
+  worktrees: GitWorktreeEntry[];
+}
+
+// Season 37: Worktree-Diff vs. Basis-Branch (main/master). Renderer schickt die
+// sessionId; der Main resolved Worktree-Pfad + Branch aus der Session-Row und
+// den Basis-Ref aus dem Repo. Bei Sessions ohne Worktree kommt
+// hasWorktree=false → Renderer zeigt einen Empty-State.
+export interface GitWorktreeDiffInput {
+  sessionId: string;
+}
+
+export interface GitWorktreeDiffResult {
+  hasWorktree: boolean;
+  // Branch des Worktrees (= sessions.worktree_branch). Leer gdw. hasWorktree=false.
+  branch: string;
+  // Aufgeloester Basis-Ref, gegen den verglichen wird (z.B. 'main'). Leer gdw.
+  // hasWorktree=false. Wird vom Renderer fuer die per-File-git:show-Aufrufe
+  // (Original-Inhalt am Basis-Ref) wiederverwendet.
+  baseRef: string;
+  files: GitFileChange[];
+}
+
+// Season 37: Cleanup eines Worktrees beim Archivieren. Renderer schickt die
+// sessionId; bei `force=false` (Default) entfernt der Main den Worktree NUR,
+// wenn er sauber ist (keine uncommitteten/ungepushten Aenderungen) — sonst
+// kommt `dirty=true` zurueck und das UI fragt nach. Mit `force=true` wird der
+// Worktree bedingungslos entfernt (git worktree remove --force).
+export interface GitWorktreeRemoveInput {
+  sessionId: string;
+  force?: boolean;
+}
+
+export interface GitWorktreeRemoveResult {
+  // True, wenn der Worktree tatsaechlich entfernt wurde.
+  removed: boolean;
+  // True, wenn nicht entfernt wurde, weil uncommittete/ungepushte Aenderungen
+  // vorliegen und `force` nicht gesetzt war.
+  dirty: boolean;
+  // Anzahl uncommitteter Dateien im Worktree (fuer die Rueckfrage-Anzeige).
+  uncommittedCount: number;
+  // Commits, die der Worktree-Branch vor seinem Upstream hat (ungepusht).
+  ahead: number;
+}
+
+// Season 37 (Worktree-Support): Working-Tree-Status DES Worktrees einer Session
+// (Branch + geaenderte Dateien) — fuers Pre-Commit-Panel, das bei Worktree-
+// Sessions den Worktree statt des Haupt-Checkouts anzeigen muss. Server resolved
+// sessionId → sessions.worktree_path und ruft `git status` dort. hasWorktree=false
+// → die Session laeuft im Projekt-Root (Caller faellt auf git:status zurueck).
+export interface GitWorktreeStatusInput {
+  sessionId: string;
+}
+
+export interface GitWorktreeStatusResult {
+  hasWorktree: boolean;
+  hasGit: boolean;
+  // Branch + Dateien des Worktrees. null gdw. hasWorktree=false oder hasGit=false.
+  status: GitStatusResult | null;
+}

@@ -20,6 +20,35 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 3 Season 37 — Worktree-Support
+
+**Ziel:** Parallele Sessions am selben Code in verschiedenen Branches. Scope laut Brief: `git worktree add` beim Session-Erstellen (mit Worktree-Option), Cleanup beim Session-Archive, Diff-Viewer kann Worktree-Diff vs. main zeigen. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.
+
+**Ergebnis:** Variante B (Komfort) — der User wählte sie über die empfohlene schlanke Variante A. Geliefert: NewSessionModal-Block „In Git-Worktree arbeiten" (neuer Branch von HEAD ODER bestehender Branch per Dropdown + Übersicht bestehender Worktrees), Worktree als Sibling-Ordner `<projekt>-worktrees/<branch>`, Spawn mit cwd=Worktree, persistiert in neuer Spalte `sessions.worktree_path` (Migration 0012) + `worktree_branch`. Diff-Viewer-Tab „vs. main" (Worktree ↔ Basis-Branch main/master/origin-HEAD). Cleanup beim Archivieren mit Dirty-Schutz + Rückfrage (force erst nach Bestätigung). Sechs neue session-/projekt-bewusste IPCs, alle serverseitig pfad-aufgelöst. Bewusst **kein** In-App-Merge (Roadmap „Pull/Fetch/Branch-Switch"). Voller Pre-Commit-Gate grün (typecheck beide tsconfigs, eslint 0 Warnungen, 1106/1106 Tests, +27 neue).
+
+**Zwei Nachbesserungen im Daily-Use direkt mitgenommen** (beides aus echtem User-Test, nicht aus dem Brief):
+
+- **Crash bei Branch-Namen mit Leerzeichen.** Ich slugifizierte nur den *Pfad*, gab aber den rohen Branch an `git worktree add -b` → `fatal: not a valid branch name`. Fix: `sanitizeBranchName` (shared) + Live-Vorschau im Modal; der sanitisierte Name wird konsistent als Branch, Pfad und gespeicherter Wert benutzt.
+- **„Kann nicht committen" im Worktree.** Das Pre-Commit-Panel las `git:status` immer vom Haupt-Checkout (sauber) → Commit-Button gesperrt. Fix: neuer session-bewusster `git:worktree-status`; das Panel zeigt jetzt den Worktree-Stand (Badge „Worktree") und fällt für normale Sessions sauber auf den Projekt-Status zurück.
+
+**Gut gelaufen:**
+
+- **Bestehende Season-29-Muster trugen den ganzen Diff/Spawn-Pfad.** Worktree-Diff = `git:session-diff` mit anderem Baseline-Ref; Worktree-Doc-Read = `fs:read` mit anderem Root; Per-File-Original kommt vom geteilten Objekt-Store des Haupt-Checkouts (`git show main:<file>`), also brauchte nur die *doc*-Seite einen neuen IPC (`fs:read-worktree`). Der Diff-Viewer bekam einen vierten Modus statt einer neuen Komponente.
+- **Pure-Helfer = billige Tests.** `resolveWorktreePath`, `sanitizeBranchName`, `parseWorktreeListPorcelain` ließen sich ohne git/DOM testen; die sicherheitskritische Cleanup-Logik (Dirty-Schutz, force-Gate) per inline-replizierten Handlern gegen Fake-Driver — dasselbe Muster wie git-ipc.test.ts.
+- **Server-seitige Pfad-Auflösung durchgehalten.** Kein neuer IPC nimmt einen freien Pfad; alles geht über sessionId/projectId → DB. Die bestehende `resolveProjectRelativeReal`-Anti-Traversal ließ sich 1:1 auf den Worktree-Pfad anwenden.
+
+**Gebremst durch:**
+
+- **pty:create musste async werden.** Der Worktree muss *vor* dem Spawn existieren (`git worktree add` await), der Handler war bisher synchron. Umstellung war unkritisch, aber ein Eingriff in einen heiklen Pfad (Session-Insert, Lifecycle, Polling-Ring-Attach) — sorgfältig geprüft, dass die Fehler-/Orphan-Pfade (Worktree-Cleanup bei Spawn-Fehler) stimmen.
+- **Worktree-Bewusstsein ist nur halb durchgezogen.** „Working Tree"/„Staged"-Diff und der Datei-Browser zeigen für Worktree-Sessions weiter den Haupt-Checkout — bewusst als TECH_SCHULDEN geparkt, weil die durchgängige Session-Sicht jeden status/read/watch-Aufruf umbauen würde (über Scope).
+
+**Für nächste Season:**
+
+- Wenn Worktrees im Daily-Use bleiben: Right-Pane (Diff-Modi „working"/„staged", Datei-Browser, Editor-Open) über einen gemeinsamen „effektiver Repo-Pfad der aktiven Session"-Resolver session-bewusst machen, statt pro Aufruf.
+- Den manuellen Merge-Schmerz beobachten — er ist der natürliche Trigger fürs Roadmap-Feature „Pull/Fetch/Branch-Switch" (dort „Worktree nach main mergen + aufräumen" mitnehmen).
+
+---
+
 ## Phase 3 Season 36 — Unterstützung für Programmiersprachen-Syntax
 
 > _Hinweis zur Nummer: Der Allocator (`sessions.season_number`) vergibt für diese Session Season 36 — so auch im Kickoff-Brief betitelt. Erstes Phase-3-Feature: Phase 2 ist mit v0.4.0 abgeschlossen, ab hier wird aus PHASE3.md gezogen (Versionierung von der Phase entkoppelt, vorerst bei 0.x)._

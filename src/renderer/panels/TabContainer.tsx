@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo } from 'react';
-import type { AppSettings, SessionStatus } from '@shared/types';
+import type { AppSettings, PtyWorktreeOption, SessionStatus } from '@shared/types';
 import { useSessionStore, selectTabsForProject } from '../stores/sessions';
 import { useUiStore } from '../stores/ui';
 import { useProjectStore } from '../stores/projects';
@@ -232,6 +232,8 @@ export function TabContainer({ settings }: Props) {
       // dem Modal — wird nach dem Spawn via Bracketed-Paste an die Session
       // gesendet.
       initialPrompt?: string | null;
+      // Season 37 (Worktree-Support): optionale Worktree-Konfiguration.
+      worktree?: PtyWorktreeOption | null;
     }) => {
       if (!activeProjectId || !activeProject) return;
       // Bereich-4-Review (B-5): cwd wird im Main aus projects.getById(projectId).path
@@ -246,6 +248,7 @@ export function TabContainer({ settings }: Props) {
         customTypeLabel: input.customTypeLabel ?? null,
         needsSpawn: true,
         initialPrompt: input.initialPrompt ?? null,
+        worktree: input.worktree ?? null,
       });
       setShowNewSessionModal(false);
     },
@@ -312,6 +315,7 @@ export function TabContainer({ settings }: Props) {
               isActive={tab.sessionId === activeId}
               needsSpawn={tab.needsSpawn}
               initialPrompt={tab.initialPrompt}
+              worktree={tab.worktree}
               onInitialPromptSent={consumeInitialPrompt}
               onStatusChange={setStatus}
             />
@@ -365,6 +369,7 @@ export function TabContainer({ settings }: Props) {
           project={activeProject}
           frontmatter={activeProjectFrontmatter}
           hasActiveTerminal={activeId !== null}
+          activeSessionId={activeId}
           sensitivePatterns={settings.sensitive_file_patterns}
           onClose={() => setShowPreCommitModal(false)}
         />

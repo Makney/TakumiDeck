@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SessionStatus, SessionType } from '@shared/types';
+import type { PtyWorktreeOption, SessionStatus, SessionType } from '@shared/types';
 import { useUsageStore } from './usage';
 
 // Renderer-State der aktiven Tabs (Zustand-Store, Sprint 3).
@@ -46,6 +46,11 @@ export interface SessionTab {
   // Docs-Sync-Sessions. TerminalTab pastet ihn nach erfolgreichem Spawn einmalig
   // und ruft consumeInitialPrompt, das das Feld auf null setzt.
   initialPrompt: string | null;
+  // Season 37 (Worktree-Support): optionale Worktree-Konfiguration aus dem
+  // NewSessionModal. TerminalTab reicht sie beim Spawn an pty:create durch;
+  // der Main legt dann den Worktree an. null fuer normale Sessions und alle
+  // Resume-Pfade (der Worktree existiert beim Resume bereits).
+  worktree: PtyWorktreeOption | null;
 }
 
 export interface AddTabInput {
@@ -64,6 +69,9 @@ export interface AddTabInput {
   // Phase-2 Season-21: Docs-Sync-Sessions geben hier den vorbereiteten Prompt
   // mit, der nach erfolgreichem Spawn einmalig gepastet wird.
   initialPrompt?: string | null;
+  // Season 37 (Worktree-Support): nur vom NewSessionModal gesetzt, wenn der
+  // User die Worktree-Option waehlt. Resume-Pfade lassen das Feld weg.
+  worktree?: PtyWorktreeOption | null;
 }
 
 interface SessionStoreState {
@@ -156,6 +164,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       hasBell: false,
       needsSpawn: input.needsSpawn ?? false,
       initialPrompt: input.initialPrompt ?? null,
+      worktree: input.worktree ?? null,
     };
     set((s) => ({
       tabs: [...s.tabs, tab],

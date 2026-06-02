@@ -22,6 +22,8 @@ import { expectedJsonlPath } from '../jsonl/cwd-encoding';
 import { defaultClaudeProjectsPath } from '../jsonl/watcher';
 import type { JsonlPollingRing } from '../jsonl/polling-ring';
 import type { GitDriver } from '../git/driver';
+import { resolveWorktreePath } from '../git/worktreePath';
+import { sanitizeBranchName } from '@shared/worktree';
 
 // IPC-Handler für pty:create / pty:write / pty:resize / pty:kill.
 // Forwarded außerdem die PtyManager-Events ans aktive BrowserWindow.
@@ -98,7 +100,7 @@ export function registerPtyIpc(deps: {
     },
   });
 
-  ipcMain.handle(Channels.PtyCreate, (event, payload: unknown) => {
+  ipcMain.handle(Channels.PtyCreate, async (event, payload: unknown) => {
     const guard = assertFromMainWindow(event);
     if (!guard.ok) return guard;
     try {
@@ -115,7 +117,52 @@ export function registerPtyIpc(deps: {
           'PROJECT_NOT_FOUND',
         );
       }
-      const cwd = project.path;
+      // Season 37 (Worktree-Support): Standard ist der Projekt-Root. Bei
+      // gewaehlter Worktree-Option zeigt cwd anschliessend auf das angelegte
+      // Worktree-Verzeichnis — alle cwd-abhaengigen Schritte (Pre-Spawn-Check,
+      // JSONL-Pfad, Spawn, Baseline-SHA) laufen dann dort.
+      let cwd = project.path;
+      let worktreePath: string | null = null;
+      let worktreeBranch: string | null = null;
+      if (input.worktree) {
+        // Worktree braucht ein echtes Git-Repo + den GitDriver. Das Schema
+        // schliesst type='terminal' bereits aus.
+        if (!gitDriver || project.has_git !== 1) {
+          return err<never>(
+            `Worktree benoetigt ein Git-Repository — „${project.name}" ist keins`,
+            'WORKTREE_NO_GIT',
+          );
+        }
+        // Neuer Branch: frei eingegebenen Namen zu einem gueltigen Git-Ref
+        // slugifizieren (Leerzeichen etc. crashen `git worktree add -b` sonst).
+        // Bestehender Branch kommt aus dem Dropdown realer Branches → unveraendert.
+        const branch =
+          input.worktree.mode === 'new'
+            ? sanitizeBranchName(input.worktree.branch)
+            : input.worktree.branch;
+        const wtPath = resolveWorktreePath(project.path, branch);
+        try {
+          await gitDriver.addWorktree(project.path, wtPath, {
+            branch,
+            mode: input.worktree.mode,
+            baseRef: input.worktree.baseRef ?? null,
+          });
+        } catch (e) {
+          log.warn(
+            `[pty] git worktree add fehlgeschlagen branch=${branch} path=${wtPath}`,
+            e,
+          );
+          return err<never>(
+            input.worktree.mode === 'new'
+              ? `Worktree konnte nicht angelegt werden. Existiert der Branch „${branch}" schon?`
+              : `Worktree konnte nicht angelegt werden. Ist der Branch „${branch}" bereits in einem anderen Worktree ausgecheckt?`,
+            'WORKTREE_ADD_FAILED',
+          );
+        }
+        cwd = wtPath;
+        worktreePath = wtPath;
+        worktreeBranch = branch;
+      }
 
       // Phase-2 Season-31: Terminal-Sessions spawnen pwsh.exe/powershell.exe statt
       // der claude-Binary — Skip-Gate #1: Pre-Spawn-Check geht durch einen anderen
@@ -200,6 +247,9 @@ export function registerPtyIpc(deps: {
         custom_type_label:
           input.type === 'custom' ? (input.customTypeLabel ?? null) : null,
         jsonl_path: jsonlPath,
+        // Season 37: bei Worktree-Sessions Pfad + Branch persistieren; sonst null.
+        worktree_path: worktreePath,
+        worktree_branch: worktreeBranch,
       });
 
       // 3. PTY spawnen. Wenn das fehlschlägt (Binary nicht gefunden, cwd ungültig),
@@ -232,6 +282,19 @@ export function registerPtyIpc(deps: {
           log.warn(
             `[pty] Lifecycle-Transition zu 'error' abgelehnt sessionId=${input.sessionId} → ${tr.error}`,
           );
+        }
+        // Season 37: ein frisch angelegter Worktree waere bei Spawn-Fehler ein
+        // Orphan — best-effort wieder entfernen (force, weil er garantiert
+        // sauber ist: es lief noch keine Session darin).
+        if (worktreePath !== null && gitDriver) {
+          void gitDriver
+            .removeWorktree(project.path, worktreePath, true)
+            .catch((cleanupErr) => {
+              log.warn(
+                `[pty] Worktree-Cleanup nach Spawn-Fehler fehlgeschlagen path=${worktreePath}`,
+                cleanupErr,
+              );
+            });
         }
         throw e;
       }

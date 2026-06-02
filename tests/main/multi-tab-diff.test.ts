@@ -40,6 +40,7 @@ const baseSession: SessionRow = {
   status: 'running',
   current_model: 'claude-sonnet-4-6',
   worktree_branch: null,
+  worktree_path: null,
   notes_md: '',
   cwd: 'D:\\Projekte\\Demo',
   started_at: 1000,
@@ -131,6 +132,25 @@ class FakeGitDriver implements GitDriver {
   }
   changedFilesAgainst(repoPath: string, baselineRef: string) {
     return this.changedFilesAgainstFn(repoPath, baselineRef);
+  }
+  // Season 37 (Worktree-Support): hier nicht getestet — harmlose Defaults.
+  listBranches() {
+    return Promise.resolve({ current: 'main', branches: [] });
+  }
+  listWorktrees(): Promise<import('../../src/shared/types').GitWorktreeEntry[]> {
+    return Promise.resolve([]);
+  }
+  addWorktree() {
+    return Promise.resolve();
+  }
+  removeWorktree() {
+    return Promise.resolve();
+  }
+  worktreeDirtyState() {
+    return Promise.resolve({ uncommittedCount: 0, ahead: 0 });
+  }
+  resolveBaseBranchRef() {
+    return Promise.resolve('main');
   }
 }
 

@@ -5,7 +5,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
-import type { AppSettings, SessionStatus } from '@shared/types';
+import type { AppSettings, PtyWorktreeOption, SessionStatus } from '@shared/types';
 import { detectFromBuffer, type TuiDetectedState } from '@shared/tui-patterns';
 import { createCopyPasteKeyHandler } from '../components/clipboardKeyHandler';
 import { clampFontSize, nextZoomFontSize } from '../components/terminalFontZoom';
@@ -75,6 +75,10 @@ interface Props {
   // nach erfolgreichem Spawn einmalig via Bracketed-Paste an die PTY gesendet.
   // null fuer alle anderen Sessions.
   initialPrompt: string | null;
+  // Season 37 (Worktree-Support): optionale Worktree-Konfiguration. Wird beim
+  // Spawn an pty:create durchgereicht; der Main legt den Worktree an und spawnt
+  // die Session dort. null fuer normale Sessions.
+  worktree: PtyWorktreeOption | null;
   // One-Shot-Callback nach erfolgreichem Prompt-Send — TabContainer entfernt
   // den Eintrag aus seiner Map, damit ein erneuter Tab-Mount nicht erneut
   // sendet.
@@ -93,6 +97,7 @@ export function TerminalTab({
   isActive,
   needsSpawn,
   initialPrompt,
+  worktree,
   onInitialPromptSent,
   onStatusChange,
 }: Props) {
@@ -543,6 +548,10 @@ export function TerminalTab({
           cols: terminal.cols,
           rows: terminal.rows,
           customTypeLabel,
+          // Season 37 (Worktree-Support): nur gesetzt, wenn der User die
+          // Worktree-Option im NewSessionModal gewaehlt hat — sonst null
+          // (normale Session im Projekt-Root).
+          worktree,
         });
         if (!result.ok) {
           showError(errorRef.current, result.error);

@@ -16,6 +16,7 @@ import type {
   FsClearScreenshotsResult,
   FsReadInput,
   FsReadResult,
+  FsReadWorktreeInput,
   FsSaveScreenshotInput,
   FsSaveScreenshotResult,
   FsScreenshotsSummaryResult,
@@ -25,6 +26,8 @@ import type {
   FsWriteResult,
   GitDiffInput,
   GitDiffResult,
+  GitListBranchesInput,
+  GitListBranchesResult,
   GitSessionDiffInput,
   GitSessionDiffResult,
   GitShowInput,
@@ -33,6 +36,14 @@ import type {
   GitShowStagedResult,
   GitStatusInput,
   GitStatusResult,
+  GitWorktreeDiffInput,
+  GitWorktreeDiffResult,
+  GitWorktreeListInput,
+  GitWorktreeListResult,
+  GitWorktreeRemoveInput,
+  GitWorktreeRemoveResult,
+  GitWorktreeStatusInput,
+  GitWorktreeStatusResult,
   IpcResult,
   ModelFetchResult,
   ProjectReadCfgInput,
@@ -197,6 +208,9 @@ const api: RendererApi = {
       >,
     read: (input: FsReadInput) =>
       ipcRenderer.invoke(Channels.FsRead, input) as Promise<IpcResult<FsReadResult>>,
+    // Season 37 (Worktree-Support): Datei aus dem Worktree-Verzeichnis lesen.
+    readWorktree: (input: FsReadWorktreeInput) =>
+      ipcRenderer.invoke(Channels.FsReadWorktree, input) as Promise<IpcResult<FsReadResult>>,
     write: (input: FsWriteInput) =>
       ipcRenderer.invoke(Channels.FsWrite, input) as Promise<IpcResult<FsWriteResult>>,
     listTree: (input: FsListTreeInput) =>
@@ -246,6 +260,27 @@ const api: RendererApi = {
     sessionDiff: (input: GitSessionDiffInput) =>
       ipcRenderer.invoke(Channels.GitSessionDiff, input) as Promise<
         IpcResult<GitSessionDiffResult>
+      >,
+    // Season 37 (Worktree-Support).
+    listBranches: (input: GitListBranchesInput) =>
+      ipcRenderer.invoke(Channels.GitListBranches, input) as Promise<
+        IpcResult<GitListBranchesResult>
+      >,
+    worktreeList: (input: GitWorktreeListInput) =>
+      ipcRenderer.invoke(Channels.GitWorktreeList, input) as Promise<
+        IpcResult<GitWorktreeListResult>
+      >,
+    worktreeDiff: (input: GitWorktreeDiffInput) =>
+      ipcRenderer.invoke(Channels.GitWorktreeDiff, input) as Promise<
+        IpcResult<GitWorktreeDiffResult>
+      >,
+    worktreeRemove: (input: GitWorktreeRemoveInput) =>
+      ipcRenderer.invoke(Channels.GitWorktreeRemove, input) as Promise<
+        IpcResult<GitWorktreeRemoveResult>
+      >,
+    worktreeStatus: (input: GitWorktreeStatusInput) =>
+      ipcRenderer.invoke(Channels.GitWorktreeStatus, input) as Promise<
+        IpcResult<GitWorktreeStatusResult>
       >,
   },
   projects: {

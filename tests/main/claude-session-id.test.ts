@@ -26,6 +26,7 @@ const baseInsert: Omit<SessionInsert, 'id' | 'claude_session_id'> = {
   status: 'completed',
   current_model: 'claude-sonnet-4-6',
   worktree_branch: null,
+  worktree_path: null,
   notes_md: '',
   cwd: 'C:\\test',
   started_at: 1000,

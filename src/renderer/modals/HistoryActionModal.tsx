@@ -50,6 +50,13 @@ export function HistoryActionModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [archiveConfirm, setArchiveConfirm] = useState(false);
+  // Season 37 (Worktree-Support): gesetzt, wenn der Worktree der archivierten
+  // Session uncommittete/ungepushte Aenderungen hat — dann fragt das Modal nach,
+  // statt den Worktree (und damit die Arbeit) stillschweigend zu entfernen.
+  const [worktreeDirty, setWorktreeDirty] = useState<{
+    uncommittedCount: number;
+    ahead: number;
+  } | null>(null);
 
   const canResume =
     entry.status !== 'archived' && entry.status !== 'running';
@@ -118,6 +125,31 @@ export function HistoryActionModal({
     const result = await window.api.sessions.archive({ sessionId: entry.id });
     if (!result.ok) {
       setError(`Archivieren fehlgeschlagen: ${result.error}`);
+      setBusy(false);
+      return;
+    }
+    // Season 37: Worktree-Cleanup. No-op fuer normale Sessions (der Handler
+    // liefert removed=false/dirty=false). Bei einem dirty Worktree fragt das
+    // Modal nach, statt force zu entfernen.
+    const wt = await window.api.git.worktreeRemove({ sessionId: entry.id, force: false });
+    if (wt.ok && wt.data.dirty) {
+      setWorktreeDirty({
+        uncommittedCount: wt.data.uncommittedCount,
+        ahead: wt.data.ahead,
+      });
+      setBusy(false);
+      return; // Modal bleibt offen mit der Rueckfrage
+    }
+    onClose();
+  };
+
+  // Season 37: Worktree trotz uncommitteter/ungepushter Aenderungen entfernen.
+  const handleForceRemoveWorktree = async () => {
+    setError(null);
+    setBusy(true);
+    const wt = await window.api.git.worktreeRemove({ sessionId: entry.id, force: true });
+    if (!wt.ok) {
+      setError(`Worktree-Entfernen fehlgeschlagen: ${wt.error}`);
       setBusy(false);
       return;
     }
@@ -195,6 +227,45 @@ export function HistoryActionModal({
               </span>
             </div>
           </div>
+
+          {/* Season 37: Rueckfrage, wenn der Worktree der archivierten Session
+              noch uncommittete/ungepushte Aenderungen haelt. */}
+          {worktreeDirty && (
+            <div className="td-history-action-worktree-warn">
+              <p>
+                Der Worktree dieser Session wurde <strong>nicht entfernt</strong>:
+                {worktreeDirty.uncommittedCount > 0 && (
+                  <> {worktreeDirty.uncommittedCount} uncommittete Datei(en)</>
+                )}
+                {worktreeDirty.uncommittedCount > 0 && worktreeDirty.ahead > 0 && ' ·'}
+                {worktreeDirty.ahead > 0 && (
+                  <> {worktreeDirty.ahead} ungepushte(r) Commit(s)</>
+                )}
+                . Die Session ist bereits archiviert.
+              </p>
+              <div className="td-history-action-worktree-actions">
+                <button
+                  type="button"
+                  className="td-action-btn ghost"
+                  onClick={onClose}
+                  disabled={busy}
+                  title="Worktree mit den Aenderungen behalten"
+                >
+                  Worktree behalten
+                </button>
+                <button
+                  type="button"
+                  className="td-action-btn"
+                  onClick={handleForceRemoveWorktree}
+                  disabled={busy}
+                  title="Worktree trotzdem entfernen — uncommittete Aenderungen gehen verloren"
+                  style={{ borderColor: 'var(--td-red)', color: 'var(--td-red)' }}
+                >
+                  ⚠ Trotzdem entfernen
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && <div className="td-history-action-error">{error}</div>}
         </div>

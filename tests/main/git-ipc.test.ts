@@ -195,6 +195,32 @@ class FakeGitDriver implements GitDriver {
   ): Promise<import('../../src/shared/types').GitFileChange[]> {
     return this.changedFilesAgainstFn(repoPath, baselineRef);
   }
+
+  // Season 37 (Worktree-Support): hier nicht getestet — harmlose Defaults,
+  // damit FakeGitDriver das erweiterte Interface erfuellt.
+  listBranches(): Promise<{ current: string; branches: string[] }> {
+    return Promise.resolve({ current: 'main', branches: [] });
+  }
+
+  listWorktrees(): Promise<import('../../src/shared/types').GitWorktreeEntry[]> {
+    return Promise.resolve([]);
+  }
+
+  addWorktree(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  removeWorktree(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  worktreeDirtyState(): Promise<{ uncommittedCount: number; ahead: number }> {
+    return Promise.resolve({ uncommittedCount: 0, ahead: 0 });
+  }
+
+  resolveBaseBranchRef(): Promise<string> {
+    return Promise.resolve('main');
+  }
 }
 
 describe('git:status IPC-Pfad', () => {

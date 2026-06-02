@@ -58,6 +58,7 @@ function seed(driver: InMemorySessionDriver, input: SeedInput) {
     status: input.status,
     current_model: input.currentModel === undefined ? 'claude-sonnet-4-6' : input.currentModel,
     worktree_branch: null,
+    worktree_path: null,
     notes_md: input.notesMd ?? '',
     cwd: 'C:\\test',
     started_at: input.startedAt,

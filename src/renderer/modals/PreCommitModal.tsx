@@ -34,6 +34,11 @@ interface Props {
   project: ProjectRow;
   frontmatter: ClaudeMdFrontmatter | null;
   hasActiveTerminal: boolean;
+  // Season 37 (Worktree-Support): die aktive Session. Laeuft sie in einem
+  // Worktree, zeigt das Panel den Status DES Worktrees (Branch + geaenderte
+  // Dateien) statt des Haupt-Checkouts — sonst waere der Working-Tree „sauber"
+  // und der Commit-Button faelschlich gesperrt. null = keine aktive Session.
+  activeSessionId: string | null;
   // Sprint-8: User-konfigurierbare Sensitive-Patterns aus den Settings.
   // Werden additiv zu den hartcoded Defaults ausgewertet.
   sensitivePatterns: AppSettings['sensitive_file_patterns'];
@@ -51,6 +56,7 @@ export function PreCommitModal({
   project,
   frontmatter,
   hasActiveTerminal,
+  activeSessionId,
   sensitivePatterns,
   onClose,
 }: Props) {
@@ -60,6 +66,9 @@ export function PreCommitModal({
     loadError: null,
     hasGit: true,
   });
+  // Season 37: true, wenn der angezeigte Status aus dem Worktree der aktiven
+  // Session stammt (nicht aus dem Haupt-Checkout) — fuer den „Worktree"-Badge.
+  const [isWorktree, setIsWorktree] = useState(false);
   const [sent, setSent] = useState(false);
   // Phase-2 Season-29.5: harter Confirm-Gate fuer sensitive Files. User muss
   // die Checkbox explizit anhaken, bevor der Send-Button entsperrt. Bei
@@ -100,34 +109,46 @@ export function PreCommitModal({
     void loadActiveProjectFrontmatter(project.id);
   }, [project.id, loadActiveProjectFrontmatter]);
 
-  // Beim Mount git:status pullen. Read-only IPC, kein useRef-Guard
+  // Beim Mount git-Status pullen. Read-only IPC, kein useRef-Guard
   // (Memory-Konvention: Guard nur für Server-Mutationen).
+  //
+  // Season 37: laeuft die aktive Session in einem Worktree, zuerst dessen
+  // Working-Tree-Status laden — dort liegen die zu committenden Aenderungen.
+  // git:worktree-status liefert hasWorktree=false fuer normale Sessions; dann
+  // faellt der Pfad auf den Haupt-Checkout-Status (git:status) zurueck.
   useEffect(() => {
     let cancelled = false;
-    void window.api.git.status({ projectId: project.id }).then((result) => {
+    async function load(): Promise<void> {
+      if (activeSessionId) {
+        const wt = await window.api.git.worktreeStatus({ sessionId: activeSessionId });
+        if (cancelled) return;
+        if (wt.ok && wt.data.hasWorktree) {
+          setIsWorktree(true);
+          if (wt.data.hasGit && wt.data.status) {
+            setState({ status: wt.data.status, loading: false, loadError: null, hasGit: true });
+          } else {
+            setState({ status: null, loading: false, loadError: null, hasGit: false });
+          }
+          return;
+        }
+      }
+      // Fallback: Haupt-Checkout-Status (bestehender Phase-7-Pfad).
+      const result = await window.api.git.status({ projectId: project.id });
       if (cancelled) return;
+      setIsWorktree(false);
       if (result.ok) {
-        setState({
-          status: result.data,
-          loading: false,
-          loadError: null,
-          hasGit: true,
-        });
+        setState({ status: result.data, loading: false, loadError: null, hasGit: true });
       } else if (result.code === 'NOT_A_GIT_REPO') {
         setState({ status: null, loading: false, loadError: null, hasGit: false });
       } else {
-        setState({
-          status: null,
-          loading: false,
-          loadError: result.error,
-          hasGit: true,
-        });
+        setState({ status: null, loading: false, loadError: result.error, hasGit: true });
       }
-    });
+    }
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [project.id]);
+  }, [project.id, activeSessionId]);
 
   // Esc schließt das Modal — gleicher Handler wie in den anderen Modals.
   useEffect(() => {
@@ -227,6 +248,14 @@ export function PreCommitModal({
               <div className="td-precommit-meta">
                 <span className="td-precommit-label">Branch</span>
                 <code className="td-precommit-branch">{state.status.branch}</code>
+                {isWorktree && (
+                  <span
+                    className="td-precommit-worktree-badge"
+                    title="Diese Session laeuft in einem Git-Worktree — der Commit landet auf dem Worktree-Branch."
+                  >
+                    Worktree
+                  </span>
+                )}
                 {state.status.ahead > 0 && (
                   <span className="td-precommit-ahead">↑ {state.status.ahead}</span>
                 )}
