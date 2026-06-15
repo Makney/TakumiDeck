@@ -30,6 +30,7 @@ import { useTerminalFontZoom } from './terminal/useTerminalFontZoom';
 import { useTerminalSearch } from './terminal/useTerminalSearch';
 import { useTerminalContextMenu } from './terminal/useTerminalContextMenu';
 import { useTerminalDragDrop } from './terminal/useTerminalDragDrop';
+import { decideHostMouseDown } from './terminal/terminalHostMouseDown';
 
 // Phase-2 Season-1: Tick-Intervall für TUI-Pattern-Match auf dem xterm-Buffer.
 // 1 s ist der Sweet-Spot zwischen Permission-Prompt-Reaktionszeit und CPU-Last
@@ -811,7 +812,20 @@ export function TerminalTab({
   // Menue zumachen und Fokus zurueck — nicht im Selben Klick noch eine Aktion
   // anstossen.
   const handleHostMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (contextMenu !== null && e.button === 0) {
+    // Bugfix 2026-06-15: Das Kontextmenue wird im Pane-Div gerendert, also
+    // bubbelt der mousedown eines Menuepunkts bis hierher. Wuerde der Handler
+    // das Menue dann schliessen, waere der Button im folgenden click-Event
+    // ausgehaengt und Kopieren/Einfuegen feuerte nie. decideHostMouseDown
+    // steigt bei Klicks INNERHALB des Menues aus (Entscheidungslogik in
+    // terminalHostMouseDown.ts isoliert getestet).
+    const action = decideHostMouseDown({
+      targetInContextMenu:
+        (e.target as HTMLElement).closest('.td-terminal-context-menu') !== null,
+      contextMenuOpen: contextMenu !== null,
+      button: e.button,
+    });
+    if (action === 'ignore') return;
+    if (action === 'dismiss') {
       setContextMenu(null);
       return;
     }

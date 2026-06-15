@@ -17,6 +17,18 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-06-15 — v0.4.0 — Bugfix: Rechtsklick-Kontextmenü im Terminal
+
+### Was jetzt geht
+
+- **Das Rechtsklick-Kontextmenü im Terminal funktioniert wieder.** „Kopieren" und „Einfügen" (sowie „Suchen"/„Buffer leeren") taten beim Klick nichts — es landete auch nichts in der Zwischenablage. Ursache: Das Menü wird innerhalb des Terminal-Panes gerendert, dessen `mousedown`-Handler bei jedem Linksklick das offene Menü schloss — also auch beim Klick auf einen Menüpunkt selbst. Der Button wurde dadurch ausgehängt, bevor sein `click` die Aktion auslösen konnte. Fix: Klicks **innerhalb** des Menüs lassen den Pane-Handler aussteigen; das Schließen bei Außen-Klick erledigt weiterhin der menüeigene Listener.
+
+### Architektur
+
+Entscheidungslogik des Pane-`mousedown` in eine reine Funktion (`terminalHostMouseDown.ts`) ausgelagert, damit das Verhalten ohne xterm-/React-Mount testbar ist — analog zum `terminalDropHandler`. Pre-Commit-Gate grün (5 neue, gezielte Tests für die Menü-Klick-/Dismiss-/Fokus-Entscheidung).
+
+---
+
 ## 2026-06-15 — v0.4.0 — Opencode als zweite Engine (Variante A)
 
 ### Was jetzt geht
