@@ -17,6 +17,18 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-06-15 — v0.4.0 — Bugfix: Doppeltes Einfügen bei Ctrl+V im Terminal
+
+### Was jetzt geht
+
+- **Ctrl+V im Terminal fügt nur noch einmal ein.** Vorher landete der Zwischenablage-Inhalt bei jedem Ctrl+V doppelt im Terminal. Ursache: Unser Copy/Paste-Handler bricht zwar xterms internes Key-Routing ab, unterdrückte aber nicht die *native* Browser-Paste-Aktion — die löste zusätzlich xterms eingebauten `paste`-Listener aus, sodass der Inhalt zweimal eingefügt wurde. Nur Ctrl+V (und latent Shift+Insert) waren betroffen, weil das die nativen Browser-Paste-Tastenkombis sind; Ctrl+Shift+V war nie betroffen. Fix: Der Handler ruft im Paste-Pfad jetzt `event.preventDefault()`, sodass nur noch der eigene Bracketed-Paste läuft.
+
+### Architektur
+
+Einzeiliger Fix in `clipboardKeyHandler.ts` (kein Strukturumbau). Pre-Commit-Gate grün (5 neue, gezielte Tests für den `preventDefault`-Pfad).
+
+---
+
 ## 2026-06-02 — v0.4.0 — Worktree-Support: parallele Sessions in eigenen Branches
 
 ### Was jetzt geht

@@ -52,14 +52,15 @@ function makeKeyEvent(opts: {
   ctrlKey?: boolean;
   shiftKey?: boolean;
   altKey?: boolean;
-}): KeyboardEvent {
+}): KeyboardEvent & { preventDefault: ReturnType<typeof vi.fn> } {
   return {
     type: opts.type ?? 'keydown',
     key: opts.key,
     ctrlKey: opts.ctrlKey ?? false,
     shiftKey: opts.shiftKey ?? false,
     altKey: opts.altKey ?? false,
-  } as KeyboardEvent;
+    preventDefault: vi.fn(),
+  } as unknown as KeyboardEvent & { preventDefault: ReturnType<typeof vi.fn> };
 }
 
 describe('createCopyPasteKeyHandler — Copy', () => {
@@ -169,6 +170,66 @@ describe('createCopyPasteKeyHandler — Paste', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(terminal.pastes).toEqual(['aus dem Browser kopiert']);
+  });
+});
+
+// Bugfix Dubble-Paste: Bei nativen Browser-Paste-Kombis muss der Handler
+// event.preventDefault() rufen, sonst feuert xterms eingebauter Paste-Listener
+// zusaetzlich zu unserem term.paste() → der Inhalt landet doppelt im Terminal.
+describe('createCopyPasteKeyHandler — preventDefault (Dubble-Paste-Schutz)', () => {
+  it('Plain Ctrl+V ruft preventDefault (unterdrueckt nativen Paste-Pfad)', () => {
+    const clipboard = makeClipboardFake('payload');
+    const terminal = makeTerminalFake();
+    const handler = createCopyPasteKeyHandler({ clipboard, getTerminal: () => terminal });
+
+    const event = makeKeyEvent({ key: 'v', ctrlKey: true, shiftKey: false });
+    handler(event);
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('Shift+Insert ruft preventDefault (native Paste-Kombi)', () => {
+    const clipboard = makeClipboardFake('payload');
+    const terminal = makeTerminalFake();
+    const handler = createCopyPasteKeyHandler({ clipboard, getTerminal: () => terminal });
+
+    const event = makeKeyEvent({ key: 'Insert', shiftKey: true, ctrlKey: false });
+    handler(event);
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('Ctrl+Shift+V ruft preventDefault (konsistent, auch wenn nicht nativ noetig)', () => {
+    const clipboard = makeClipboardFake('payload');
+    const terminal = makeTerminalFake();
+    const handler = createCopyPasteKeyHandler({ clipboard, getTerminal: () => terminal });
+
+    const event = makeKeyEvent({ key: 'v', ctrlKey: true, shiftKey: true });
+    handler(event);
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('Copy-Trigger (Ctrl+Shift+C) ruft KEIN preventDefault', () => {
+    const clipboard = makeClipboardFake();
+    const terminal = makeTerminalFake('selektiert');
+    const handler = createCopyPasteKeyHandler({ clipboard, getTerminal: () => terminal });
+
+    const event = makeKeyEvent({ key: 'c', ctrlKey: true, shiftKey: true });
+    handler(event);
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('Durchgelassene Taste (kein Trigger) ruft KEIN preventDefault', () => {
+    const clipboard = makeClipboardFake();
+    const terminal = makeTerminalFake();
+    const handler = createCopyPasteKeyHandler({ clipboard, getTerminal: () => terminal });
+
+    const event = makeKeyEvent({ key: 'a', ctrlKey: true, shiftKey: false });
+    handler(event);
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
   });
 });
 

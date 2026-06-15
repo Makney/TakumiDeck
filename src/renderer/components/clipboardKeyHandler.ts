@@ -113,6 +113,13 @@ export function createCopyPasteKeyHandler(
     if (isPasteTrigger) {
       const term = getTerminal();
       if (!term) return true;
+      // Bugfix Dubble-Paste: Bei nativen Browser-Paste-Kombis (Ctrl+V, Shift+Insert)
+      // bricht xterm bei Rueckgabe `false` zwar sein Key-Routing ab, ruft aber KEIN
+      // preventDefault — die native Paste-Default-Aktion erzeugt dann ein `paste`-
+      // Event auf der textarea, das xterms eingebauter Paste-Listener ein ZWEITES Mal
+      // einfuegt. Wir unterdruecken die native Aktion hier synchron, damit nur unser
+      // term.paste() unten laeuft. (Ctrl+Shift+V ist keine native Kombi → harmlos.)
+      event.preventDefault();
       // Phase-2 Season-2: Image-First. Wenn ein imagePasteSaver gesetzt ist,
       // prüfen wir die Zwischenablage zuerst auf ein Bild (typischer Workflow:
       // Win+Shift+S → Snip im Clipboard → Ctrl+Shift+V). Liefert er einen
