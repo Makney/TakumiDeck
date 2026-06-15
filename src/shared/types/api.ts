@@ -1,7 +1,7 @@
 // Bridge-API-Shape (window.api) — aggregiert alle Domain-IPC-Verträge.
 
 import type { IpcResult, WindowAction } from './core';
-import type { AppSettings, ModelFetchResult } from './settings';
+import type { AppSettings, ModelFetchResult, OpencodeModelsResult } from './settings';
 import type {
   PtyCreateInput,
   PtyDataEvent,
@@ -66,6 +66,18 @@ import type {
   GitWorktreeRemoveResult,
   GitWorktreeStatusInput,
   GitWorktreeStatusResult,
+  GitWorktreeMergePreviewInput,
+  GitWorktreeMergePreviewResult,
+  GitWorktreeMergeInput,
+  GitWorktreeMergeResult,
+  GitBranchOverviewInput,
+  GitBranchOverviewResult,
+  GitCheckoutInput,
+  GitCheckoutResult,
+  GitFetchInput,
+  GitFetchResult,
+  GitPullInput,
+  GitPullResult,
 } from './git';
 import type {
   FsListTemplatesInput,
@@ -160,6 +172,12 @@ export interface RendererApi {
   models: {
     fetchAvailable: () => Promise<IpcResult<ModelFetchResult>>;
   };
+  // Season 39 (Opencode): Modell-Liste der zweiten Engine. Renderer ruft beim
+  // Wechsel auf den Session-Typ „Opencode" im NewSessionModal. `available=false`
+  // signalisiert deaktivierte Engine / fehlende Binary — kein Fehler-Reject.
+  opencode: {
+    listModels: () => Promise<IpcResult<OpencodeModelsResult>>;
+  };
   templates: {
     // Phase-2 Season-4: Auto-Variablen, die DB- oder FS-Zugriff brauchen.
     // Renderer kombiniert das Ergebnis mit den lokalen Auto-Variablen aus
@@ -247,6 +265,24 @@ export interface RendererApi {
     worktreeStatus: (
       input: GitWorktreeStatusInput,
     ) => Promise<IpcResult<GitWorktreeStatusResult>>;
+    // Phase 3 (In-App-Merge): Vorab-Stand fuers Merge-Modal.
+    worktreeMergePreview: (
+      input: GitWorktreeMergePreviewInput,
+    ) => Promise<IpcResult<GitWorktreeMergePreviewResult>>;
+    // Phase 3: Worktree-Branch nach main/master mergen (+ optionaler Cleanup).
+    worktreeMerge: (
+      input: GitWorktreeMergeInput,
+    ) => Promise<IpcResult<GitWorktreeMergeResult>>;
+    // Season 38: Branch-Uebersicht des Haupt-Checkouts (Tracking-Info).
+    branchOverview: (
+      input: GitBranchOverviewInput,
+    ) => Promise<IpcResult<GitBranchOverviewResult>>;
+    // Season 38: Branch wechseln (optional mit Auto-Stash).
+    checkout: (input: GitCheckoutInput) => Promise<IpcResult<GitCheckoutResult>>;
+    // Season 38: `git fetch --all --prune`.
+    fetch: (input: GitFetchInput) => Promise<IpcResult<GitFetchResult>>;
+    // Season 38: `git pull` mit Konfliktanzeige.
+    pull: (input: GitPullInput) => Promise<IpcResult<GitPullResult>>;
   };
   projects: {
     list: () => Promise<IpcResult<ProjectRow[]>>;

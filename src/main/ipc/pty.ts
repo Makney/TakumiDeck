@@ -167,7 +167,21 @@ export function registerPtyIpc(deps: {
       // Phase-2 Season-31: Terminal-Sessions spawnen pwsh.exe/powershell.exe statt
       // der claude-Binary — Skip-Gate #1: Pre-Spawn-Check geht durch einen anderen
       // Helper, der den settings.claude_binary_path-Lookup nicht braucht.
+      // Season 39: opencode ist eine dritte Spawn-Variante — eigene Binary, aber
+      // (anders als terminal) mit Modell-Argument und gemeinsamer Pre-Spawn-Logik.
       const isTerminal = input.type === 'terminal';
+      const isOpencode = input.type === 'opencode';
+
+      // Season 39: opencode-Sessions nur, wenn die Engine in den Settings
+      // aktiviert ist. Der „Opencode"-Typ ist im Renderer hinter demselben Toggle
+      // versteckt — diese serverseitige Pruefung ist Defense-in-Depth.
+      if (isOpencode && !current.opencode_enabled) {
+        return err<never>(
+          'Opencode ist in den Einstellungen nicht aktiviert.',
+          'OPENCODE_DISABLED',
+        );
+      }
+
       let resolvedBinary: string;
       if (isTerminal) {
         const shellResult = resolveTerminalShell(log);
@@ -186,11 +200,13 @@ export function registerPtyIpc(deps: {
         // Bereich-4-Review (W-1): Binary + cwd in einem Pre-Spawn-Helper, weil
         // session:resume denselben Block hatte. PTY_BINARY_NOT_FOUND und
         // PTY_CWD_NOT_FOUND kommen aus dem Helper zurück.
+        // Season 39: opencode laeuft durch denselben Helper, nur mit dem
+        // opencode_binary_path statt des claude_binary_path.
         const pre = preSpawnCheck({
-          binaryPath: current.claude_binary_path,
+          binaryPath: isOpencode ? current.opencode_binary_path : current.claude_binary_path,
           cwd,
           log,
-          label: 'pty',
+          label: isOpencode ? 'pty-opencode' : 'pty',
           cwdMissingHint: 'Setze workspace_path in settings.json auf einen vorhandenen Ordner.',
         });
         if (!pre.ok) return pre;
@@ -228,13 +244,19 @@ export function registerPtyIpc(deps: {
       // Phase-2 Season-31: Skip-Gate #2 — Terminal-Sessions schreiben keine JSONL,
       // jsonl_path bleibt also null. Damit ueberspringt der Watcher die Session
       // implizit (kein Pfad → kein Match).
-      const jsonlPath = isTerminal
-        ? null
-        : expectedJsonlPath(claudeProjectsRoot, cwd, input.sessionId);
+      // Season 39: opencode hat ebenfalls keine claude-JSONL — Token-Tracking ist
+      // in Variante A noch nicht angebunden, also bleibt jsonl_path null.
+      const jsonlPath =
+        isTerminal || isOpencode
+          ? null
+          : expectedJsonlPath(claudeProjectsRoot, cwd, input.sessionId);
 
       // Phase-2 Season-31: Skip-Gate #3 — claude_session_id + current_model bleiben
       // bei terminal-Sessions null (keine claude-Spawn-Metadaten). Resume spawnt
       // die Shell ueber den gespeicherten cwd neu; keine UUID noetig.
+      // Season 39: opencode bekommt sein gewaehltes Modell (provider/model) als
+      // current_model fuer die Verlauf-Anzeige, aber keine claude_session_id
+      // (opencode verwaltet eigene Session-IDs; Resume laeuft ueber --continue).
       const row = sessions.create({
         id: input.sessionId,
         project_id: input.projectId,
@@ -243,7 +265,7 @@ export function registerPtyIpc(deps: {
         model: isTerminal ? null : input.model,
         cwd,
         season_number: seasonNumber,
-        claude_session_id: isTerminal ? null : input.sessionId,
+        claude_session_id: isTerminal || isOpencode ? null : input.sessionId,
         custom_type_label:
           input.type === 'custom' ? (input.customTypeLabel ?? null) : null,
         jsonl_path: jsonlPath,
@@ -265,9 +287,14 @@ export function registerPtyIpc(deps: {
       try {
         manager.create(input.sessionId, {
           shell: resolvedBinary,
+          // Season 39: opencode startet seine TUI mit `-m <provider/model>` im
+          // cwd; kein --session-id (opencode vergibt seine eigene). Terminal
+          // bleibt arg-los, claude bekommt --session-id + --model.
           args: isTerminal
             ? []
-            : ['--session-id', input.sessionId, '--model', input.model],
+            : isOpencode
+              ? ['-m', input.model]
+              : ['--session-id', input.sessionId, '--model', input.model],
           cwd,
           cols: input.cols,
           rows: input.rows,

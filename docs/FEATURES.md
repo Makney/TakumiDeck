@@ -259,6 +259,12 @@ Trigger-getrieben aus [roadmap/PHASE3.md](./roadmap/PHASE3.md). Versionierung vo
 
 > _Programmiersprachen-Syntax (Phase-3, Season 36) ist historisch unter „Editor (Phase 2)" oben eingetragen._
 
+### Multi-Engine (Phase 3)
+
+| Feature                              | Status | Bemerkung |
+| ------------------------------------ | ------ | --------- |
+| `Opencode als zweite Engine`         | 🟡      | 2026-06-15 (Phase-3, Season 39) — Variante A. Eigener `SessionType: 'opencode'`: NewSessionModal zeigt (bei aktivierter Engine) den Typ „Opencode" mit Modell-Dropdown aus `opencode models` (provider/model, live geladen). Settings-Toggle `opencode_enabled` + `opencode_binary_path` im Allgemein-Tab (Migration 4). Spawn `opencode -m <model>`, Resume `opencode --continue`. Gefahren wie der `terminal`-Typ über Skip-Gates im `pty:create`/`session:resume` (kein JSONL, kein `--session-id`). Neuer IPC `opencode:list-models` (Pure-Parser `parseOpencodeModels`). Eigener Verlauf-Filter-Bucket. 🟡 weil **Token-Tracking bewusst offen** (opencode-DB nicht trivial lesbar → Folge-Season über `opencode export`/`stats`, siehe TECH_SCHULDEN). |
+
 ---
 
 ## Hinweise zur Pflege

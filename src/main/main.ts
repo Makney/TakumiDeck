@@ -11,6 +11,7 @@ import { registerPtyIpc } from './ipc/pty';
 import { registerSessionIpc } from './ipc/session';
 import { registerTerminalBufferIpc } from './ipc/terminal-buffer';
 import { registerModelsIpc } from './ipc/models';
+import { registerOpencodeIpc } from './ipc/opencode';
 import { registerProjectIpc, syncScannedToDb } from './ipc/project';
 import { createUsagePusher, registerUsageIpc } from './ipc/usage';
 import { registerStatsIpc } from './ipc/stats';
@@ -264,6 +265,8 @@ void app.whenReady().then(async () => {
 
     registerSettingsIpc(settings);
     registerModelsIpc();
+    // Season 39 (Opencode): Modell-Liste der zweiten Engine.
+    registerOpencodeIpc({ settings, log: logger });
     registerAppIpc({ settings });
     registerSessionIpc({
       sessions,

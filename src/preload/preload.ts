@@ -44,8 +44,21 @@ import type {
   GitWorktreeRemoveResult,
   GitWorktreeStatusInput,
   GitWorktreeStatusResult,
+  GitWorktreeMergePreviewInput,
+  GitWorktreeMergePreviewResult,
+  GitWorktreeMergeInput,
+  GitWorktreeMergeResult,
+  GitBranchOverviewInput,
+  GitBranchOverviewResult,
+  GitCheckoutInput,
+  GitCheckoutResult,
+  GitFetchInput,
+  GitFetchResult,
+  GitPullInput,
+  GitPullResult,
   IpcResult,
   ModelFetchResult,
+  OpencodeModelsResult,
   ProjectReadCfgInput,
   ProjectRemoveInput,
   ProjectRow,
@@ -282,6 +295,26 @@ const api: RendererApi = {
       ipcRenderer.invoke(Channels.GitWorktreeStatus, input) as Promise<
         IpcResult<GitWorktreeStatusResult>
       >,
+    worktreeMergePreview: (input: GitWorktreeMergePreviewInput) =>
+      ipcRenderer.invoke(Channels.GitWorktreeMergePreview, input) as Promise<
+        IpcResult<GitWorktreeMergePreviewResult>
+      >,
+    worktreeMerge: (input: GitWorktreeMergeInput) =>
+      ipcRenderer.invoke(Channels.GitWorktreeMerge, input) as Promise<
+        IpcResult<GitWorktreeMergeResult>
+      >,
+    branchOverview: (input: GitBranchOverviewInput) =>
+      ipcRenderer.invoke(Channels.GitBranchOverview, input) as Promise<
+        IpcResult<GitBranchOverviewResult>
+      >,
+    checkout: (input: GitCheckoutInput) =>
+      ipcRenderer.invoke(Channels.GitCheckout, input) as Promise<
+        IpcResult<GitCheckoutResult>
+      >,
+    fetch: (input: GitFetchInput) =>
+      ipcRenderer.invoke(Channels.GitFetch, input) as Promise<IpcResult<GitFetchResult>>,
+    pull: (input: GitPullInput) =>
+      ipcRenderer.invoke(Channels.GitPull, input) as Promise<IpcResult<GitPullResult>>,
   },
   projects: {
     list: () => ipcRenderer.invoke(Channels.ProjectList) as Promise<IpcResult<ProjectRow[]>>,
@@ -353,6 +386,13 @@ const api: RendererApi = {
   models: {
     fetchAvailable: () =>
       ipcRenderer.invoke(Channels.ModelsFetchAvailable) as Promise<IpcResult<ModelFetchResult>>,
+  },
+  // Season 39 (Opencode): Modell-Liste der zweiten Engine via `opencode models`.
+  opencode: {
+    listModels: () =>
+      ipcRenderer.invoke(Channels.OpencodeListModels) as Promise<
+        IpcResult<OpencodeModelsResult>
+      >,
   },
 };
 

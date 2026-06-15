@@ -55,6 +55,19 @@ export type ModelFetchResult =
   | { available: true; models: FetchedModel[] }
   | { available: false; reason: 'no-api-key' };
 
+// Season 39 (Opencode): Ergebnis von `opencode:list-models`. `available=false`
+// heisst: opencode ist in den Settings deaktiviert, die Binary fehlt im PATH
+// oder der Aufruf ist fehlgeschlagen — der Renderer zeigt dann einen Hinweis
+// statt eines leeren Dropdowns. `models` sind die rohen `provider/model`-IDs
+// aus der opencode-CLI (z.B. `anthropic/claude-sonnet-4-5`).
+export interface OpencodeModelsResult {
+  available: boolean;
+  models: string[];
+  reason?: 'disabled' | 'not-found' | 'error';
+  // Bei reason='error'/'not-found' eine kurze Diagnose fuer den Tooltip/Hinweis.
+  error?: string;
+}
+
 // Vollständige Settings-Shape laut Architektur Kapitel 4.
 // Wird als settings.json im AppData-Ordner persistiert.
 export interface AppSettings {
@@ -76,6 +89,14 @@ export interface AppSettings {
   default_model: string;
   // Pfad zur claude-Binary. Default 'claude' nutzt PATH; user kann absoluten Pfad setzen.
   claude_binary_path: string;
+  // Season 39 (Opencode): Verfuegbarkeits-Schalter fuer die zweite Engine.
+  // Default `false` — der „Opencode"-Session-Typ taucht im „Neue Session"-Dialog
+  // erst auf, wenn der User opencode hier aktiviert. Verhindert, dass der Typ
+  // bei Usern ohne opencode-Installation ins Leere zeigt.
+  opencode_enabled: boolean;
+  // Season 39: Pfad zur opencode-Binary. Default 'opencode' nutzt PATH; analog
+  // zu claude_binary_path kann ein absoluter Pfad gepinnt werden.
+  opencode_binary_path: string;
   // Phase-2 Season-34: User-erweiterbare Modell-Liste, gepflegt im Settings-
   // Tab „Modelle". Built-ins (`BUILT_IN_MODEL_OPTIONS` in src/shared/models.ts)
   // bleiben fix; dieser Slot ergaenzt fuer neue Anthropic-Releases vor dem

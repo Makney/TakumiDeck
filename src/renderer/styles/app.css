@@ -5275,3 +5275,354 @@ body,
 .td-wizard-error {
   margin-top: 4px;
 }
+
+/* Phase 3 (In-App-Merge) — Merge-Button im „vs. main"-Diff-Tab + Merge-Modal.
+   Halten sich an die App-Tokens (kein Custom-Farb-Drift). */
+.td-diff-merge-btn {
+  margin-left: 8px;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-family: var(--td-mono);
+  font-size: 12px;
+  background: var(--td-accent-soft);
+  border: 1px solid var(--td-accent-line);
+  border-radius: 2px;
+  color: var(--td-accent);
+  cursor: pointer;
+}
+
+.td-diff-merge-btn:hover {
+  border-color: var(--td-accent);
+}
+
+.td-merge-modal {
+  width: min(520px, 92vw);
+}
+
+.td-merge-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--td-mono);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.td-merge-branch {
+  color: var(--td-accent);
+  font-weight: 600;
+}
+
+.td-merge-arrow {
+  color: var(--td-text-mute);
+}
+
+.td-merge-base {
+  color: var(--td-text);
+  font-weight: 600;
+}
+
+.td-merge-scope {
+  margin-left: auto;
+  color: var(--td-text-dim);
+  font-size: 12px;
+}
+
+.td-merge-block {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: rgba(239, 93, 93, 0.1);
+  border: 1px solid var(--td-red);
+  border-radius: 2px;
+  color: var(--td-red);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.td-merge-warn {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: rgba(230, 160, 60, 0.1);
+  border: 1px solid var(--td-orange, var(--td-warn, var(--td-line)));
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text);
+}
+
+.td-merge-fieldset {
+  border: 1px solid var(--td-line);
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+
+.td-merge-fieldset legend {
+  padding: 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--td-text-mute);
+}
+
+.td-merge-radio {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.td-merge-radio input {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.td-merge-radio-label {
+  font-size: 13px;
+  color: var(--td-text);
+}
+
+.td-merge-radio-hint {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--td-text-mute);
+  line-height: 1.4;
+}
+
+.td-merge-cleanup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.td-merge-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--td-text);
+  cursor: pointer;
+}
+
+.td-merge-conflict p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--td-text);
+}
+
+.td-merge-conflict-files {
+  margin: 0;
+  padding: 8px 10px 8px 26px;
+  background: rgba(239, 93, 93, 0.08);
+  border: 1px solid var(--td-red);
+  border-radius: 2px;
+  font-family: var(--td-mono);
+  font-size: 12px;
+  color: var(--td-red);
+  max-height: 220px;
+  overflow: auto;
+}
+
+/* ====================================================================
+   Season 38 (Pull/Fetch/Branch-Switch)
+   ==================================================================== */
+
+/* Branch-Panel sitzt zwischen „Projekte" und „Aktive Sessions"; bekommt eine
+   moderate Hoehe und scrollt bei vielen Branches, statt die Sidebar zu sprengen. */
+.td-panel-branches .td-panel-body {
+  max-height: 200px;
+  overflow: auto;
+}
+
+.td-branch-list {
+  gap: 1px;
+}
+
+.td-branch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 13px;
+  color: var(--td-text);
+  cursor: default;
+}
+
+.td-branch-row.clickable {
+  cursor: pointer;
+}
+
+.td-branch-row.clickable:hover {
+  background: var(--td-bg-2);
+}
+
+.td-branch-row.current {
+  font-weight: 600;
+}
+
+.td-branch-row.current .td-branch-mark {
+  color: var(--td-green, #4ade80);
+}
+
+.td-branch-row.locked {
+  opacity: 0.55;
+}
+
+.td-branch-mark {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  color: var(--td-text-mute);
+  font-size: 11px;
+}
+
+.td-branch-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-branch-track {
+  flex-shrink: 0;
+  display: flex;
+  gap: 5px;
+  font-family: var(--td-mono);
+  font-size: 11px;
+}
+
+.td-branch-ahead {
+  color: var(--td-green, #4ade80);
+}
+
+.td-branch-behind {
+  color: var(--td-orange, var(--td-red));
+}
+
+.td-branch-detached {
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  font-family: var(--td-mono);
+  font-size: 11px;
+  color: var(--td-orange, var(--td-red));
+}
+
+/* Stash-Rueckfrage + Pull-Konflikt-Block im Panel. */
+.td-branch-dirty-confirm {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: var(--td-bg-2);
+  border: 1px solid var(--td-line);
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text);
+}
+
+.td-branch-dirty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.td-branch-conflict {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--td-text);
+}
+
+.td-branch-conflict-head {
+  margin-bottom: 6px;
+  line-height: 1.45;
+}
+
+.td-branch-conflict .td-action-btn {
+  margin-top: 8px;
+}
+
+/* TitleBar-Branch-Dropdown. */
+.td-branch-switcher {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.td-titlebar .td-branch-switcher-btn {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 1px 5px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.td-titlebar .td-branch-switcher-btn:hover:not(:disabled) {
+  border-color: var(--td-accent-line);
+  color: var(--td-accent);
+}
+
+.td-branch-switcher-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 180px;
+  max-height: 320px;
+  overflow: auto;
+  z-index: 50;
+  background: var(--td-panel, var(--td-bg-2));
+  border: 1px solid var(--td-line);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+}
+
+.td-branch-switcher-empty {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--td-text-mute);
+}
+
+.td-branch-switcher-item {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 5px 8px;
+  color: var(--td-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.td-branch-switcher-item:hover:not(:disabled) {
+  background: var(--td-bg-2);
+}
+
+.td-branch-switcher-item.current {
+  font-weight: 600;
+  color: var(--td-green, #4ade80);
+  cursor: default;
+}
+
+.td-branch-switcher-item.locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

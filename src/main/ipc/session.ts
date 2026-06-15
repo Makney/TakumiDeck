@@ -114,7 +114,20 @@ export function registerSessionIpc(deps: {
       // UUID, also greift der Sprint-6-Hotfix-Check unten nicht. Beides wird
       // ueber einen frueh gesetzten isTerminal-Branch erschlagen.
       const isTerminal = session.type === 'terminal';
+      // Season 39: opencode-Sessions resumen via `opencode --continue` (eigene
+      // Binary, keine claude-UUID). Analog zum terminal-Branch frueh gesetzt.
+      const isOpencode = session.type === 'opencode';
       const current = settings.read();
+
+      // Season 39: deaktivierte Engine → kein Resume. Defense-in-Depth zum
+      // Renderer-Toggle.
+      if (isOpencode && !current.opencode_enabled) {
+        return err<never>(
+          'Opencode ist in den Einstellungen nicht aktiviert.',
+          'OPENCODE_DISABLED',
+        );
+      }
+
       let resolvedBinary: string;
       if (isTerminal) {
         const shellResult = resolveTerminalShell(log);
@@ -130,11 +143,12 @@ export function registerSessionIpc(deps: {
         // Bereich-4-Review (W-1): Pre-Spawn-Check via gemeinsamem Helper (Binary
         // + cwd). Bei Sessions, deren Ordner zwischen den Sessions umbenannt
         // wurde, kommt PTY_CWD_NOT_FOUND mit passendem Hint zurück.
+        // Season 39: opencode laeuft durch denselben Helper mit eigener Binary.
         const pre = preSpawnCheck({
-          binaryPath: current.claude_binary_path,
+          binaryPath: isOpencode ? current.opencode_binary_path : current.claude_binary_path,
           cwd: session.cwd,
           log,
-          label: 'session:resume',
+          label: isOpencode ? 'session:resume-opencode' : 'session:resume',
           cwdMissingHint: 'Der Ordner wurde umbenannt oder gelöscht.',
         });
         if (!pre.ok) return pre;
@@ -151,8 +165,10 @@ export function registerSessionIpc(deps: {
       // lassen.
       // Phase-2 Season-31: Terminal-Sessions sind per Design ohne UUID — der
       // Check uebersteigt sie.
+      // Season 39: opencode-Sessions haben per Design keine claude-UUID — der
+      // Check uebersteigt sie (wie terminal).
       const claudeSessionId = session.claude_session_id;
-      if (!isTerminal && claudeSessionId === null) {
+      if (!isTerminal && !isOpencode && claudeSessionId === null) {
         // Bereich-4-Review (I-1): Result der Lifecycle-Transition prüfen
         // und loggen, falls sie scheitert.
         const tr = lifecycle.transition(input.sessionId, 'error', 'spawn-error');
@@ -190,9 +206,15 @@ export function registerSessionIpc(deps: {
       // --resume, kein --model. Der gespeicherte cwd reicht, um die Session am
       // gewohnten Ort fortzusetzen.
       const model = session.current_model ?? current.default_model;
+      // Season 39: opencode kennt kein --resume mit fixer UUID. Wir setzen die
+      // letzte Session im cwd via `--continue` fort. Sonderfall (mehrere
+      // opencode-Sessions im selben Ordner) ist bewusst akzeptiert — eine
+      // robuste Per-Session-Aufloesung kommt erst mit dem Token-Tracking-Feature.
       const resumeArgs = isTerminal
         ? []
-        : ['--resume', claudeSessionId as string, '--model', model];
+        : isOpencode
+          ? ['--continue']
+          : ['--resume', claudeSessionId as string, '--model', model];
       try {
         manager.create(input.sessionId, {
           shell: resolvedBinary,
@@ -217,7 +239,9 @@ export function registerSessionIpc(deps: {
       log.info(
         isTerminal
           ? `[session:resume] sessionId=${input.sessionId} shell=${resolvedBinary}`
-          : `[session:resume] sessionId=${input.sessionId} claudeSessionId=${claudeSessionId} model=${model}`,
+          : isOpencode
+            ? `[session:resume] sessionId=${input.sessionId} opencode --continue`
+            : `[session:resume] sessionId=${input.sessionId} claudeSessionId=${claudeSessionId} model=${model}`,
       );
       return ok(transitionResult.data);
     } catch (e) {

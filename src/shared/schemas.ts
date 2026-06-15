@@ -58,6 +58,11 @@ export const AppSettingsSchema = z.object({
   workspace_wizard_completed: z.boolean(),
   default_model: z.string(),
   claude_binary_path: z.string().min(1),
+  // Season 39 (Opencode): zweite Engine. Toggle + Binary-Pfad analog zur
+  // claude-Konfiguration. Default-Merge in SettingsStore.read() fuellt beide
+  // Felder fuer Bestandsuser; Migration 4 persistiert sie defensiv.
+  opencode_enabled: z.boolean(),
+  opencode_binary_path: z.string().min(1),
   // Phase-2 Season-34: User-erweiterbare Modell-Liste. Built-ins bleiben in
   // src/shared/models.ts hardcoded, damit das App-Update neue Anthropic-Modelle
   // mitliefert; dieses Feld ist die User-Erweiterung fuer ad-hoc neue IDs.
@@ -142,6 +147,9 @@ export const AppPickFolderInputSchema = z
 // kein --session-id, kein --model, kein JSONL. Title bleibt Pflicht; alle
 // claude-spezifischen Skip-Pfade werden im pty:create-Handler ueber Inline-
 // Gates gezogen (siehe src/main/ipc/pty.ts).
+// Season 39: 'opencode' spawnt die opencode-CLI als zweite Engine. Wie
+// 'terminal' ohne claude-JSONL/--session-id; das Spawn-Argument ist
+// `-m <provider/model>` (model bleibt Pflicht ueber das Basis-Schema).
 export const SessionTypeSchema = z.enum([
   'feature',
   'bug',
@@ -149,6 +157,7 @@ export const SessionTypeSchema = z.enum([
   'docs-sync',
   'custom',
   'terminal',
+  'opencode',
 ]);
 
 export const SessionStatusSchema = z.enum([
@@ -513,6 +522,44 @@ export const GitWorktreeRemoveInputSchema = z.object({
 // Season 37: Worktree-Working-Tree-Status fuers Pre-Commit-Panel.
 export const GitWorktreeStatusInputSchema = z.object({
   sessionId: z.string().uuid(),
+});
+
+// Phase 3 (In-App-Merge): Vorab-Stand fuers Merge-Modal. sessionId statt
+// projectId — der Main resolved Worktree-Pfad + Branch aus der Session-Row.
+export const GitWorktreeMergePreviewInputSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+// Phase 3: Merge-Ausfuehrung. Strategie als Enum; Cleanup-Flags + optionale
+// Commit-Message. Renderer schickt nie einen freien Pfad/Branch.
+export const GitWorktreeMergeInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  strategy: z.enum(['merge-commit', 'squash', 'ff-only']),
+  removeWorktree: z.boolean(),
+  deleteBranch: z.boolean(),
+  commitMessage: z.string().max(2000).optional(),
+});
+
+// Season 38 (Pull/Fetch/Branch-Switch): alle projectId-basiert — der Server
+// resolved den Repo-Pfad. Operationen laufen im Haupt-Checkout, nie in einem
+// freien Pfad.
+export const GitBranchOverviewInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
+export const GitCheckoutInputSchema = z.object({
+  projectId: z.string().min(1),
+  // Branch-Name aus der serverseitig gelieferten Liste — trotzdem Laengen-Cap.
+  branch: z.string().min(1).max(255),
+  autoStash: z.boolean(),
+});
+
+export const GitFetchInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
+export const GitPullInputSchema = z.object({
+  projectId: z.string().min(1),
 });
 
 // --- Workspace / Projects (Sprint 4) ---------------------------------

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ProjectRow, UpdaterState } from '@shared/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { GitBranchInfo, ProjectRow, UpdaterState } from '@shared/types';
 import { useProjectStore } from '../stores/projects';
 import { useSessionStore } from '../stores/sessions';
 import { useUiStore } from '../stores/ui';
 import { displayProjectName } from '../components/displayProjectName';
+import { describeCheckoutResult } from '../components/branchOpMessages';
 import { useUpdaterState } from '../components/useUpdaterState';
 import logoUrl from '../assets/logo.png';
 
@@ -180,8 +181,12 @@ export function TitleBar({ version, p90WindowHours }: Props) {
           <span className="td-titlebar-meta-item">Kein Projekt aktiv</span>
         )}
 
-        {activeProject && (
-          <BranchBadge state={branchState} onRefresh={() => void loadBranch()} />
+        {activeProject && activeProjectId && (
+          <BranchBadge
+            state={branchState}
+            projectId={activeProjectId}
+            onRefresh={() => void loadBranch()}
+          />
         )}
 
         {activeProject && (
@@ -348,9 +353,11 @@ function UpdaterBannerBody({
 
 function BranchBadge({
   state,
+  projectId,
   onRefresh,
 }: {
   state: BranchState;
+  projectId: string;
   onRefresh: () => void;
 }) {
   if (state.status === 'no-git') {
@@ -386,8 +393,90 @@ function BranchBadge({
     );
   }
   return (
-    <span className="td-titlebar-meta-item" title="Aktiver Git-Branch">
-      <span aria-hidden>⎇</span> <strong>{state.branch}</strong>
+    <BranchSwitcher branch={state.branch ?? ''} projectId={projectId} onRefresh={onRefresh} />
+  );
+}
+
+// Season 38: Branch-Badge mit Switch-Dropdown. Laedt die Branch-Liste erst beim
+// Oeffnen (kein Dauer-Fetch im Header). Switch laeuft ohne Auto-Stash — bei
+// dirty Working-Tree verweist der Toast aufs Sidebar-Branches-Panel, wo die
+// Stash-Rueckfrage sitzt.
+function BranchSwitcher({
+  branch,
+  projectId,
+  onRefresh,
+}: {
+  branch: string;
+  projectId: string;
+  onRefresh: () => void;
+}) {
+  const flashToast = useUiStore((s) => s.flashToast);
+  const [open, setOpen] = useState(false);
+  const [branches, setBranches] = useState<GitBranchInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
+
+  // Click-away schliesst das Dropdown.
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) {
+      setLoading(true);
+      void window.api.git.branchOverview({ projectId }).then((res) => {
+        setLoading(false);
+        setBranches(res.ok ? res.data.branches : []);
+      });
+    }
+  };
+
+  const handleSwitch = async (target: GitBranchInfo) => {
+    if (target.isCurrent || target.checkedOutPath !== null) return;
+    setBusy(true);
+    try {
+      const res = await window.api.git.checkout({ projectId, branch: target.name, autoStash: false });
+      if (!res.ok) {
+        flashToast(res.error);
+        return;
+      }
+      if (res.data.status === 'switched') {
+        // Globales Branch-Refresh (TitleBar-Badge + Sidebar-Panel laden neu).
+        window.dispatchEvent(new CustomEvent('td-git-refresh'));
+        flashToast(describeCheckoutResult(res.data));
+        setOpen(false);
+      } else if (res.data.status === 'dirty') {
+        flashToast('Working-Tree nicht sauber — im Branches-Panel „Stashen & wechseln"');
+        setOpen(false);
+      } else {
+        flashToast(describeCheckoutResult(res.data));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="td-titlebar-meta-item td-branch-switcher" ref={wrapRef}>
+      <button
+        type="button"
+        className="td-branch-switcher-btn"
+        onClick={toggle}
+        title="Branch wechseln"
+        disabled={busy}
+      >
+        <span aria-hidden>⎇</span> <strong>{branch}</strong> <span aria-hidden>▾</span>
+      </button>
       <button
         type="button"
         className="td-titlebar-refresh"
@@ -396,6 +485,38 @@ function BranchBadge({
       >
         ↻
       </button>
+      {open && (
+        <div className="td-branch-switcher-menu">
+          {loading && <div className="td-branch-switcher-empty">Lade…</div>}
+          {!loading && branches.length === 0 && (
+            <div className="td-branch-switcher-empty">Keine Branches.</div>
+          )}
+          {!loading &&
+            branches.map((b) => {
+              const locked = b.checkedOutPath !== null && !b.isCurrent;
+              return (
+                <button
+                  key={b.name}
+                  type="button"
+                  className={`td-branch-switcher-item${b.isCurrent ? ' current' : ''}${
+                    locked ? ' locked' : ''
+                  }`}
+                  onClick={() => void handleSwitch(b)}
+                  disabled={b.isCurrent || locked || busy}
+                  title={
+                    locked
+                      ? `In Worktree ausgecheckt: ${b.checkedOutPath}`
+                      : b.isCurrent
+                        ? 'Aktueller Branch'
+                        : `Auf „${b.name}" wechseln`
+                  }
+                >
+                  <span aria-hidden>{b.isCurrent ? '●' : locked ? '⊗' : '⎇'}</span> {b.name}
+                </button>
+              );
+            })}
+        </div>
+      )}
     </span>
   );
 }

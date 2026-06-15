@@ -13,6 +13,9 @@ forge.env.d.ts
 .fallow-reports/
 .fallow/
 
+# Graphify Knowledge-Graph-Output (generierte Artefakte: graph.json/html, Report, Cache)
+graphify-out/
+
 # Claude-Code-Runtime-Locks (ScheduleWakeup / Loop) — Projekt-Regeln in
 # .claude/rules/ bleiben weiter versioniert.
 .claude/*.lock

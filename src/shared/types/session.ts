@@ -9,7 +9,20 @@
 // fuer Quick-Shells / git-Operationen / ad-hoc-Befehle ohne Token-Verbrauch.
 // claude_session_id, jsonl_path und current_model bleiben fuer terminal-Sessions
 // dauerhaft NULL — Resume spawnt die Shell im gespeicherten cwd neu.
-export type SessionType = 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom' | 'terminal';
+// Season 39: 'opencode' spawnt die opencode-CLI (zweite Engine) statt claude.
+// Modell kommt im `provider/model`-Format aus `opencode models`; opencode hat
+// keine claude-JSONL (Token-Tracking ist in Variante A bewusst noch nicht
+// angebunden), daher bleiben claude_session_id + jsonl_path NULL. current_model
+// haelt das gewaehlte `provider/model` fuer die Verlauf-Anzeige. Resume laeuft
+// ueber `opencode --continue` im gespeicherten cwd.
+export type SessionType =
+  | 'feature'
+  | 'bug'
+  | 'review'
+  | 'docs-sync'
+  | 'custom'
+  | 'terminal'
+  | 'opencode';
 // Phase-2 Season-1 ergänzt `permission-prompt`. Treiber ist die volle
 // TUI-State-Detection (siehe src/shared/tui-patterns.ts). DB-Layer ist Text-
 // Column und braucht keine Migration; das Schema-Update in `schemas.ts` reicht.

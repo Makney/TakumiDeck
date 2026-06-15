@@ -221,6 +221,55 @@ class FakeGitDriver implements GitDriver {
   resolveBaseBranchRef(): Promise<string> {
     return Promise.resolve('main');
   }
+
+  // Phase 3 (In-App-Merge): hier nicht getestet — harmlose Defaults.
+  mergePreview(): Promise<{
+    mainCurrentBranch: string;
+    mainClean: boolean;
+    ahead: number;
+    behind: number;
+  }> {
+    return Promise.resolve({ mainCurrentBranch: 'main', mainClean: true, ahead: 0, behind: 0 });
+  }
+
+  mergeBranch(): Promise<import('../../src/shared/types').GitWorktreeMergeOutcome> {
+    return Promise.resolve({ status: 'merged', mergeCommitSha: 'sha', conflictFiles: [] });
+  }
+
+  deleteBranch(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  // Season 38 (Pull/Fetch/Branch-Switch): hier nicht getestet — harmlose Defaults.
+  branchTrackInfos(): Promise<import('../../src/shared/types').GitBranchTrackInfo[]> {
+    return Promise.resolve([]);
+  }
+
+  hasRemote(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
+  checkout(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  stashPush(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
+  fetch(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  pull(): Promise<import('../../src/shared/types').GitPullOutcome> {
+    return Promise.resolve({
+      status: 'up-to-date',
+      conflictFiles: [],
+      filesChanged: 0,
+      insertions: 0,
+      deletions: 0,
+    });
+  }
 }
 
 describe('git:status IPC-Pfad', () => {

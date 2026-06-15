@@ -49,6 +49,38 @@ export function GeneralTab({ settings, setField }: TabBaseProps) {
         />
       </Field>
 
+      {/* Season 39 (Opencode): zweite Engine. Toggle blendet im „Neue Session"-
+          Dialog den Typ „Opencode" ein; der Binary-Pfad wird wie bei claude
+          ueber PATH aufgeloest, kann aber gepinnt werden. */}
+      <Field
+        label="Opencode-Engine"
+        hint="Aktiviert opencode als zweite Engine. Ist der Schalter an, taucht im „Neue Session“-Dialog der Typ „Opencode“ auf; das Modell-Dropdown zeigt dann die opencode-Modelle (provider/model)."
+      >
+        <label className="td-settings-grid-row">
+          <span className="td-settings-grid-label">Aktiv</span>
+          <input
+            type="checkbox"
+            className="td-settings-input td-settings-input--narrow"
+            checked={settings.opencode_enabled}
+            onChange={(e) => setField('opencode_enabled', e.target.checked)}
+          />
+        </label>
+      </Field>
+
+      <Field
+        label="opencode-Binary-Pfad"
+        hint="Default 'opencode' nutzt PATH. Für eine bestimmte Installation hier den absoluten Pfad eintragen."
+      >
+        <input
+          type="text"
+          value={settings.opencode_binary_path}
+          onChange={(e) => setField('opencode_binary_path', e.target.value)}
+          className="td-settings-input"
+          placeholder="opencode"
+          spellCheck={false}
+        />
+      </Field>
+
       <Field label="App-Daten-Ordner" hint="settings.json, data.sqlite, Logs und Templates leben hier.">
         <button
           type="button"

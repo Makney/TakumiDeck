@@ -7,6 +7,7 @@ import { yaml as yamlLang } from '@codemirror/lang-yaml';
 import { unifiedMergeView } from '@codemirror/merge';
 import { oneDark, oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { markdownEditorThemeOverride } from './markdownEditorTheme';
+import { WorktreeMergeModal } from '../modals/WorktreeMergeModal';
 import type {
   GitFileChange,
   GitSessionDiffResult,
@@ -115,6 +116,11 @@ export function DiffViewer({
   const [worktreeLoading, setWorktreeLoading] = useState(false);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const worktreeSeq = useRef(0);
+  // Phase 3 (In-App-Merge): Merge-Modal-State + lokaler Refresh-Nonce, damit der
+  // Worktree-Diff nach einem erfolgreichen Merge (Worktree ggf. entfernt) neu
+  // laedt, ohne dass der Parent seinen refreshKey anheben muss.
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeNonce, setMergeNonce] = useState(0);
   useEffect(() => {
     if (mode !== 'worktree') return;
     if (!activeSessionId) {
@@ -136,7 +142,7 @@ export function DiffViewer({
         setWorktreeError(result.error);
       }
     });
-  }, [mode, activeSessionId, refreshKey]);
+  }, [mode, activeSessionId, refreshKey, mergeNonce]);
 
   // File-Liste je nach Modus. Memoisiert, damit der useEffect unten nicht
   // pro Render einen neuen activeFile-Default zieht.
@@ -241,6 +247,16 @@ export function DiffViewer({
             {sourceHintFor(mode, worktreeDiff?.baseRef ?? null)}
           </span>
         </div>
+        {mode === 'worktree' && activeSessionId && worktreeDiff?.hasWorktree && (
+          <button
+            type="button"
+            className="td-diff-merge-btn"
+            onClick={() => setMergeOpen(true)}
+            title={`Branch „${worktreeDiff.branch}" nach ${worktreeDiff.baseRef} mergen`}
+          >
+            ⤺ Nach main mergen…
+          </button>
+        )}
       </div>
       {isLoadingForMode ? (
         <div className="td-skeleton">Lade Diff…</div>
@@ -316,6 +332,13 @@ export function DiffViewer({
             )}
           </div>
         </div>
+      )}
+      {mergeOpen && activeSessionId && (
+        <WorktreeMergeModal
+          sessionId={activeSessionId}
+          onClose={() => setMergeOpen(false)}
+          onMerged={() => setMergeNonce((n) => n + 1)}
+        />
       )}
     </div>
   );

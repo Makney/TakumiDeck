@@ -55,7 +55,7 @@ Terminal-Escape-Sequenz (`\x1b[200~...\x1b[201~`), die einen Block aus Text als 
 
 ### Worktree (Git)
 
-Git-Mechanismus zum Auschecken eines Branches in einen separaten Ordner. Erlaubt parallele Arbeit an mehreren Branches im gleichen Repo. **Im MVP nicht genutzt** — Schema vorhanden für spätere Aktivierung.
+Git-Mechanismus zum Auschecken eines Branches in einen separaten Ordner. Erlaubt parallele Arbeit an mehreren Branches im gleichen Repo. **Seit Season 37 aktiv genutzt:** Eine Feature-/Custom-Session kann beim Anlegen (NewSessionModal) optional einen eigenen Worktree mit eigenem Branch bekommen. Die Worktrees liegen als Sibling-Ordner neben dem Projekt im Layout `<projektordner>-worktrees/<branch-slug>` (nicht im Projekt selbst, damit Workspace-Scanner und Datei-Watcher sie nicht als Projekt-Teil erfassen). Der Diff-Tab „vs. main" zeigt den Worktree-Stand gegen den Basis-Branch, das Pre-Commit-Panel ist worktree-bewusst, und beim Archivieren wird der Worktree mit Dirty-Schutz aufgeräumt. Der Branch lässt sich über das **Merge-Modal** („vs. main"-Tab bzw. Verlauf-Aktion) nach `main`/`master` zurückführen — Voraussetzung ist ein sauberer Haupt-Checkout, der auf dem Basis-Branch steht. **Terminal-Sessions (Quick-Shells) bekommen keinen Worktree** (Schema-Ausschluss) — sie brauchen weder Branch noch Diff-Baseline.
 
 ### Bracketed-Paste-fähige Trigger
 

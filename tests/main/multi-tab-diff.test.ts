@@ -152,6 +152,41 @@ class FakeGitDriver implements GitDriver {
   resolveBaseBranchRef() {
     return Promise.resolve('main');
   }
+  // Phase 3 (In-App-Merge): hier nicht getestet — harmlose Defaults.
+  mergePreview() {
+    return Promise.resolve({ mainCurrentBranch: 'main', mainClean: true, ahead: 0, behind: 0 });
+  }
+  mergeBranch(): Promise<import('../../src/shared/types').GitWorktreeMergeOutcome> {
+    return Promise.resolve({ status: 'merged' as const, mergeCommitSha: 'sha', conflictFiles: [] });
+  }
+  deleteBranch() {
+    return Promise.resolve();
+  }
+  // Season 38 (Pull/Fetch/Branch-Switch): hier nicht getestet — harmlose Defaults.
+  branchTrackInfos(): Promise<import('../../src/shared/types').GitBranchTrackInfo[]> {
+    return Promise.resolve([]);
+  }
+  hasRemote() {
+    return Promise.resolve(false);
+  }
+  checkout() {
+    return Promise.resolve();
+  }
+  stashPush() {
+    return Promise.resolve(false);
+  }
+  fetch() {
+    return Promise.resolve();
+  }
+  pull(): Promise<import('../../src/shared/types').GitPullOutcome> {
+    return Promise.resolve({
+      status: 'up-to-date' as const,
+      conflictFiles: [],
+      filesChanged: 0,
+      insertions: 0,
+      deletions: 0,
+    });
+  }
 }
 
 // Die git-ipc.ts-Handler nutzen ipcMain.handle, das ohne Electron-Env nicht

@@ -1,10 +1,15 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
 import type {
+  GitBranchTrackInfo,
   GitFileChange,
   GitFileStatus,
+  GitPullOutcome,
   GitStatusResult,
   GitWorktreeEntry,
+  GitWorktreeMergeOutcome,
+  GitWorktreeMergeStrategy,
 } from '@shared/types';
+import { parseBranchTrackLines } from './branchOps';
 
 // Driver-Wrapper für simple-git (Sprint 7, Architektur 6.7).
 //
@@ -77,6 +82,42 @@ export interface GitDriver {
   // Season 37: Basis-Ref fuer den Worktree-Diff aufloesen (main → master →
   // origin/HEAD → 'HEAD' als letzter Fallback).
   resolveBaseBranchRef(repoPath: string): Promise<string>;
+  // Phase 3 (In-App-Merge): Vorab-Stand fuer das Merge-Modal — aktueller Branch
+  // des Haupt-Checkouts, ob er sauber ist, und ahead/behind des Worktree-Branch
+  // gegen den Basis-Ref. Reine Lese-Operation.
+  mergePreview(
+    repoPath: string,
+    branch: string,
+    baseRef: string,
+  ): Promise<{ mainCurrentBranch: string; mainClean: boolean; ahead: number; behind: number }>;
+  // Phase 3: Worktree-Branch im Haupt-Checkout nach baseRef mergen. Laeuft im
+  // repoPath (= Haupt-Checkout), der vorher auf baseRef stehen muss (Caller
+  // prueft). Bei Konflikt rollt der Driver selbst zurueck (merge --abort bzw.
+  // reset --hard HEAD bei squash) und liefert die Konfliktdateien.
+  mergeBranch(
+    repoPath: string,
+    branch: string,
+    opts: { strategy: GitWorktreeMergeStrategy; commitMessage?: string },
+  ): Promise<GitWorktreeMergeOutcome>;
+  // Phase 3: lokalen Branch loeschen. force=true → `-D` (noetig nach squash,
+  // weil Git den Branch dann nicht als „merged" sieht), sonst `-d`.
+  deleteBranch(repoPath: string, branch: string, force: boolean): Promise<void>;
+  // Season 38 (Pull/Fetch/Branch-Switch): per-Branch Tracking-Info via
+  // `git for-each-ref` (Upstream + ahead/behind in einem Roundtrip).
+  branchTrackInfos(repoPath: string): Promise<GitBranchTrackInfo[]>;
+  // Season 38: ist ueberhaupt ein Remote konfiguriert?
+  hasRemote(repoPath: string): Promise<boolean>;
+  // Season 38: Branch im Haupt-Checkout auschecken. Wirft bei Git-Fehler
+  // (Caller prueft Vorbedingungen vorher).
+  checkout(repoPath: string, branch: string): Promise<void>;
+  // Season 38: uncommittete Aenderungen wegstashen (`git stash push -u`).
+  // Liefert true, wenn tatsaechlich etwas gestasht wurde.
+  stashPush(repoPath: string, message: string): Promise<boolean>;
+  // Season 38: `git fetch --all --prune`.
+  fetch(repoPath: string): Promise<void>;
+  // Season 38: `git pull` fuer den aktuellen Branch. Bei Konflikt rollt der
+  // Driver selbst zurueck (merge/rebase --abort) und liefert die Konfliktdateien.
+  pull(repoPath: string): Promise<GitPullOutcome>;
 }
 
 // Real-Driver: instanziiert simple-git pro Aufruf am gegebenen Pfad. Kein Caching
@@ -327,8 +368,13 @@ export const realGitDriver: GitDriver = {
     // dann nur uncommittete Worktree-Aenderungen, statt zu werfen).
     for (const candidate of ['main', 'master']) {
       try {
-        await git.revparse(['--verify', '--quiet', `refs/heads/${candidate}`]);
-        return candidate;
+        // WICHTIG: bei einem fehlenden Branch wirft simple-git NICHT, sondern
+        // liefert wegen `--quiet` einen leeren String (Git exitet 1 ohne stderr).
+        // Deshalb auf die zurueckgegebene SHA pruefen — nur ein nicht-leerer
+        // Treffer zaehlt, sonst greift faelschlich der erste Kandidat (z.B. 'main'
+        // in einem reinen master-Repo) und der ganze Worktree-Diff/Merge bricht.
+        const sha = await git.revparse(['--verify', '--quiet', `refs/heads/${candidate}`]);
+        if (sha.trim().length > 0) return candidate;
       } catch {
         // Branch existiert nicht — naechsten Kandidaten probieren.
       }
@@ -341,6 +387,175 @@ export const realGitDriver: GitDriver = {
       // Kein origin/HEAD gesetzt.
     }
     return 'HEAD';
+  },
+
+  async mergePreview(
+    repoPath: string,
+    branch: string,
+    baseRef: string,
+  ): Promise<{ mainCurrentBranch: string; mainClean: boolean; ahead: number; behind: number }> {
+    // Branch + Sauberkeit des Haupt-Checkouts kommen aus der bestehenden
+    // status()-Logik (current bzw. Short-SHA bei detached HEAD).
+    const status = await this.status(repoPath);
+    let ahead = 0;
+    let behind = 0;
+    try {
+      const git = simpleGit(repoPath);
+      // `<base>...<branch>` mit --left-right --count liefert „<links>\t<rechts>":
+      // links = Commits in base, die NICHT im Branch sind (behind),
+      // rechts = Commits im Branch, die NICHT in base sind (ahead → wird gemergt).
+      const raw = await git.raw(['rev-list', '--left-right', '--count', `${baseRef}...${branch}`]);
+      const parts = raw.trim().split(/\s+/);
+      behind = Number.parseInt(parts[0] ?? '0', 10) || 0;
+      ahead = Number.parseInt(parts[1] ?? '0', 10) || 0;
+    } catch {
+      // baseRef oder branch nicht aufloesbar → 0/0 (Modal zeigt dann „0 voraus").
+    }
+    return {
+      mainCurrentBranch: status.branch,
+      mainClean: status.files.length === 0,
+      ahead,
+      behind,
+    };
+  },
+
+  async mergeBranch(
+    repoPath: string,
+    branch: string,
+    opts: { strategy: GitWorktreeMergeStrategy; commitMessage?: string },
+  ): Promise<GitWorktreeMergeOutcome> {
+    const git = simpleGit(repoPath);
+    const msg = opts.commitMessage && opts.commitMessage.trim().length > 0
+      ? opts.commitMessage.trim()
+      : null;
+    try {
+      if (opts.strategy === 'merge-commit') {
+        const args = ['merge', '--no-ff'];
+        if (msg) args.push('-m', msg);
+        args.push(branch);
+        await git.raw(args);
+      } else if (opts.strategy === 'ff-only') {
+        await git.raw(['merge', '--ff-only', branch]);
+      } else {
+        // squash: stagt die Aenderungen ohne Commit, dann separater Commit.
+        await git.raw(['merge', '--squash', branch]);
+        await git.raw(['commit', '-m', msg ?? `Squash-Merge Branch '${branch}'`]);
+      }
+      const sha = (await git.raw(['rev-parse', 'HEAD'])).trim();
+      return { status: 'merged', mergeCommitSha: sha.length > 0 ? sha : null, conflictFiles: [] };
+    } catch (e) {
+      // Konflikt? Unmerged-Eintraege (--diff-filter=U) im Index pruefen.
+      const conflictFiles = await git
+        .raw(['diff', '--name-only', '--diff-filter=U'])
+        .then((s) => s.split('\n').map((l) => l.trim()).filter((l) => l.length > 0))
+        .catch(() => [] as string[]);
+      if (conflictFiles.length > 0) {
+        // Zurueckrollen, damit das Repo nicht halb-gemergt liegen bleibt. Bei
+        // squash gibt es kein MERGE_HEAD → reset --hard (sicher, weil der Caller
+        // mainClean als Vorbedingung erzwingt).
+        if (opts.strategy === 'squash') {
+          await git.raw(['reset', '--hard', 'HEAD']).catch(() => undefined);
+        } else {
+          await git.raw(['merge', '--abort']).catch(() => undefined);
+        }
+        return { status: 'conflict', mergeCommitSha: null, conflictFiles };
+      }
+      // ff-only ohne Konflikt-Files = divergierter Basis-Branch (kein FF moeglich).
+      // Working-Tree ist unberuehrt.
+      if (opts.strategy === 'ff-only') {
+        return { status: 'ff-failed', mergeCommitSha: null, conflictFiles: [] };
+      }
+      // Echter Fehler (z.B. Branch existiert nicht) → an den Caller durchreichen.
+      throw e;
+    }
+  },
+
+  async deleteBranch(repoPath: string, branch: string, force: boolean): Promise<void> {
+    const git = simpleGit(repoPath);
+    await git.raw(['branch', force ? '-D' : '-d', branch]);
+  },
+
+  async branchTrackInfos(repoPath: string): Promise<GitBranchTrackInfo[]> {
+    const git = simpleGit(repoPath);
+    // Ein Roundtrip fuer alle lokalen Branches: Name, Upstream-Kurzform und der
+    // Tracking-Status ("[ahead 1, behind 2]"). %09 = Tab als Feldtrenner.
+    const raw = await git.raw([
+      'for-each-ref',
+      '--format=%(refname:short)%09%(upstream:short)%09%(upstream:track)',
+      'refs/heads',
+    ]);
+    return parseBranchTrackLines(raw);
+  },
+
+  async hasRemote(repoPath: string): Promise<boolean> {
+    const git = simpleGit(repoPath);
+    const remotes = await git.getRemotes();
+    return remotes.length > 0;
+  },
+
+  async checkout(repoPath: string, branch: string): Promise<void> {
+    const git = simpleGit(repoPath);
+    await git.checkout(branch);
+  },
+
+  async stashPush(repoPath: string, message: string): Promise<boolean> {
+    const git = simpleGit(repoPath);
+    // -u nimmt auch untracked Files mit, sonst bliebe der Switch an „neuen"
+    // Dateien haengen. Git meldet „No local changes to save", wenn nichts da war.
+    const out = await git.raw(['stash', 'push', '-u', '-m', message]);
+    return !/No local changes to save/i.test(out);
+  },
+
+  async fetch(repoPath: string): Promise<void> {
+    const git = simpleGit(repoPath);
+    // --prune raeumt lokal verwaiste Remote-Tracking-Refs auf, damit ahead/behind
+    // nach dem Loeschen eines Remote-Branches korrekt ist.
+    await git.fetch(['--all', '--prune']);
+  },
+
+  async pull(repoPath: string): Promise<GitPullOutcome> {
+    const git = simpleGit(repoPath);
+    try {
+      const res = await git.pull();
+      const filesChanged = res.summary.changes ?? 0;
+      const insertions = res.summary.insertions ?? 0;
+      const deletions = res.summary.deletions ?? 0;
+      const nothing =
+        filesChanged === 0 &&
+        insertions === 0 &&
+        deletions === 0 &&
+        res.files.length === 0;
+      return {
+        status: nothing ? 'up-to-date' : 'pulled',
+        conflictFiles: [],
+        filesChanged,
+        insertions,
+        deletions,
+      };
+    } catch (e) {
+      // Konflikt? Unmerged-Eintraege (--diff-filter=U) im Index pruefen.
+      const conflictFiles = await git
+        .raw(['diff', '--name-only', '--diff-filter=U'])
+        .then((s) => s.split('\n').map((l) => l.trim()).filter((l) => l.length > 0))
+        .catch(() => [] as string[]);
+      if (conflictFiles.length > 0) {
+        // Zurueckrollen, damit der Haupt-Checkout nicht halb-gemergt liegen bleibt.
+        // merge --abort deckt den Default-Pull (merge) ab; faellt das durch (z.B.
+        // pull.rebase=true), versuchen wir rebase --abort.
+        await git.raw(['merge', '--abort']).catch(async () => {
+          await git.raw(['rebase', '--abort']).catch(() => undefined);
+        });
+        return {
+          status: 'conflict',
+          conflictFiles,
+          filesChanged: 0,
+          insertions: 0,
+          deletions: 0,
+        };
+      }
+      // Kein Konflikt-File → echter Fehler (z.B. Netzwerk) an den Caller.
+      throw e;
+    }
   },
 };
 

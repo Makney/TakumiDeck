@@ -30,7 +30,7 @@ Heute kennt der CodeMirror-Editor nur Markdown + YAML. Programmiersprachen-Files
 
 ## Bereich: Multi-Engine-Support
 
-### Feature: OpenAI Codex als zweite Engine
+### Feature: OpenAI Codex als zweite Engine 🟡
 
 Eigener Session-Typ neben Claude Code.
 
@@ -39,6 +39,8 @@ Eigener Session-Typ neben Claude Code.
 - Settings-Toggle für Codex-Verfügbarkeit
 
 **Trigger:** Wenn Codex relevant wird oder andere CLI-Agents (z.B. Aider, Cline) zum Workflow dazukommen.
+
+> _Season 39 (2026-06-15): als **opencode**-Engine umgesetzt statt Codex (Variante A). ✅ Session-Typ, Modell-Dropdown (`opencode models`) und Settings-Toggle; ⛔ engine-spezifisches Token-Tracking bleibt offen (opencode nutzt keine JSONL, sondern eine SQLite-DB → Folge-Season). Daher 🟡 statt ✅._
 
 ### Feature: Engine-agnostisches Session-Datenmodell
 

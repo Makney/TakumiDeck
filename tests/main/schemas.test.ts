@@ -222,6 +222,11 @@ describe('SessionTypeSchema', () => {
     expect(() => SessionTypeSchema.parse('custom')).not.toThrow();
   });
 
+  it("akzeptiert 'terminal' und 'opencode' (zweite Engine, Season 39)", () => {
+    expect(() => SessionTypeSchema.parse('terminal')).not.toThrow();
+    expect(() => SessionTypeSchema.parse('opencode')).not.toThrow();
+  });
+
   it('lehnt unbekannte Typen ab', () => {
     expect(() => SessionTypeSchema.parse('refactor')).toThrow();
   });
@@ -262,6 +267,18 @@ describe('PtyCreateInputSchema', () => {
     expect(() =>
       PtyCreateInputSchema.parse({ ...base, type: 'custom', customTypeLabel: tooLong }),
     ).toThrow();
+  });
+
+  // Season 39: opencode-Sessions tragen ein provider/model im model-Feld und
+  // brauchen kein Label; der Worktree ist (anders als bei terminal) erlaubt.
+  it("akzeptiert type='opencode' mit provider/model", () => {
+    expect(() =>
+      PtyCreateInputSchema.parse({
+        ...base,
+        type: 'opencode',
+        model: 'anthropic/claude-sonnet-4-5',
+      }),
+    ).not.toThrow();
   });
 });
 

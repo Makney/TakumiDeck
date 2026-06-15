@@ -14,7 +14,7 @@
 // Aktueller Settings-Schema-Stand. Hier hochziehen, sobald eine neue
 // Migration angelegt wird; `buildDefaultSettings()` schreibt den Wert dann
 // in frisch angelegte settings.json-Dateien.
-export const CURRENT_SETTINGS_SCHEMA_VERSION = 3;
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 4;
 
 // Bestandsuser ohne `schema_version`-Feld werden als Version 1 gelesen
 // (der Phase-1-/Sprint-9-Stand, vor der ersten Drift-Migration).
@@ -180,8 +180,29 @@ export const MIGRATION_ADD_CUSTOM_MODELS: SettingsMigration = {
   },
 };
 
+// Migration 4: add_opencode_fields.
+// Season 39 (Opencode): zwei neue Felder fuer die zweite Engine —
+// `opencode_enabled: boolean` (Default false) und `opencode_binary_path: string`
+// (Default 'opencode'). Defensiv pro Feld: ein bereits vorhandener Wert (z.B.
+// vom User in settings.json gesetzt) bleibt stehen, nur fehlende Felder werden
+// mit dem Default befuellt. zod prueft danach im Vollschema-Pass.
+export const MIGRATION_ADD_OPENCODE: SettingsMigration = {
+  id: 4,
+  name: 'add_opencode_fields',
+  up(input) {
+    const out: Record<string, unknown> = { ...input };
+    if (!('opencode_enabled' in out)) out['opencode_enabled'] = false;
+    if (!('opencode_binary_path' in out)) out['opencode_binary_path'] = 'opencode';
+    return out;
+  },
+};
+
 // Default-Migration-Liste fuer den Produktiv-Pfad. Tests rufen den Runner
 // direkt mit zugeschnittenen Migrations-Arrays auf.
 export function loadSettingsMigrations(): SettingsMigration[] {
-  return [MIGRATION_DEFAULTS_V0_2_X_DRIFT, MIGRATION_ADD_CUSTOM_MODELS];
+  return [
+    MIGRATION_DEFAULTS_V0_2_X_DRIFT,
+    MIGRATION_ADD_CUSTOM_MODELS,
+    MIGRATION_ADD_OPENCODE,
+  ];
 }

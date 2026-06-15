@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo } from 'react';
-import type { AppSettings, PtyWorktreeOption, SessionStatus } from '@shared/types';
+import type { AppSettings, PtyWorktreeOption, SessionStatus, SessionType } from '@shared/types';
 import { useSessionStore, selectTabsForProject } from '../stores/sessions';
 import { useUiStore } from '../stores/ui';
 import { useProjectStore } from '../stores/projects';
@@ -224,7 +224,7 @@ export function TabContainer({ settings }: Props) {
   const handleNewSession = useCallback(
     (input: {
       title: string;
-      type: 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom' | 'terminal';
+      type: SessionType;
       model: string;
       // Phase-2 Season-5: bei type='custom' Pflicht-Bezeichnung, sonst null.
       customTypeLabel?: string | null;
@@ -347,6 +347,7 @@ export function TabContainer({ settings }: Props) {
         <NewSessionModal
           defaultModel={effectiveDefaultModel}
           customModels={settings.custom_models}
+          opencodeEnabled={settings.opencode_enabled}
           nextSeasonPreview={activeProject?.next_season_number ?? null}
           projectId={activeProjectId}
           onCancel={() => setShowNewSessionModal(false)}

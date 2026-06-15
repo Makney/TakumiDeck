@@ -18,6 +18,7 @@ import {
 } from '../components/projectStatusCounts';
 import { ProjectContextMenu } from '../components/ProjectContextMenu';
 import { RemoveProjectModal } from '../modals/RemoveProjectModal';
+import { BranchesPanel } from './BranchesPanel';
 
 // LeftSidebar — Sprint-6-UI-Fix mit 3-Sektionen-Layout aus dem Design-Handoff
 // (docs/design/UI_DECISIONS.md + claude-export/components.jsx).
@@ -306,6 +307,9 @@ export function LeftSidebar({ settings }: Props) {
         }}
         statusCountsByProject={statusCountsByProject}
       />
+
+      {/* === Branches (Season 38) =============================================== */}
+      <BranchesPanel projectId={activeProjectId} />
 
       {/* === Aktive Sessions ===================================================== */}
       <ActiveSessionsPanel

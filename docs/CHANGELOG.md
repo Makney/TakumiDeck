@@ -17,6 +17,25 @@ Ein Eintrag ist **kurz und anwendungsorientiert**: „Was kann der Nutzer jetzt,
 
 ---
 
+## 2026-06-15 — v0.4.0 — Opencode als zweite Engine (Variante A)
+
+### Was jetzt geht
+
+- **Neben Claude Code lässt sich jetzt auch opencode als Engine starten.** Im „Neue Session"-Dialog gibt es — sobald opencode in den Einstellungen aktiviert ist — den Session-Typ **„Opencode"**. Die Session spawnt die opencode-CLI im Projekt- bzw. Worktree-Ordner statt der claude-Binary.
+- **Das Modell-Dropdown zeigt bei einer Opencode-Session die opencode-Modelle.** Die Liste wird live über `opencode models` geladen (Format `provider/model`, z.B. `anthropic/claude-sonnet-4-5`, `openai/gpt-5`, `lmstudio/…`). Fehlt opencode im PATH oder sind keine Provider konfiguriert, kommt ein Hinweis statt eines toten Dropdowns.
+- **Ein Settings-Schalter steuert die Verfügbarkeit.** Im Tab „Allgemein" schaltet „Opencode-Engine" den Typ frei (Default aus) und ein eigener Binary-Pfad lässt sich pinnen — analog zur claude-Konfiguration. Ist die Engine aus, taucht der „Opencode"-Button gar nicht erst auf.
+- **Resume funktioniert.** Eine beendete Opencode-Session wird über `opencode --continue` im gespeicherten Ordner fortgesetzt; der Verlauf hat einen eigenen „Opencode"-Filter-Bucket.
+
+### Bewusst nicht dabei
+
+- **Kein Token-Tracking für Opencode-Sessions** (keine Token-Bars, wie bei Terminal-Sessions). opencode hält seine Token-Daten in einer nicht-trivial auslesbaren SQLite-DB, nicht in der claude-JSONL — das Tracking braucht eine eigene Quelle (`opencode export`/`stats`) und ist als Folge-Season geparkt (siehe [TECH_SCHULDEN.md](./TECH_SCHULDEN.md)).
+
+### Architektur
+
+Variante A (siehe [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)): die zweite Engine wird wie der `terminal`-Typ aus Season 31 über Skip-Gates im `pty:create`-/`session:resume`-Handler gefahren (kein claude-`--session-id`, kein JSONL, eigener Binary-Pfad), statt eines vorgezogenen engine-agnostischen Datenmodell-Umbaus. Neuer `SessionType: 'opencode'`, zwei neue Settings-Felder (`opencode_enabled` + `opencode_binary_path`, Migration 4), neuer IPC `opencode:list-models` (Pure-Parser `parseOpencodeModels`, injizierbarer Runner). Worktree ist für Opencode erlaubt, der CLAUDE.md-Kontext-Block bewusst nicht. Pre-Commit-Gate grün (typecheck · eslint · alle Ziel-Tests, +18 neue für Parser/Modell-Liste/Migration/Schema).
+
+---
+
 ## 2026-06-15 — v0.4.0 — Bugfix: Doppeltes Einfügen bei Ctrl+V im Terminal
 
 ### Was jetzt geht

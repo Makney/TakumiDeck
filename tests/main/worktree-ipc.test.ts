@@ -5,6 +5,8 @@ import {
   GitWorktreeDiffInputSchema,
   GitWorktreeRemoveInputSchema,
   GitWorktreeStatusInputSchema,
+  GitWorktreeMergePreviewInputSchema,
+  GitWorktreeMergeInputSchema,
 } from '../../src/shared/schemas';
 import { parseWorktreeListPorcelain } from '../../src/main/git/driver';
 import type { GitDriver } from '../../src/main/git/driver';
@@ -14,6 +16,8 @@ import type {
   GitWorktreeDiffResult,
   GitWorktreeRemoveResult,
   GitWorktreeStatusResult,
+  GitWorktreeMergePreviewResult,
+  GitWorktreeMergeResult,
   ProjectRow,
   SessionRow,
 } from '../../src/shared/types';
@@ -142,6 +146,13 @@ function makeDriver(): GitDriver {
     removeWorktree: vi.fn().mockResolvedValue(undefined),
     worktreeDirtyState: vi.fn().mockResolvedValue({ uncommittedCount: 0, ahead: 0 }),
     resolveBaseBranchRef: vi.fn().mockResolvedValue('main'),
+    mergePreview: vi
+      .fn()
+      .mockResolvedValue({ mainCurrentBranch: 'main', mainClean: true, ahead: 2, behind: 0 }),
+    mergeBranch: vi
+      .fn()
+      .mockResolvedValue({ status: 'merged', mergeCommitSha: 'newsha', conflictFiles: [] }),
+    deleteBranch: vi.fn().mockResolvedValue(undefined),
   } as unknown as GitDriver;
 }
 
@@ -416,6 +427,328 @@ describe('git:worktree-status Handler', () => {
       expect(result.data.status?.files).toHaveLength(1);
     }
     expect(driver.status).toHaveBeenCalledWith('C:\\repo-worktrees\\exp');
+  });
+});
+
+// ------------------------------------------------------- Merge (Phase 3)
+
+// Inline-Replik des git:worktree-merge-preview-Handlers.
+function worktreeMergePreviewHandler(deps: {
+  projects: ProjectsLike;
+  sessions: SessionsLike;
+  driver: GitDriver;
+}) {
+  return async (payload: unknown) => {
+    try {
+      const input = GitWorktreeMergePreviewInputSchema.parse(payload);
+      const session = deps.sessions.findById(input.sessionId);
+      if (!session) return err('not found', 'SESSION_NOT_FOUND');
+      const project = deps.projects.getById(session.project_id);
+      if (!project) return err('no project', 'PROJECT_NOT_FOUND');
+      if (
+        project.has_git === 0 ||
+        session.worktree_path === null ||
+        session.worktree_branch === null
+      ) {
+        const r: GitWorktreeMergePreviewResult = {
+          hasWorktree: false,
+          branch: '',
+          baseRef: '',
+          mainCurrentBranch: '',
+          mainClean: false,
+          worktreeUncommittedCount: 0,
+          ahead: 0,
+          behind: 0,
+        };
+        return ok(r);
+      }
+      const baseRef = await deps.driver.resolveBaseBranchRef(project.path);
+      const [preview, dirty] = await Promise.all([
+        deps.driver.mergePreview(project.path, session.worktree_branch, baseRef),
+        deps.driver.worktreeDirtyState(session.worktree_path),
+      ]);
+      const r: GitWorktreeMergePreviewResult = {
+        hasWorktree: true,
+        branch: session.worktree_branch,
+        baseRef,
+        mainCurrentBranch: preview.mainCurrentBranch,
+        mainClean: preview.mainClean,
+        worktreeUncommittedCount: dirty.uncommittedCount,
+        ahead: preview.ahead,
+        behind: preview.behind,
+      };
+      return ok(r);
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_WORKTREE_MERGE_PREVIEW');
+    }
+  };
+}
+
+// Inline-Replik des git:worktree-merge-Handlers (Vorbedingungen + Cleanup).
+function worktreeMergeHandler(deps: {
+  projects: ProjectsLike;
+  sessions: SessionsLike;
+  driver: GitDriver;
+}) {
+  return async (payload: unknown) => {
+    try {
+      const input = GitWorktreeMergeInputSchema.parse(payload);
+      const session = deps.sessions.findById(input.sessionId);
+      if (!session) return err('not found', 'SESSION_NOT_FOUND');
+      if (session.worktree_path === null || session.worktree_branch === null) {
+        return err('no worktree', 'NO_WORKTREE');
+      }
+      const project = deps.projects.getById(session.project_id);
+      if (!project) return err('no project', 'PROJECT_NOT_FOUND');
+      if (project.has_git === 0) return err('not git', 'NOT_A_GIT_REPO');
+      const branch = session.worktree_branch;
+      const worktreePath = session.worktree_path;
+      const baseRef = await deps.driver.resolveBaseBranchRef(project.path);
+      const preview = await deps.driver.mergePreview(project.path, branch, baseRef);
+      if (preview.mainCurrentBranch !== baseRef) {
+        return err('base not checked out', 'MERGE_BASE_NOT_CHECKED_OUT');
+      }
+      if (!preview.mainClean) {
+        return err('main dirty', 'MERGE_MAIN_DIRTY');
+      }
+      const outcome = await deps.driver.mergeBranch(project.path, branch, {
+        strategy: input.strategy,
+        commitMessage: input.commitMessage,
+      });
+      if (outcome.status === 'conflict') {
+        const r: GitWorktreeMergeResult = {
+          merged: false,
+          conflicted: true,
+          ffFailed: false,
+          conflictFiles: outcome.conflictFiles,
+          mergeCommitSha: null,
+          worktreeRemoved: false,
+          branchDeleted: false,
+        };
+        return ok(r);
+      }
+      if (outcome.status === 'ff-failed') {
+        const r: GitWorktreeMergeResult = {
+          merged: false,
+          conflicted: false,
+          ffFailed: true,
+          conflictFiles: [],
+          mergeCommitSha: null,
+          worktreeRemoved: false,
+          branchDeleted: false,
+        };
+        return ok(r);
+      }
+      let worktreeRemoved = false;
+      let branchDeleted = false;
+      if (input.removeWorktree) {
+        try {
+          await deps.driver.removeWorktree(project.path, worktreePath, true);
+          worktreeRemoved = true;
+        } catch {
+          // Cleanup-Fehler ist nicht fatal — der Merge stand.
+        }
+      }
+      if (input.deleteBranch) {
+        try {
+          await deps.driver.deleteBranch(project.path, branch, input.strategy === 'squash');
+          branchDeleted = true;
+        } catch {
+          // dito.
+        }
+      }
+      const r: GitWorktreeMergeResult = {
+        merged: true,
+        conflicted: false,
+        ffFailed: false,
+        conflictFiles: [],
+        mergeCommitSha: outcome.mergeCommitSha,
+        worktreeRemoved,
+        branchDeleted,
+      };
+      return ok(r);
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_WORKTREE_MERGE');
+    }
+  };
+}
+
+describe('git:worktree-merge-preview Handler', () => {
+  let projects: FakeProjects;
+  let sessions: FakeSessions;
+  let driver: GitDriver;
+  let handler: ReturnType<typeof worktreeMergePreviewHandler>;
+
+  beforeEach(() => {
+    projects = new FakeProjects();
+    sessions = new FakeSessions();
+    driver = makeDriver();
+    handler = worktreeMergePreviewHandler({ projects, sessions, driver });
+  });
+
+  it('hasWorktree=false fuer Sessions ohne Worktree', async () => {
+    projects.add(buildProject());
+    sessions.add(buildSession({ worktree_path: null }));
+    const result = await handler({ sessionId: WT_SESSION_ID });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.hasWorktree).toBe(false);
+    expect(driver.mergePreview).not.toHaveBeenCalled();
+  });
+
+  it('liefert Branch/Basis + ahead/behind + Dirty-Count fuer einen Worktree', async () => {
+    projects.add(buildProject({ path: 'C:\\repo' }));
+    sessions.add(buildSession({ worktree_path: 'C:\\repo-worktrees\\exp', worktree_branch: 'exp' }));
+    (driver.mergePreview as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      mainCurrentBranch: 'main',
+      mainClean: true,
+      ahead: 3,
+      behind: 1,
+    });
+    (driver.worktreeDirtyState as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      uncommittedCount: 2,
+      ahead: 0,
+    });
+    const result = await handler({ sessionId: WT_SESSION_ID });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.hasWorktree).toBe(true);
+      expect(result.data.branch).toBe('exp');
+      expect(result.data.baseRef).toBe('main');
+      expect(result.data.mainCurrentBranch).toBe('main');
+      expect(result.data.ahead).toBe(3);
+      expect(result.data.behind).toBe(1);
+      expect(result.data.worktreeUncommittedCount).toBe(2);
+    }
+  });
+});
+
+describe('git:worktree-merge Handler', () => {
+  let projects: FakeProjects;
+  let sessions: FakeSessions;
+  let driver: GitDriver;
+  let handler: ReturnType<typeof worktreeMergeHandler>;
+
+  const wtSession = () =>
+    buildSession({ worktree_path: 'C:\\repo-worktrees\\exp', worktree_branch: 'exp' });
+
+  beforeEach(() => {
+    projects = new FakeProjects();
+    sessions = new FakeSessions();
+    driver = makeDriver();
+    handler = worktreeMergeHandler({ projects, sessions, driver });
+    projects.add(buildProject({ path: 'C:\\repo' }));
+  });
+
+  const mergeInput = (over: Partial<Record<string, unknown>> = {}) => ({
+    sessionId: WT_SESSION_ID,
+    strategy: 'merge-commit',
+    removeWorktree: true,
+    deleteBranch: true,
+    ...over,
+  });
+
+  it('NO_WORKTREE fuer Sessions ohne Worktree', async () => {
+    sessions.add(buildSession({ worktree_path: null }));
+    const result = await handler(mergeInput());
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('NO_WORKTREE');
+    expect(driver.mergeBranch).not.toHaveBeenCalled();
+  });
+
+  it('MERGE_BASE_NOT_CHECKED_OUT, wenn der Haupt-Checkout nicht auf dem Basis-Ref steht', async () => {
+    sessions.add(wtSession());
+    (driver.mergePreview as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      mainCurrentBranch: 'feature-x',
+      mainClean: true,
+      ahead: 2,
+      behind: 0,
+    });
+    const result = await handler(mergeInput());
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('MERGE_BASE_NOT_CHECKED_OUT');
+    expect(driver.mergeBranch).not.toHaveBeenCalled();
+  });
+
+  it('MERGE_MAIN_DIRTY, wenn der Haupt-Checkout uncommittete Aenderungen hat', async () => {
+    sessions.add(wtSession());
+    (driver.mergePreview as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      mainCurrentBranch: 'main',
+      mainClean: false,
+      ahead: 2,
+      behind: 0,
+    });
+    const result = await handler(mergeInput());
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('MERGE_MAIN_DIRTY');
+    expect(driver.mergeBranch).not.toHaveBeenCalled();
+  });
+
+  it('mergt erfolgreich und raeumt Worktree + Branch auf (merge-commit)', async () => {
+    sessions.add(wtSession());
+    const result = await handler(mergeInput());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.merged).toBe(true);
+      expect(result.data.mergeCommitSha).toBe('newsha');
+      expect(result.data.worktreeRemoved).toBe(true);
+      expect(result.data.branchDeleted).toBe(true);
+    }
+    expect(driver.removeWorktree).toHaveBeenCalledWith('C:\\repo', 'C:\\repo-worktrees\\exp', true);
+    // merge-commit → safe delete (force=false).
+    expect(driver.deleteBranch).toHaveBeenCalledWith('C:\\repo', 'exp', false);
+  });
+
+  it('loescht den Branch bei squash mit force=true', async () => {
+    sessions.add(wtSession());
+    const result = await handler(mergeInput({ strategy: 'squash' }));
+    expect(result.ok).toBe(true);
+    expect(driver.deleteBranch).toHaveBeenCalledWith('C:\\repo', 'exp', true);
+  });
+
+  it('fuehrt keinen Cleanup aus, wenn die Flags aus sind', async () => {
+    sessions.add(wtSession());
+    const result = await handler(mergeInput({ removeWorktree: false, deleteBranch: false }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.worktreeRemoved).toBe(false);
+      expect(result.data.branchDeleted).toBe(false);
+    }
+    expect(driver.removeWorktree).not.toHaveBeenCalled();
+    expect(driver.deleteBranch).not.toHaveBeenCalled();
+  });
+
+  it('meldet Konflikt ohne Cleanup', async () => {
+    sessions.add(wtSession());
+    (driver.mergeBranch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: 'conflict',
+      mergeCommitSha: null,
+      conflictFiles: ['src/a.ts', 'src/b.ts'],
+    });
+    const result = await handler(mergeInput());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.merged).toBe(false);
+      expect(result.data.conflicted).toBe(true);
+      expect(result.data.conflictFiles).toEqual(['src/a.ts', 'src/b.ts']);
+    }
+    expect(driver.removeWorktree).not.toHaveBeenCalled();
+    expect(driver.deleteBranch).not.toHaveBeenCalled();
+  });
+
+  it('meldet ff-failed (divergierter Basis-Branch)', async () => {
+    sessions.add(wtSession());
+    (driver.mergeBranch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: 'ff-failed',
+      mergeCommitSha: null,
+      conflictFiles: [],
+    });
+    const result = await handler(mergeInput({ strategy: 'ff-only' }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.merged).toBe(false);
+      expect(result.data.ffFailed).toBe(true);
+    }
+    expect(driver.removeWorktree).not.toHaveBeenCalled();
   });
 });
 

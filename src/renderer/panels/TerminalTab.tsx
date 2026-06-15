@@ -5,7 +5,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
-import type { AppSettings, PtyWorktreeOption, SessionStatus } from '@shared/types';
+import type { AppSettings, PtyWorktreeOption, SessionStatus, SessionType } from '@shared/types';
 import { detectFromBuffer, type TuiDetectedState } from '@shared/tui-patterns';
 import { createCopyPasteKeyHandler } from '../components/clipboardKeyHandler';
 import { clampFontSize, nextZoomFontSize } from '../components/terminalFontZoom';
@@ -60,7 +60,7 @@ interface Props {
   // hergeleitet — Renderer übergibt keine Working-Directory mehr.
   projectId: string;
   title: string;
-  type: 'feature' | 'bug' | 'review' | 'docs-sync' | 'custom' | 'terminal';
+  type: SessionType;
   model: string;
   // Phase-2 Season-5: bei type='custom' die User-Bezeichnung — wird an pty:create
   // durchgereicht und vom Main in die sessions.custom_type_label-Spalte gespeichert.

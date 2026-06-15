@@ -31,6 +31,11 @@ export function buildDefaultSettings(): AppSettings {
     // wenn die Binary nicht im PATH liegt oder mehrere Installationen koexistieren.
     claude_binary_path: 'claude',
 
+    // Season 39 (Opencode): zweite Engine standardmaessig aus — wer opencode
+    // nutzt, schaltet es im Settings-Tab „Allgemein" frei. 'opencode' nutzt PATH.
+    opencode_enabled: false,
+    opencode_binary_path: 'opencode',
+
     // Phase-2 Season-34: User-erweiterbare Modell-Liste. Frische Installationen
     // starten ohne Custom-Eintraege; gepflegt im Settings-Tab „Modelle".
     custom_models: [],

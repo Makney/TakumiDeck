@@ -51,6 +51,9 @@ const SESSION_TYPES: SessionType[] = [
   // konsistent mit den anderen Typen, der Skip-Charakter ergibt sich aus dem
   // Wegfall von Modell-Dropdown und On-Demand-Kontext-Block.
   'terminal',
+  // Season 39: siebter Button — Opencode als zweite Engine. Nur sichtbar, wenn
+  // opencode in den Settings aktiviert ist (siehe `visibleTypes` unten).
+  'opencode',
 ];
 const TYPE_LABELS: Record<SessionType, string> = {
   feature: 'Feature',
@@ -59,6 +62,7 @@ const TYPE_LABELS: Record<SessionType, string> = {
   'docs-sync': 'Docs-Sync',
   custom: 'Eigene Art',
   terminal: 'Terminal',
+  opencode: 'Opencode',
 };
 
 // Phase-2 Season-5: gleiche Cap wie das zod-Schema (PtyCreateInputSchema.customTypeLabel).
@@ -73,6 +77,10 @@ interface Props {
   // Slot durch, damit das Modal dieselbe Vereinigung wie der Settings-Tab
   // anzeigt.
   customModels: ReadonlyArray<CustomModel>;
+  // Season 39 (Opencode): blendet den „Opencode"-Session-Typ ein, wenn die
+  // zweite Engine in den Settings aktiviert ist. Bei `false` taucht der Button
+  // gar nicht erst auf.
+  opencodeEnabled: boolean;
   // Sprint 6 (Q6 Variante B): Vorschau der nächsten Season-Nummer für das aktive Projekt.
   // Kommt aus useProjectStore (project.next_season_number) — im Modal nur für die
   // Anzeige, der echte Increment passiert atomar im Main beim pty:create. Lücken
@@ -103,6 +111,7 @@ interface Props {
 export function NewSessionModal({
   defaultModel,
   customModels,
+  opencodeEnabled,
   nextSeasonPreview,
   projectId,
   onCancel,
@@ -112,6 +121,18 @@ export function NewSessionModal({
   const [type, setType] = useState<SessionType>('feature');
   const [model, setModel] = useState(defaultModel);
   const modelOptions = useMemo(() => buildModelOptions(customModels), [customModels]);
+  // Season 39 (Opencode): eigene Modell-Liste der zweiten Engine. Wird beim
+  // ersten Wechsel auf den Typ „Opencode" via `opencode models` geladen und
+  // gecached. `null` = noch nicht geladen; leeres Array nach Fehlschlag.
+  const [opencodeModels, setOpencodeModels] = useState<string[] | null>(null);
+  const [opencodeModel, setOpencodeModel] = useState('');
+  const [opencodeLoading, setOpencodeLoading] = useState(false);
+  const [opencodeError, setOpencodeError] = useState<string | null>(null);
+  // Season 39: der „Opencode"-Button erscheint nur bei aktivierter Engine.
+  const visibleTypes = useMemo(
+    () => SESSION_TYPES.filter((t) => t !== 'opencode' || opencodeEnabled),
+    [opencodeEnabled],
+  );
   // Phase-2 Season-5: separates State-Feld, damit ein Wechsel zwischen 'custom'
   // und einem festen Typ den eingegebenen Label-Text nicht verliert.
   const [customLabel, setCustomLabel] = useState('');
@@ -214,8 +235,12 @@ export function NewSessionModal({
   // Feature/Bug/Review, ohne dass sich die On-Demand-Files-Liste aendert.
   // Phase-2 Season-31: Terminal-Sessions sind Quick-Shells — kein claude-Prompt,
   // also auch kein Praeambel-Block. IPC bleibt ungerufen.
+  // Season 39: opencode bringt seine eigene Kontext-Verwaltung mit — die
+  // CLAUDE.md-Summary-Praeambel passt nicht zur zweiten Engine, deshalb wird
+  // der On-Demand-Block dort genauso uebersprungen wie bei terminal.
   useEffect(() => {
-    if (type === 'docs-sync' || type === 'terminal' || !projectId) return;
+    if (type === 'docs-sync' || type === 'terminal' || type === 'opencode' || !projectId)
+      return;
     if (onDemandStatus !== null) return; // bereits geladen
     let cancelled = false;
     setOnDemandLoading(true);
@@ -239,6 +264,37 @@ export function NewSessionModal({
       cancelled = true;
     };
   }, [type, projectId, onDemandStatus]);
+
+  // Season 39 (Opencode): die Modell-Liste der zweiten Engine on-demand laden,
+  // sobald der User auf den Typ „Opencode" wechselt. Read-only IPC (ruft nur
+  // `opencode models`) → kein useRef-Guard noetig. Einmal laden und cachen.
+  useEffect(() => {
+    if (type !== 'opencode' || !opencodeEnabled) return;
+    if (opencodeModels !== null) return; // bereits geladen
+    let cancelled = false;
+    setOpencodeLoading(true);
+    setOpencodeError(null);
+    void window.api.opencode.listModels().then((result) => {
+      if (cancelled) return;
+      setOpencodeLoading(false);
+      if (result.ok && result.data.available) {
+        setOpencodeModels(result.data.models);
+        setOpencodeModel(result.data.models[0] ?? '');
+      } else {
+        setOpencodeModels([]);
+        // Fehler-/Unavailable-Diagnose fuer den Hinweis unter dem Dropdown.
+        const reason = result.ok ? result.data.error : result.error;
+        setOpencodeError(
+          reason ??
+            'Keine Opencode-Modelle gefunden. Ist opencode installiert und im PATH?',
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+      setOpencodeLoading(false);
+    };
+  }, [type, opencodeEnabled, opencodeModels]);
 
   // Season 37: Terminal-Sessions bekommen keinen Worktree — beim Wechsel auf
   // 'terminal' die Auswahl zuruecksetzen, damit kein verborgener Worktree-State
@@ -324,6 +380,8 @@ export function NewSessionModal({
     title.trim().length > 0 &&
     (type !== 'custom' || trimmedCustomLabel.length > 0) &&
     (type !== 'docs-sync' || selectedDocsSyncFiles.length > 0) &&
+    // Season 39: opencode braucht ein gewaehltes Modell (provider/model).
+    (type !== 'opencode' || opencodeModel.length > 0) &&
     worktreeValid;
 
   const toggleDocsSyncFile = (sourcePath: string) => {
@@ -373,7 +431,11 @@ export function NewSessionModal({
     let preamble: string | null = null;
     if (type === 'docs-sync') {
       preamble = buildDocsSyncPrompt(selectedDocsSyncFiles);
-    } else if (type !== 'terminal' && onDemandPreambleItems.length > 0) {
+    } else if (
+      type !== 'terminal' &&
+      type !== 'opencode' &&
+      onDemandPreambleItems.length > 0
+    ) {
       preamble = buildContextPreamble(onDemandPreambleItems);
     }
     // Season 37: Worktree-Option nur, wenn aktiv + gueltiger Branch.
@@ -384,7 +446,9 @@ export function NewSessionModal({
     onCreate({
       title: title.trim(),
       type,
-      model: type === 'terminal' ? 'none' : model,
+      // Season 39: opencode schickt das gewaehlte provider/model; terminal den
+      // Sentinel 'none' (vom Handler ignoriert); alle anderen das claude-Modell.
+      model: type === 'terminal' ? 'none' : type === 'opencode' ? opencodeModel : model,
       customTypeLabel: type === 'custom' ? trimmedCustomLabel : null,
       initialPrompt: preamble,
       worktree: worktreeOption,
@@ -435,7 +499,7 @@ export function NewSessionModal({
           <div className="td-field">
             <span>Typ</span>
             <div className="td-radio-row">
-              {SESSION_TYPES.map((t) => (
+              {visibleTypes.map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -499,6 +563,7 @@ export function NewSessionModal({
               eine PowerShell konsumiert keinen Praeambel-Text. */}
           {type !== 'docs-sync' &&
             type !== 'terminal' &&
+            type !== 'opencode' &&
             ((onDemandStatus !== null && onDemandStatus.length > 0) || onDemandLoading) && (
               <div className="td-field">
                 <span>Kontext laden</span>
@@ -555,7 +620,7 @@ export function NewSessionModal({
               wir es komplett aus; das Submit setzt den Schema-Pflicht-Wert
               ueber einen Sentinel-String, den der Spawn-Branch in pty.ts
               ignoriert (current_model wird dort auf null geschrieben). */}
-          {type !== 'terminal' && (
+          {type !== 'terminal' && type !== 'opencode' && (
             <label className="td-field">
               <span>Modell</span>
               <select
@@ -568,6 +633,34 @@ export function NewSessionModal({
                   </option>
                 ))}
               </select>
+            </label>
+          )}
+
+          {/* Season 39 (Opencode): eigenes Modell-Dropdown der zweiten Engine.
+              Liste kommt live aus `opencode models` (provider/model). Bei
+              leerer Liste / Fehler ein Hinweis statt eines toten Dropdowns. */}
+          {type === 'opencode' && (
+            <label className="td-field">
+              <span>Opencode-Modell</span>
+              {opencodeLoading ? (
+                <span className="td-form-meta">Modelle werden geladen…</span>
+              ) : opencodeModels && opencodeModels.length > 0 ? (
+                <select
+                  value={opencodeModel}
+                  onChange={(e) => setOpencodeModel(e.target.value)}
+                >
+                  {opencodeModels.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="td-form-meta td-worktree-warn">
+                  {opencodeError ??
+                    'Keine Opencode-Modelle gefunden. Ist opencode installiert und im PATH?'}
+                </span>
+              )}
             </label>
           )}
 

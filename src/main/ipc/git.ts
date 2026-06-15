@@ -12,10 +12,20 @@ import {
   GitWorktreeDiffInputSchema,
   GitWorktreeRemoveInputSchema,
   GitWorktreeStatusInputSchema,
+  GitWorktreeMergePreviewInputSchema,
+  GitWorktreeMergeInputSchema,
+  GitBranchOverviewInputSchema,
+  GitCheckoutInputSchema,
+  GitFetchInputSchema,
+  GitPullInputSchema,
 } from '@shared/schemas';
 import type {
+  GitBranchOverviewResult,
+  GitCheckoutResult,
   GitDiffResult,
+  GitFetchResult,
   GitListBranchesResult,
+  GitPullResult,
   GitSessionDiffResult,
   GitShowResult,
   GitShowStagedResult,
@@ -24,9 +34,12 @@ import type {
   GitWorktreeListResult,
   GitWorktreeRemoveResult,
   GitWorktreeStatusResult,
+  GitWorktreeMergePreviewResult,
+  GitWorktreeMergeResult,
   IpcResult,
   ProjectRow,
 } from '@shared/types';
+import { buildBranchOverview } from '../git/branchOps';
 import type { ProjectRepository } from '../db/repos/projects';
 import type { SessionRepository } from '../db/repos/sessions';
 import type { GitDriver } from '../git/driver';
@@ -430,6 +443,364 @@ export function registerGitIpc(deps: {
       }
     } catch (e) {
       return errFromUnknown(e, 'GIT_WORKTREE_STATUS');
+    }
+  });
+
+  // Phase 3 (In-App-Merge): Vorab-Stand fuers Merge-Modal. Reine Lese-Operation
+  // — resolved Worktree-Pfad + Branch aus der Session, den Basis-Ref aus dem
+  // Repo, und fragt den Driver nach Haupt-Checkout-Branch/Sauberkeit + ahead/behind.
+  ipcMain.handle(Channels.GitWorktreeMergePreview, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitWorktreeMergePreviewInputSchema.parse(payload);
+      const session = sessions.findById(input.sessionId);
+      if (!session) {
+        return err(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
+      }
+      const project = resolveGitProject(projects, session.project_id);
+      if (!project.ok) return project;
+      if (
+        project.data.has_git === 0 ||
+        session.worktree_path === null ||
+        session.worktree_branch === null
+      ) {
+        const result: GitWorktreeMergePreviewResult = {
+          hasWorktree: false,
+          branch: '',
+          baseRef: '',
+          mainCurrentBranch: '',
+          mainClean: false,
+          worktreeUncommittedCount: 0,
+          ahead: 0,
+          behind: 0,
+        };
+        return ok(result);
+      }
+      try {
+        const baseRef = await driver.resolveBaseBranchRef(project.data.path);
+        const [preview, dirty] = await Promise.all([
+          driver.mergePreview(project.data.path, session.worktree_branch, baseRef),
+          driver.worktreeDirtyState(session.worktree_path),
+        ]);
+        const result: GitWorktreeMergePreviewResult = {
+          hasWorktree: true,
+          branch: session.worktree_branch,
+          baseRef,
+          mainCurrentBranch: preview.mainCurrentBranch,
+          mainClean: preview.mainClean,
+          worktreeUncommittedCount: dirty.uncommittedCount,
+          ahead: preview.ahead,
+          behind: preview.behind,
+        };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:worktree-merge-preview] fehlgeschlagen path=${session.worktree_path}`, e);
+        return err('Merge-Vorschau fehlgeschlagen', 'GIT_WORKTREE_MERGE_PREVIEW_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_WORKTREE_MERGE_PREVIEW');
+    }
+  });
+
+  // Phase 3: Worktree-Branch nach main/master mergen. Der Merge laeuft im
+  // Haupt-Checkout (project.path), der dafuer auf dem Basis-Ref stehen UND
+  // sauber sein muss — beide Vorbedingungen prueft der Server hier erneut
+  // (Renderer-Anzeige ist nur Komfort). Bei Erfolg optional Cleanup:
+  // Worktree zuerst entfernen, dann Branch loeschen (umgekehrt geht nicht —
+  // ein im Worktree ausgecheckter Branch laesst sich nicht loeschen).
+  ipcMain.handle(Channels.GitWorktreeMerge, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitWorktreeMergeInputSchema.parse(payload);
+      const session = sessions.findById(input.sessionId);
+      if (!session) {
+        return err(`Session ${input.sessionId} nicht gefunden`, 'SESSION_NOT_FOUND');
+      }
+      if (session.worktree_path === null || session.worktree_branch === null) {
+        return err('Diese Session hat keinen Worktree zum Mergen', 'NO_WORKTREE');
+      }
+      const project = resolveGitProject(projects, session.project_id);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        return err(
+          `Projekt „${project.data.name}" ist kein Git-Repository`,
+          'NOT_A_GIT_REPO',
+        );
+      }
+      const branch = session.worktree_branch;
+      const worktreePath = session.worktree_path;
+      try {
+        const baseRef = await driver.resolveBaseBranchRef(project.data.path);
+        const preview = await driver.mergePreview(project.data.path, branch, baseRef);
+        // Vorbedingung 1: Haupt-Checkout muss auf dem Basis-Ref stehen, sonst
+        // wuerde der Merge in den falschen Branch laufen.
+        if (preview.mainCurrentBranch !== baseRef) {
+          return err(
+            `Haupt-Checkout steht auf „${preview.mainCurrentBranch}", nicht auf „${baseRef}"`,
+            'MERGE_BASE_NOT_CHECKED_OUT',
+          );
+        }
+        // Vorbedingung 2: Haupt-Checkout muss sauber sein.
+        if (!preview.mainClean) {
+          return err(
+            'Haupt-Checkout hat uncommittete Aenderungen — bitte erst committen oder verwerfen',
+            'MERGE_MAIN_DIRTY',
+          );
+        }
+        const outcome = await driver.mergeBranch(project.data.path, branch, {
+          strategy: input.strategy,
+          commitMessage: input.commitMessage,
+        });
+        if (outcome.status === 'conflict') {
+          const result: GitWorktreeMergeResult = {
+            merged: false,
+            conflicted: true,
+            ffFailed: false,
+            conflictFiles: outcome.conflictFiles,
+            mergeCommitSha: null,
+            worktreeRemoved: false,
+            branchDeleted: false,
+          };
+          return ok(result);
+        }
+        if (outcome.status === 'ff-failed') {
+          const result: GitWorktreeMergeResult = {
+            merged: false,
+            conflicted: false,
+            ffFailed: true,
+            conflictFiles: [],
+            mergeCommitSha: null,
+            worktreeRemoved: false,
+            branchDeleted: false,
+          };
+          return ok(result);
+        }
+        // Erfolg → optionaler Cleanup. Worktree zuerst, dann Branch.
+        let worktreeRemoved = false;
+        let branchDeleted = false;
+        if (input.removeWorktree) {
+          try {
+            // force=true: nach erfolgreichem Merge ist die committete History in
+            // main; verbleibende uncommittete Worktree-Aenderungen waren nie Teil
+            // des Branches und werden bewusst verworfen (Modal warnt vorher).
+            await driver.removeWorktree(project.data.path, worktreePath, true);
+            worktreeRemoved = true;
+          } catch (e) {
+            log.warn(`[git:worktree-merge] Worktree-Cleanup fehlgeschlagen path=${worktreePath}`, e);
+          }
+        }
+        if (input.deleteBranch) {
+          try {
+            // squash markiert den Branch nicht als „merged" → force (`-D`) noetig.
+            await driver.deleteBranch(project.data.path, branch, input.strategy === 'squash');
+            branchDeleted = true;
+          } catch (e) {
+            log.warn(`[git:worktree-merge] Branch-Loeschen fehlgeschlagen branch=${branch}`, e);
+          }
+        }
+        const result: GitWorktreeMergeResult = {
+          merged: true,
+          conflicted: false,
+          ffFailed: false,
+          conflictFiles: [],
+          mergeCommitSha: outcome.mergeCommitSha,
+          worktreeRemoved,
+          branchDeleted,
+        };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:worktree-merge] fehlgeschlagen branch=${branch}`, e);
+        return err('Merge fehlgeschlagen', 'GIT_WORKTREE_MERGE_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_WORKTREE_MERGE');
+    }
+  });
+
+  // ============================================================ Season 38
+  // Pull/Fetch/Branch-Switch — alle projectId-basiert, laufen im Haupt-Checkout.
+
+  // Branch-Uebersicht mit Tracking-Info. Reine Lese-Operation: status (current +
+  // sauber), for-each-ref (per-Branch ahead/behind), Worktree-Liste (belegte
+  // Branches) und Remote-Status in einem Pass; buildBranchOverview aggregiert.
+  ipcMain.handle(Channels.GitBranchOverview, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitBranchOverviewInputSchema.parse(payload);
+      const project = resolveGitProject(projects, input.projectId);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        const result: GitBranchOverviewResult = {
+          hasGit: false,
+          current: '',
+          detached: false,
+          mainClean: false,
+          hasRemote: false,
+          branches: [],
+        };
+        return ok(result);
+      }
+      try {
+        const [status, track, worktrees, hasRemote] = await Promise.all([
+          driver.status(project.data.path),
+          driver.branchTrackInfos(project.data.path),
+          driver.listWorktrees(project.data.path),
+          driver.hasRemote(project.data.path),
+        ]);
+        const result = buildBranchOverview({
+          current: status.branch,
+          mainClean: status.files.length === 0,
+          hasRemote,
+          track,
+          worktrees,
+        });
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:branch-overview] fehlgeschlagen path=${project.data.path}`, e);
+        return err('Branch-Uebersicht fehlgeschlagen', 'GIT_BRANCH_OVERVIEW_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_BRANCH_OVERVIEW');
+    }
+  });
+
+  // Branch-Switch im Haupt-Checkout. Vorbedingungen (Server ist Autoritaet):
+  //   1. Ziel-Branch darf nicht in einem Linked-Worktree belegt sein.
+  //   2. Bei dirty Working-Tree blockt der Switch (status='dirty'), ausser der
+  //      Renderer schickt autoStash=true → dann wird vorher gestasht.
+  ipcMain.handle(Channels.GitCheckout, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitCheckoutInputSchema.parse(payload);
+      const project = resolveGitProject(projects, input.projectId);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        return err(`Projekt „${project.data.name}" ist kein Git-Repository`, 'NOT_A_GIT_REPO');
+      }
+      try {
+        const worktrees = await driver.listWorktrees(project.data.path);
+        const elsewhere = worktrees.find((w) => !w.isMain && w.branch === input.branch);
+        if (elsewhere) {
+          const result: GitCheckoutResult = {
+            status: 'checked-out-elsewhere',
+            branch: input.branch,
+            stashed: false,
+            checkedOutPath: elsewhere.path,
+          };
+          return ok(result);
+        }
+        const status = await driver.status(project.data.path);
+        const dirty = status.files.length > 0;
+        if (dirty && !input.autoStash) {
+          const result: GitCheckoutResult = {
+            status: 'dirty',
+            branch: input.branch,
+            stashed: false,
+            checkedOutPath: null,
+          };
+          return ok(result);
+        }
+        let stashed = false;
+        if (dirty && input.autoStash) {
+          stashed = await driver.stashPush(
+            project.data.path,
+            `TakumiDeck: vor Wechsel auf ${input.branch}`,
+          );
+        }
+        await driver.checkout(project.data.path, input.branch);
+        const result: GitCheckoutResult = {
+          status: 'switched',
+          branch: input.branch,
+          stashed,
+          checkedOutPath: null,
+        };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:checkout] fehlgeschlagen branch=${input.branch}`, e);
+        return err('Branch-Wechsel fehlgeschlagen', 'GIT_CHECKOUT_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_CHECKOUT');
+    }
+  });
+
+  // Fetch: aktualisiert Remote-Tracking-Refs (ahead/behind) ohne Working-Tree-
+  // Aenderung. Ohne Remote ein no-op-Result statt Fehler.
+  ipcMain.handle(Channels.GitFetch, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    try {
+      const input = GitFetchInputSchema.parse(payload);
+      const project = resolveGitProject(projects, input.projectId);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        return err(`Projekt „${project.data.name}" ist kein Git-Repository`, 'NOT_A_GIT_REPO');
+      }
+      try {
+        const hasRemote = await driver.hasRemote(project.data.path);
+        if (!hasRemote) {
+          const result: GitFetchResult = { status: 'no-remote' };
+          return ok(result);
+        }
+        await driver.fetch(project.data.path);
+        const result: GitFetchResult = { status: 'fetched' };
+        return ok(result);
+      } catch (e) {
+        log.warn(`[git:fetch] fehlgeschlagen path=${project.data.path}`, e);
+        return err('Fetch fehlgeschlagen', 'GIT_FETCH_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_FETCH');
+    }
+  });
+
+  // Pull fuer den aktuellen Branch. Vorbedingungen vorab geprueft (klarere
+  // Meldung als ein roher Git-Fehler): Remote vorhanden, Working-Tree sauber,
+  // aktueller Branch hat einen Upstream. Der eigentliche Pull rollt bei Konflikt
+  // selbst zurueck (Driver).
+  ipcMain.handle(Channels.GitPull, async (event, payload: unknown) => {
+    const guard = assertFromMainWindow(event);
+    if (!guard.ok) return guard;
+    const zeros = { conflictFiles: [] as string[], filesChanged: 0, insertions: 0, deletions: 0 };
+    try {
+      const input = GitPullInputSchema.parse(payload);
+      const project = resolveGitProject(projects, input.projectId);
+      if (!project.ok) return project;
+      if (project.data.has_git === 0) {
+        return err(`Projekt „${project.data.name}" ist kein Git-Repository`, 'NOT_A_GIT_REPO');
+      }
+      try {
+        const hasRemote = await driver.hasRemote(project.data.path);
+        if (!hasRemote) {
+          return ok<GitPullResult>({ status: 'no-remote', ...zeros });
+        }
+        const status = await driver.status(project.data.path);
+        if (status.files.length > 0) {
+          return ok<GitPullResult>({ status: 'dirty', ...zeros });
+        }
+        const track = await driver.branchTrackInfos(project.data.path);
+        const current = track.find((t) => t.name === status.branch);
+        if (!current || current.upstream === null) {
+          return ok<GitPullResult>({ status: 'no-upstream', ...zeros });
+        }
+        const outcome = await driver.pull(project.data.path);
+        return ok<GitPullResult>({
+          status: outcome.status,
+          conflictFiles: outcome.conflictFiles,
+          filesChanged: outcome.filesChanged,
+          insertions: outcome.insertions,
+          deletions: outcome.deletions,
+        });
+      } catch (e) {
+        log.warn(`[git:pull] fehlgeschlagen path=${project.data.path}`, e);
+        return err('Pull fehlgeschlagen', 'GIT_PULL_FAILED');
+      }
+    } catch (e) {
+      return errFromUnknown(e, 'GIT_PULL');
     }
   });
 }

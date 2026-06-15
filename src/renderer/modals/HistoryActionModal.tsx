@@ -4,6 +4,7 @@ import { useUiStore } from '../stores/ui';
 import { useSessionStore } from '../stores/sessions';
 import { fmtTokens } from '../components/fmtTokens';
 import { estimateTerminalCols } from '../components/estimateTerminalCols';
+import { WorktreeMergeModal } from './WorktreeMergeModal';
 
 // HistoryActionModal (Sprint 9).
 //
@@ -57,6 +58,11 @@ export function HistoryActionModal({
     uncommittedCount: number;
     ahead: number;
   } | null>(null);
+  // Phase 3 (In-App-Merge): per Preview-Probe ermitteln, ob diese Session in
+  // einem Worktree laeuft — nur dann zeigen wir den „Nach main mergen"-Button.
+  // (SessionHistoryEntry haelt selbst keine Worktree-Felder.)
+  const [worktreeMergeable, setWorktreeMergeable] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   const canResume =
     entry.status !== 'archived' && entry.status !== 'running';
@@ -71,6 +77,19 @@ export function HistoryActionModal({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Worktree-Probe: hasWorktree entscheidet ueber die Sichtbarkeit des Merge-
+  // Buttons. Server resolved sessionId → worktree_path/branch.
+  useEffect(() => {
+    let cancelled = false;
+    void window.api.git.worktreeMergePreview({ sessionId: entry.id }).then((res) => {
+      if (cancelled) return;
+      setWorktreeMergeable(res.ok && res.data.hasWorktree);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.id]);
 
   const handleResume = async () => {
     setError(null);
@@ -172,6 +191,7 @@ export function HistoryActionModal({
   });
 
   return (
+    <>
     <div className="td-modal-backdrop" onClick={onClose}>
       <div
         className="td-modal td-history-action-modal"
@@ -281,6 +301,17 @@ export function HistoryActionModal({
             → Im Verlauf öffnen
           </button>
           <span style={{ flex: 1 }} />
+          {worktreeMergeable && (
+            <button
+              type="button"
+              className="td-action-btn"
+              onClick={() => setMergeOpen(true)}
+              disabled={busy}
+              title="Worktree-Branch nach main/master zurückführen"
+            >
+              ⤺ Nach main mergen
+            </button>
+          )}
           <button
             type="button"
             className={`td-action-btn ${archiveConfirm ? 'ghost' : ''}`}
@@ -319,5 +350,13 @@ export function HistoryActionModal({
         </div>
       </div>
     </div>
+    {mergeOpen && (
+      <WorktreeMergeModal
+        sessionId={entry.id}
+        onClose={() => setMergeOpen(false)}
+        onMerged={() => setMergeOpen(false)}
+      />
+    )}
+    </>
   );
 }

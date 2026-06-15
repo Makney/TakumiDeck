@@ -35,6 +35,8 @@ const TYPE_OPTIONS: SessionType[] = [
   // sollen im Verlauf auffindbar bleiben (Resume spawnt die Shell im
   // gespeicherten cwd neu).
   'terminal',
+  // Season 39: 'opencode' als siebter Filter-Bucket fuer die zweite Engine.
+  'opencode',
 ];
 const TYPE_LABELS: Record<SessionType, string> = {
   feature: 'Feature',
@@ -46,6 +48,7 @@ const TYPE_LABELS: Record<SessionType, string> = {
   // sein, ist aber defensives Rendering).
   custom: 'Eigene Art',
   terminal: 'Terminal',
+  opencode: 'Opencode',
 };
 
 // Phase-2 Season-5: für 'custom'-Sessions zeigt der Verlauf die freie

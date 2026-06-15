@@ -30,6 +30,20 @@ Erledigte Einträge werden **nicht gelöscht**, sondern mit ✅ und Datum verseh
 
 ---
 
+## Kein Token-Tracking für Opencode-Sessions (2026-06-15)
+
+**Bereich:** Opencode-Engine (`src/main/ipc/pty.ts`, JSONL-Watcher/Polling-Ring, Token-/Stats-Pane). Opencode-Sessions laufen mit `jsonl_path=NULL` und sind aus der gesamten Token-Pipeline ausgeklammert.
+
+**Was:** Eine Opencode-Session zeigt keine Token-Bars und taucht in keiner Token-/Stats-Aggregation auf — anders als Claude-Sessions, deren Verbrauch aus der per-Session-JSONL gelesen wird. Season 39 (Variante A) liefert bewusst nur Engine + Modell-Dropdown + Toggle.
+
+**Warum so:** opencode schreibt **keine** claude-artige JSONL. Die Token-/Session-Daten liegen in `~/.local/share/opencode/opencode.db` — eine SQLite-DB, die Standard-SQLite-Tooling (better-sqlite3, `node:sqlite`) hier mit „file is not a database" abweist (nicht-trivial/instabil auslesbar). Stabil/dokumentiert sind nur `opencode export <sessionID>` (Per-Session-JSON) und `opencode stats` (Aggregat). Diese Quelle anzubinden ist ein eigener, abgegrenzter Scope (Session-Mapping + JSON-Parsing in die `messages`/`usage_buckets`-Pipeline) und war über den Season-39-Schnitt hinaus.
+
+**Risiko:** Niedrig. Rein fehlende Funktion, kein falscher Wert: opencode-Sessions zeigen schlicht keine Token-Daten (konsistent mit Terminal-Sessions). Keine Datenkorruption, keine irreführende Anzeige.
+
+**Auflösung:** **Trigger:** wenn opencode im Daily-Use bleibt und der Token-Verbrauch dort sichtbar werden soll. Dann eine opencode-spezifische Token-Quelle bauen: TakumiDeck-Session ↔ opencode-Session mappen (cwd + Recency, analog zum claude-UUID-Mapping aus Season 9/15), per `opencode export`/`stats` JSON ziehen und in die bestehende `messages`/`usage_buckets`-Pipeline einspeisen. Vor dem Bau das Export-JSON-Format einmal manuell verifizieren (Variante B aus [ENTSCHEIDUNGEN.md](./ENTSCHEIDUNGEN.md)).
+
+---
+
 ## Working-Tree-/Staged-Diff + Datei-Browser nicht worktree-bewusst (2026-06-02)
 
 **Bereich:** `src/renderer/components/DiffViewer.tsx` (Modi `working`/`staged`), `src/renderer/panels/RightPaneFilesPanel.tsx`. Beide ziehen ihren Git-Status über `git:status({ projectId })` — also vom **Haupt-Checkout**, nicht vom Worktree der aktiven Session.

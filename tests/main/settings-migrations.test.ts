@@ -3,6 +3,7 @@ import {
   CURRENT_SETTINGS_SCHEMA_VERSION,
   LEGACY_SETTINGS_SCHEMA_VERSION,
   MIGRATION_ADD_CUSTOM_MODELS,
+  MIGRATION_ADD_OPENCODE,
   MIGRATION_DEFAULTS_V0_2_X_DRIFT,
   migrateDefaultsV02xDrift,
   readSchemaVersion,
@@ -297,10 +298,42 @@ describe('MIGRATION_ADD_CUSTOM_MODELS (Migration 3)', () => {
   });
 });
 
+describe('MIGRATION_ADD_OPENCODE (Migration 4)', () => {
+  it('id und name sind gesetzt', () => {
+    expect(MIGRATION_ADD_OPENCODE.id).toBe(4);
+    expect(MIGRATION_ADD_OPENCODE.name).toBe('add_opencode_fields');
+  });
+
+  it('setzt beide opencode-Felder auf Default bei Bestandsuser ohne Felder', () => {
+    const result = MIGRATION_ADD_OPENCODE.up({ schema_version: 3 });
+    expect(result['opencode_enabled']).toBe(false);
+    expect(result['opencode_binary_path']).toBe('opencode');
+  });
+
+  it('laesst bereits gesetzte Werte in Ruhe (defensiv pro Feld)', () => {
+    const result = MIGRATION_ADD_OPENCODE.up({
+      schema_version: 3,
+      opencode_enabled: true,
+      opencode_binary_path: 'C:/tools/opencode.cmd',
+    });
+    expect(result['opencode_enabled']).toBe(true);
+    expect(result['opencode_binary_path']).toBe('C:/tools/opencode.cmd');
+  });
+
+  it('fuellt nur das fehlende Feld auf, wenn eines schon da ist', () => {
+    const result = MIGRATION_ADD_OPENCODE.up({
+      schema_version: 3,
+      opencode_enabled: true,
+    });
+    expect(result['opencode_enabled']).toBe(true);
+    expect(result['opencode_binary_path']).toBe('opencode');
+  });
+});
+
 describe('CURRENT_SETTINGS_SCHEMA_VERSION', () => {
   it('passt zur hoechsten ausgelieferten Migration-id', () => {
-    // Guard fuer kuenftige Migrations: wer eine id=4-Migration hinzufuegt, muss
+    // Guard fuer kuenftige Migrations: wer eine id=5-Migration hinzufuegt, muss
     // CURRENT_SETTINGS_SCHEMA_VERSION mit anheben.
-    expect(CURRENT_SETTINGS_SCHEMA_VERSION).toBe(3);
+    expect(CURRENT_SETTINGS_SCHEMA_VERSION).toBe(4);
   });
 });

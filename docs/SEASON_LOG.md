@@ -20,6 +20,30 @@ Neue Einträge **oben** anfügen (neuste Season zuerst).
 
 ---
 
+## Phase 3 Season 39 — Opencode als zweite Engine
+
+**Ziel:** Eigener Session-Typ neben Claude Code. Brief: Modell-Dropdown zeigt opencode-Modelle bei Opencode-Session, engine-spezifische Token-Tracking-Logik, Settings-Toggle für Verfügbarkeit. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.
+
+**Ergebnis:** Variante A (schlanke Engine ohne Token-Tracking) — der User wählte sie über die empfohlene Variante. Geliefert: `SessionType: 'opencode'`, NewSessionModal mit „Opencode"-Button (nur bei aktivierter Engine) + Modell-Dropdown live aus `opencode models`, Settings-Toggle `opencode_enabled` + `opencode_binary_path` im Allgemein-Tab (Migration 4), Spawn `opencode -m <model>` / Resume `opencode --continue`, eigener Verlauf-Bucket, neuer IPC `opencode:list-models` (Pure-Parser). Gefahren wie der `terminal`-Typ über Skip-Gates in `pty:create`/`session:resume`. **Token-Tracking bewusst ausgeklammert** (2 von 3 Brief-Punkten voll, der dritte als TECH_SCHULDEN/Folge-Season geparkt) — und Codex → opencode, weil opencode die konkret relevante CLI war. Pre-Commit-Gate grün (typecheck beide tsconfigs, eslint 0 Warnungen, alle Ziel-Tests, +18 neue).
+
+**Gut gelaufen:**
+
+- **Live-Recherche vor den Varianten hat den Plan getragen.** Statt Codex blind anzunehmen, das installierte opencode 1.16.2 direkt inspiziert: `opencode models` (provider/model), `opencode --help` (Resume-Flags), und die DB angefasst. Genau das deckte den Knackpunkt auf — opencode hält Token-Daten in einer SQLite-DB, die Standard-Tooling mit „file is not a database" abweist, **nicht** in JSONL. Damit wurde die Token-Tracking-Komplexität zum bewusst geschnittenen Scope statt zur bösen Überraschung mitten im Code.
+- **Der `terminal`-Typ aus Season 31 war die perfekte Schablone.** Skip-Gates für jsonl_path/claude_session_id/Spawn-Args lagen schon vor; opencode ist eine dritte Variante derselben Verzweigung — kein neuer Spawn-Pfad, kein engine_type-Umbau.
+- **Pure-Helfer = billige Tests.** `parseOpencodeModels` + `listOpencodeModels` (injizierbarer Runner) ließen sich ohne echtes opencode testen.
+
+**Gebremst durch:**
+
+- **opencode.db ist eine Sackgasse.** Gültiger `SQLite format 3`-Header, aber better-sqlite3 (electron-gebaut, falsche NODE_MODULE_VERSION) UND `node:sqlite` weigern sich — viel Zeit in die DB gesteckt, bevor klar war, dass `opencode export`/`stats` die richtigen, stabilen Surfaces sind.
+- **Kein erzwingbares Session-ID-Flag.** opencode vergibt eigene Session-IDs; Resume läuft über `--continue` (letzte Session im cwd), was bei mehreren opencode-Sessions im selben Ordner nicht eindeutig ist — bewusst akzeptiert, robuste Auflösung kommt mit dem Token-Tracking-Feature.
+
+**Für nächste Season:**
+
+- Token-Tracking als Folge-Season (Variante B): Session-Mapping (cwd+Recency) + `opencode export`/`stats` in die `messages`/`usage_buckets`-Pipeline. Export-JSON-Shape vorher einmal manuell verifizieren.
+- **Working-Tree-Hygiene:** Zu Beginn dieser Season lag bereits eine ganze uncommittete Season (Branch-Ops/Merge) im Tree, entangled mit Season 39 in den Shared-Files — saubere Per-Season-Commits gehen so nicht. Künftig vor Season-Start den Tree committen oder den Stand bewusst bündeln.
+
+---
+
 ## Phase 3 Season 37 — Worktree-Support
 
 **Ziel:** Parallele Sessions am selben Code in verschiedenen Branches. Scope laut Brief: `git worktree add` beim Session-Erstellen (mit Worktree-Option), Cleanup beim Session-Archive, Diff-Viewer kann Worktree-Diff vs. main zeigen. Working-Rule-2-Pflicht: erst A/B/C-Varianten, dann Code.

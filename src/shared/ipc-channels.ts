@@ -51,6 +51,12 @@ export const Channels = {
   // Key liefert der Handler `available=false` (Abo-/OAuth-Nutzung).
   ModelsFetchAvailable: 'models:fetch-available',
 
+  // Opencode (Season 39): listet die verfuegbaren opencode-Modelle via
+  // `opencode models`. Renderer ruft beim Wechsel auf den Session-Typ
+  // „Opencode" im NewSessionModal. Liefert `available=false` mit `reason`,
+  // wenn opencode deaktiviert ist, die Binary fehlt oder der Aufruf failt.
+  OpencodeListModels: 'opencode:list-models',
+
   // Git (Sprint 7)
   GitStatus: 'git:status',
   GitDiff: 'git:diff',
@@ -80,6 +86,23 @@ export const Channels = {
   // Pre-Commit-Panel, das bei Worktree-Sessions den Worktree statt des
   // Haupt-Checkouts anzeigen muss.
   GitWorktreeStatus: 'git:worktree-status',
+  // Phase 3 (In-App-Merge): Vorab-Stand fuers Merge-Modal (Branch des Haupt-
+  // Checkouts, Sauberkeit, ahead/behind). Reine Lese-Operation.
+  GitWorktreeMergePreview: 'git:worktree-merge-preview',
+  // Phase 3: Worktree-Branch nach main/master mergen (Strategie + optionaler
+  // Cleanup von Worktree + Branch). Konflikt → Repo wird zurueckgerollt.
+  GitWorktreeMerge: 'git:worktree-merge',
+  // Season 38 (Pull/Fetch/Branch-Switch): Branch-Uebersicht des Haupt-Checkouts
+  // mit Tracking-Info (ahead/behind), aktueller Branch, Sauberkeit, Remote-Status.
+  GitBranchOverview: 'git:branch-overview',
+  // Season 38: Branch im Haupt-Checkout wechseln (optional mit Auto-Stash).
+  GitCheckout: 'git:checkout',
+  // Season 38: `git fetch --all --prune` (aktualisiert ahead/behind ohne Working-
+  // Tree-Aenderung).
+  GitFetch: 'git:fetch',
+  // Season 38: `git pull` fuer den aktuellen Branch, mit Konfliktanzeige (Pull
+  // wird bei Konflikt zurueckgerollt).
+  GitPull: 'git:pull',
 
   // Token-Tracking (Sprint 5)
   UsageWindow: 'usage:window',

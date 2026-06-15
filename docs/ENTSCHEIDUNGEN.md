@@ -24,6 +24,24 @@ Neue Einträge wandern **oben** an (neuster zuerst). Keine Daten in den Titel �
 
 ---
 
+## Zweite Engine: opencode als schlanker Session-Typ ohne Token-Tracking (Variante A)
+
+**Entscheidung:** Die zweite Engine wird als **opencode** umgesetzt (nicht Codex) und als eigener `SessionType: 'opencode'` analog zum `terminal`-Typ aus Season 31 gefahren — eigene Binary, Modell-Dropdown aus `opencode models`, Settings-Toggle. **Token-Tracking bleibt in dieser Season bewusst aus.**
+
+**Varianten:**
+
+- **A — Schlanke Engine ohne Tracking (gewählt):** Session-Typ + Modell-Dropdown + Toggle + Resume (`--continue`); opencode-Sessions zeigen keine Token-Bars (wie Terminal-Sessions).
+- **B — A + Token-Tracking über `opencode export`/`stats`:** voller Brief, aber Session-Mapping (kein erzwingbares Session-ID-Flag) und ein noch unverifiziertes Export-JSON-Format machen es deutlich größer/riskanter.
+- **C — Engine-agnostischer Datenmodell-Umbau zuerst** (`engine_type`, pro-Engine-Adapter), dann opencode als erster Adapter: architektonisch am saubersten, aber das ist das eigene Roadmap-Folge-Feature mit opencode als Voraussetzung — hier verfrüht.
+
+**Grund:** Die drei einfachen Brief-Punkte (Typ, Dropdown, Toggle) sind risikoarm und sofort nutzbar. Der schwere Teil — engine-spezifisches Token-Tracking — hängt an opencode-Internas: die Token-Daten liegen **nicht** als claude-artige JSONL vor, sondern in `~/.local/share/opencode/opencode.db` (eine SQLite-DB, die Standard-SQLite-Tooling hier mit „file is not a database" abweist). Stabil/dokumentiert ist nur `opencode export <id>` (JSON) bzw. `opencode stats`. Diese Quelle erst sauber zu verifizieren, bevor sie in die Token-Pipeline darf, ist die richtige Reihenfolge — passt zum etablierten Muster (Terminal-Sessions ohne Tracking; Scope-Cut → Roadmap statt Feature-Drop). **Codex → opencode:** opencode war die konkret installierte/relevante CLI; der Roadmap-Punkt war generisch „zweite Engine" mit Codex nur als Beispiel.
+
+**Konsequenz:** opencode-Sessions haben dauerhaft `jsonl_path=NULL`/`claude_session_id=NULL`; der Verlauf zeigt sie in einem eigenen Bucket, die Token-Pane lässt sie aus. Resume nutzt `opencode --continue` (keine fixe Session-ID erzwingbar) — bei mehreren opencode-Sessions im selben Ordner nicht eindeutig; die robuste Per-Session-Auflösung kommt mit dem Token-Tracking-Feature. Worktree ist für opencode erlaubt (reiner cwd), der CLAUDE.md-Summary-Kontextblock nicht (passt nicht zur fremden Engine).
+
+**Implementierungsdetail:** Skip-Gates im bestehenden `pty:create`/`session:resume` statt eines vorgezogenen `engine_type`-Umbaus — derselbe Hebel wie beim `terminal`-Typ. Modell-Liste on-demand via `opencode models` (Pure-Parser `parseOpencodeModels`, injizierbarer Runner für Tests) statt Hardcoding, weil opencode beliebig viele Provider/Modelle führt.
+
+---
+
 ## Worktree-Support: Komfort-Stufe ohne In-App-Merge (Variante B)
 
 **Entscheidung:** Worktree-Sessions werden mit Komfort gebaut (bestehende Branches auscheckbar, Worktree-Übersicht, robustes Cleanup mit Dirty-Schutz), aber der **Merge zurück nach `main` bleibt manuell** (`git merge`) bzw. wartet auf das eigene Roadmap-Feature „Pull/Fetch/Branch-Switch". Worktrees liegen als **Sibling-Ordner** neben dem Projekt, das Cleanup beim Archivieren **schützt** dirty Worktrees mit Rückfrage statt force.
